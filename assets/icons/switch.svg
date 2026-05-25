@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="switch-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0D9488" />
+      <stop offset="100%" stop-color="#115E59" />
+    </linearGradient>
+    <filter id="switch-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0D9488" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <!-- Main rectangular box representing a rack switch -->
+  <rect x="4" y="10" width="40" height="28" rx="6" fill="url(#switch-grad)" stroke="#2DD4BF" stroke-width="2" filter="url(#switch-glow)" />
+  <!-- Ports grid decoration at the bottom -->
+  <rect x="8" y="28" width="5" height="4" rx="1" fill="#14B8A6" />
+  <rect x="16" y="28" width="5" height="4" rx="1" fill="#14B8A6" />
+  <rect x="24" y="28" width="5" height="4" rx="1" fill="#14B8A6" />
+  <rect x="32" y="28" width="5" height="4" rx="1" fill="#14B8A6" />
+  <!-- Alternating dynamic traffic arrows inside the switch -->
+  <!-- Row 1: Left-pointing and Right-pointing -->
+  <path d="M 12,18 L 36,18 M 12,18 L 16,14 M 12,18 L 16,22" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M 36,23 L 12,23 M 36,23 L 32,19 M 36,23 L 32,27" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

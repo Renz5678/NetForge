@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { File, Paths } from 'expo-file-system/build/FileSystem'
+import { File, Paths } from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
 import { Export, FileText, X, DeviceMobile } from 'phosphor-react-native'
 import { useConfigStore } from '@/stores/useConfigStore'

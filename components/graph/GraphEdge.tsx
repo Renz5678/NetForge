@@ -28,12 +28,12 @@ function getArrowPath(
   const ux = dx / length
   const uy = dy / length
 
-  // Start point: offset from source center (edge of node rectangle ~60px wide)
-  const startX = x1 + ux * 60
+  // Start point: offset from source center (edge of node rectangle ~136px wide, half is 68px)
+  const startX = x1 + ux * 68
   const startY = y1 + uy * 26
 
   // End point: offset from target center (stop before the node edge)
-  const endX = x2 - ux * (60 + ARROW_SIZE)
+  const endX = x2 - ux * (68 + ARROW_SIZE)
   const endY = y2 - uy * (26 + ARROW_SIZE)
 
   // Perpendicular vectors for arrowhead
@@ -41,7 +41,7 @@ function getArrowPath(
   const perpY = ux * ARROW_SIZE * 0.5
 
   // Arrowhead triangle tip
-  const tipX = x2 - ux * 60
+  const tipX = x2 - ux * 68
   const tipY = y2 - uy * 26
 
   return [
@@ -66,7 +66,7 @@ export function GraphEdgeComponent({
 
   if (!source || !target) return null
 
-  const pathData = getArrowPath(source.x, source.y, target.x, target.y, 60)
+  const pathData = getArrowPath(source.x, source.y, target.x, target.y, 68)
   if (!pathData) return null
 
   // Resolve port bindings if departments list is provided
@@ -116,7 +116,7 @@ export function GraphEdgeComponent({
         <>
           {sourcePortName && (
             <SkiaText
-              x={source.x + ux * 75 - font.measureText(sourcePortName).width / 2}
+              x={source.x + ux * 83 - font.measureText(sourcePortName).width / 2}
               y={source.y + uy * 36 + 4}
               text={sourcePortName}
               font={font}
@@ -125,7 +125,7 @@ export function GraphEdgeComponent({
           )}
           {targetPortName && (
             <SkiaText
-              x={target.x - ux * 85 - font.measureText(targetPortName).width / 2}
+              x={target.x - ux * 93 - font.measureText(targetPortName).width / 2}
               y={target.y - uy * 36 + 4}
               text={targetPortName}
               font={font}

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="router-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#3B82F6" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <!-- Main circular body -->
+  <circle cx="24" cy="24" r="18" fill="url(#router-grad)" stroke="#60A5FA" stroke-width="2" filter="url(#glow)" />
+  <!-- Inner Ring -->
+  <circle cx="24" cy="24" r="8" fill="none" stroke="#93C5FD" stroke-width="1.5" stroke-dasharray="3,3" />
+  <!-- Center Core -->
+  <circle cx="24" cy="24" r="3" fill="#FFFFFF" />
+  <!-- Outbound Arrows -->
+  <!-- Top -->
+  <path d="M 24,14 L 24,6 M 24,6 L 21,9 M 24,6 L 27,9" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Bottom -->
+  <path d="M 24,34 L 24,42 M 24,42 L 21,39 M 24,42 L 27,39" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Left -->
+  <path d="M 14,24 L 6,24 M 6,24 L 9,21 M 6,24 L 9,27" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Right -->
+  <path d="M 34,24 L 42,24 M 42,24 L 39,21 M 42,24 L 39,27" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

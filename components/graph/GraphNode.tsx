@@ -3,11 +3,11 @@
 // Rounded rectangle, color by status, white label.
 
 import React from 'react'
-import { Group, RoundedRect, Text as SkiaText, matchFont, vec } from '@shopify/react-native-skia'
+import { Group, RoundedRect, Text as SkiaText, matchFont, vec, ImageSVG, useSVG } from '@shopify/react-native-skia'
 import { Colors } from '@/constants/colors'
 import type { GraphNode } from '@/types'
 
-const NODE_WIDTH = 120
+const NODE_WIDTH = 136 // Slightly wider to fit icon + text comfortably
 const NODE_HEIGHT = 52
 const NODE_RADIUS = 12
 
@@ -40,6 +40,31 @@ export function GraphNodeComponent({ node, selected, font }: GraphNodeProps) {
     ? STATUS_COLORS[node.status] 
     : (TYPE_COLORS[node.type ?? 'department'] ?? Colors.nodeValid)
 
+  // Load SVG assets inside component using Skia's useSVG hook
+  // We use relative paths for Metro bundler resolution
+  const routerSvg = useSVG(require('../../assets/icons/router.svg'))
+  const switchSvg = useSVG(require('../../assets/icons/switch.svg'))
+  const firewallSvg = useSVG(require('../../assets/icons/firewall.svg'))
+  const wanSvg = useSVG(require('../../assets/icons/wan.svg'))
+  const departmentSvg = useSVG(require('../../assets/icons/department.svg'))
+
+  const getSvg = () => {
+    switch (node.type) {
+      case 'router':
+        return routerSvg
+      case 'switch':
+        return switchSvg
+      case 'firewall':
+        return firewallSvg
+      case 'wan':
+        return wanSvg
+      default:
+        return departmentSvg
+    }
+  }
+
+  const svg = getSvg()
+
   const getLabelWithPrefix = () => {
     switch (node.type) {
       case 'router':
@@ -54,8 +79,6 @@ export function GraphNodeComponent({ node, selected, font }: GraphNodeProps) {
         return `🏢 ${node.label}`
     }
   }
-
-  const labelText = getLabelWithPrefix()
 
   return (
     <Group>
@@ -79,15 +102,37 @@ export function GraphNodeComponent({ node, selected, font }: GraphNodeProps) {
         r={NODE_RADIUS}
         color={fillColor}
       />
-      {/* Node label */}
-      {font && (
-        <SkiaText
-          x={node.x - (font.measureText(labelText.substring(0, 14)).width / 2)}
-          y={node.y + 5}
-          text={labelText.length > 14 ? `${labelText.substring(0, 13)}…` : labelText}
-          font={font}
-          color={Colors.white}
-        />
+      
+      {/* Render SVG Icon if successfully loaded, otherwise fallback to unicode character prefix */}
+      {svg ? (
+        <Group>
+          <ImageSVG
+            svg={svg}
+            x={x + 10}
+            y={y + (NODE_HEIGHT - 28) / 2}
+            width={28}
+            height={28}
+          />
+          {font && (
+            <SkiaText
+              x={x + 46}
+              y={node.y + 5}
+              text={node.label.length > 10 ? `${node.label.substring(0, 9)}…` : node.label}
+              font={font}
+              color={Colors.white}
+            />
+          )}
+        </Group>
+      ) : (
+        font && (
+          <SkiaText
+            x={node.x - (font.measureText(getLabelWithPrefix().substring(0, 14)).width / 2)}
+            y={node.y + 5}
+            text={getLabelWithPrefix().length > 14 ? `${getLabelWithPrefix().substring(0, 13)}…` : getLabelWithPrefix()}
+            font={font}
+            color={Colors.white}
+          />
+        )
       )}
     </Group>
   )

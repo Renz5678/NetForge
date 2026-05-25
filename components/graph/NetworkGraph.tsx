@@ -62,26 +62,6 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
 
   const { nodes, edges } = useGraphLayout(departments, SCREEN_WIDTH, CANVAS_HEIGHT)
 
-  const panGesture = Gesture.Pan()
-    .onBegin(() => {
-      savedTranslateX.value = translateX.value
-      savedTranslateY.value = translateY.value
-    })
-    .onUpdate((e) => {
-      translateX.value = savedTranslateX.value + e.translationX
-      translateY.value = savedTranslateY.value + e.translationY
-    })
-
-  const pinchGesture = Gesture.Pinch()
-    .onBegin(() => {
-      savedScale.value = scale.value
-    })
-    .onUpdate((e) => {
-      scale.value = Math.min(Math.max(savedScale.value * e.scale, 0.3), 5)
-    })
-
-  const composedGesture = Gesture.Simultaneous(panGesture, pinchGesture)
-
   const hitTestNode = useCallback(
     (touchX: number, touchY: number): string | null => {
       // Convert screen touch to canvas coordinates
@@ -105,10 +85,9 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
     [nodes, translateX, translateY, scale]
   )
 
-  const handleCanvasTap = useCallback(
-    (event: { nativeEvent: { locationX: number; locationY: number } }) => {
-      const { locationX, locationY } = event.nativeEvent
-      const tappedId = hitTestNode(locationX, locationY)
+  const handleTap = useCallback(
+    (touchX: number, touchY: number) => {
+      const tappedId = hitTestNode(touchX, touchY)
 
       if (!tappedId) {
         // Tapped empty space — clear selection
@@ -137,6 +116,35 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
     [hitTestNode, departments, onPathFound]
   )
 
+  const panGesture = Gesture.Pan()
+    .onBegin(() => {
+      savedTranslateX.value = translateX.value
+      savedTranslateY.value = translateY.value
+    })
+    .onUpdate((e) => {
+      translateX.value = savedTranslateX.value + e.translationX
+      translateY.value = savedTranslateY.value + e.translationY
+    })
+
+  const pinchGesture = Gesture.Pinch()
+    .onBegin(() => {
+      savedScale.value = scale.value
+    })
+    .onUpdate((e) => {
+      scale.value = Math.min(Math.max(savedScale.value * e.scale, 0.3), 5)
+    })
+
+  const tapGesture = Gesture.Tap()
+    .runOnJS(true)
+    .onEnd((e) => {
+      handleTap(e.x, e.y)
+    })
+
+  const composedGesture = Gesture.Exclusive(
+    Gesture.Simultaneous(panGesture, pinchGesture),
+    tapGesture
+  )
+
   const handleReset = () => {
     setSelectedNodes([])
     setPathResult(null)
@@ -161,41 +169,39 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
       )}
 
       <GestureDetector gesture={composedGesture}>
-        <Pressable style={styles.canvas} onPress={handleCanvasTap}>
-          <Canvas style={styles.canvas}>
-            <Group transform={[
-              { translateX: translateX.value },
-              { translateY: translateY.value },
-              { scale: scale.value },
-            ]}>
-              {/* Render edges first (behind nodes) */}
-              {edges.map((edge, i) => (
-                <GraphEdgeComponent
-                  key={`edge-${i}`}
-                  edge={edge}
-                  nodes={nodes}
-                  departments={departments}
-                  font={systemFont}
-                />
-              ))}
+        <Canvas style={styles.canvas}>
+          <Group transform={[
+            { translateX: translateX.value },
+            { translateY: translateY.value },
+            { scale: scale.value },
+          ]}>
+            {/* Render edges first (behind nodes) */}
+            {edges.map((edge, i) => (
+              <GraphEdgeComponent
+                key={`edge-${i}`}
+                edge={edge}
+                nodes={nodes}
+                departments={departments}
+                font={systemFont}
+              />
+            ))}
 
-              {/* Path overlay */}
-              {pathResult && (
-                <PathOverlay path={pathResult.path} nodes={nodes} edges={edges} />
-              )}
+            {/* Path overlay */}
+            {pathResult && (
+              <PathOverlay path={pathResult.path} nodes={nodes} edges={edges} />
+            )}
 
-              {/* Render nodes */}
-              {nodes.map((node) => (
-                <GraphNodeComponent
-                  key={node.id}
-                  node={node}
-                  selected={selectedNodes.includes(node.id)}
-                  font={systemFont}
-                />
-              ))}
-            </Group>
-          </Canvas>
-        </Pressable>
+            {/* Render nodes */}
+            {nodes.map((node) => (
+              <GraphNodeComponent
+                key={node.id}
+                node={node}
+                selected={selectedNodes.includes(node.id)}
+                font={systemFont}
+              />
+            ))}
+          </Group>
+        </Canvas>
       </GestureDetector>
 
       {/* Zoom controls */}
