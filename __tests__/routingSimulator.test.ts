@@ -1,7 +1,5 @@
+import { ipToUint32, uint32ToIp, ipInSubnet } from '../lib/ipUtils'
 import {
-  ipToUint32,
-  uint32ToIp,
-  ipInSubnet,
   compileRoutingTables,
   simulateRoute,
 } from '../lib/algorithms/routingSimulator'

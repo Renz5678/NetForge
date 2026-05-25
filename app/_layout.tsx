@@ -17,7 +17,13 @@ function RootLayoutNav() {
   const router = useRouter()
 
   useEffect(() => {
-    restoreSession()
+    let unsubscribe: (() => void) | undefined
+    restoreSession().then((unsub) => {
+      unsubscribe = unsub
+    })
+    return () => {
+      unsubscribe?.()
+    }
   }, [])
 
   useEffect(() => {

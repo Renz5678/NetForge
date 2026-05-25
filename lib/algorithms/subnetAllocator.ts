@@ -5,33 +5,9 @@
 // Method: greedy pointer advance using bitwise IP operations
 
 import type { Department } from '@/types'
+import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
 
 const MAX_DEVICE_COUNT = 16_777_214 // /8 usable
-
-/**
- * Parse an IPv4 string into a 32-bit unsigned integer.
- * Uses bitwise operations — no string splitting in the hot path.
- */
-function ipToUint32(ip: string): number {
-  const parts = ip.split('.')
-  return (
-    ((parseInt(parts[0], 10) & 0xff) << 24) |
-    ((parseInt(parts[1], 10) & 0xff) << 16) |
-    ((parseInt(parts[2], 10) & 0xff) << 8) |
-    (parseInt(parts[3], 10) & 0xff)
-  ) >>> 0
-}
-
-/**
- * Convert a 32-bit unsigned integer back to IPv4 string.
- */
-function uint32ToIp(n: number): string {
-  const a = (n >>> 24) & 0xff
-  const b = (n >>> 16) & 0xff
-  const c = (n >>> 8) & 0xff
-  const d = n & 0xff
-  return `${a}.${b}.${c}.${d}`
-}
 
 /**
  * Find the smallest CIDR prefix where usable hosts >= deviceCount.

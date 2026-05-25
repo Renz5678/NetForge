@@ -3,6 +3,8 @@
 // Implements Longest Prefix Match, OSPF Dynamic Area propagation, L2 VLAN switch forwarding, and Dijkstra path tracing.
 
 import type { Department, InterfacePort, StaticRoute, OspfConfig } from '@/types'
+import { ipToUint32, uint32ToIp, cidrToMask, ipInSubnet } from '@/lib/ipUtils'
+import { evaluateAcl, findMatchingRule, type AclPacket } from '@/lib/algorithms/aclEngine'
 
 export type RoutingTableEntry = {
   destination: string;   // e.g. "10.0.1.0/24"
@@ -27,35 +29,6 @@ export type PathTraceResult = {
   path: string[];        // node IDs
   hops: HopDetail[];     // detailed hop information
   message: string;       // status message
-}
-
-// Helpers to handle IP parsing:
-export function ipToUint32(ip: string): number {
-  const parts = ip.split('.')
-  return (
-    ((parseInt(parts[0], 10) & 0xff) << 24) |
-    ((parseInt(parts[1], 10) & 0xff) << 16) |
-    ((parseInt(parts[2], 10) & 0xff) << 8) |
-    (parseInt(parts[3], 10) & 0xff)
-  ) >>> 0
-}
-
-export function uint32ToIp(n: number): string {
-  return `${(n >>> 24) & 0xff}.${(n >>> 16) & 0xff}.${(n >>> 8) & 0xff}.${n & 0xff}`
-}
-
-export function cidrToMask(prefix: number): number {
-  return prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0
-}
-
-export function ipInSubnet(ipStr: string, subnetStr: string): boolean {
-  if (!subnetStr.includes('/')) return false
-  const [subIp, prefixStr] = subnetStr.split('/')
-  const prefix = parseInt(prefixStr, 10)
-  const ipNum = ipToUint32(ipStr)
-  const subNum = ipToUint32(subIp)
-  const mask = cidrToMask(prefix)
-  return (ipNum & mask) >>> 0 === (subNum & mask) >>> 0
 }
 
 export function compileRoutingTables(nodes: Department[]): Map<string, RoutingTableEntry[]> {
@@ -228,8 +201,15 @@ export function compileRoutingTables(nodes: Department[]): Map<string, RoutingTa
 export function simulateRoute(
   nodes: Department[],
   sourceId: string,
-  targetIp: string
+  targetIp: string,
+  packet?: AclPacket
 ): PathTraceResult {
+  // Build a default packet descriptor if none provided
+  const activePacket: AclPacket = packet ?? {
+    protocol: 'ip',
+    srcIp: nodes.find((n) => n.id === sourceId)?.subnet?.split('/')[0] ?? '0.0.0.0',
+    dstIp: targetIp,
+  }
   const tables = compileRoutingTables(nodes)
   const path: string[] = [sourceId]
   const hops: HopDetail[] = []
@@ -290,6 +270,26 @@ export function simulateRoute(
         hops,
         message: `Route trace successful! Packet reached ${node.name} at IP ${targetIp}.`
       }
+    }
+
+    // ACL evaluation for firewall nodes
+    if (node.type === 'firewall' && node.aclRules && node.aclRules.length > 0) {
+      const verdict = evaluateAcl(node.aclRules, activePacket)
+      if (verdict === 'deny') {
+        const matchedRule = findMatchingRule(node.aclRules, activePacket)
+        const ruleInfo = matchedRule
+          ? ` (seq ${matchedRule.sequence}: ${matchedRule.action} ${matchedRule.protocol} ${matchedRule.srcCidr} → ${matchedRule.dstCidr}${matchedRule.dstPort !== undefined ? ` port ${matchedRule.dstPort}` : ''})`
+          : ' (implicit deny)'
+        hop.routeType = 'DIRECT'
+        hops.push(hop)
+        return {
+          success: false,
+          path,
+          hops,
+          message: `Packet blocked by ACL on Firewall "${node.name}"${ruleInfo}.`
+        }
+      }
+      // permit — continue forwarding
     }
 
     // Default Gateway peer routing for client PC departments

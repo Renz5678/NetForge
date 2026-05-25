@@ -25,6 +25,20 @@ export type OspfConfig = {
   areaId: number;         // e.g. 0 (Backbone Area)
 }
 
+export type AclAction = 'permit' | 'deny'
+export type AclProtocol = 'ip' | 'tcp' | 'udp' | 'icmp'
+
+export type AclRule = {
+  id: string
+  sequence: number       // ordering (10, 20, 30 …); lower = higher priority
+  action: AclAction
+  protocol: AclProtocol
+  srcCidr: string        // e.g. "any" or "10.0.1.0/24"
+  dstCidr: string
+  dstPort?: number       // optional destination port (TCP/UDP only)
+  remark?: string        // human-readable label
+}
+
 export type Department = {
   id: string
   name: string
@@ -39,6 +53,7 @@ export type Department = {
   ports?: InterfacePort[];
   staticRoutes?: StaticRoute[];
   ospf?: OspfConfig;
+  aclRules?: AclRule[];
 }
 
 export type NetworkConfig = {

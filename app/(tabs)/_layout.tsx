@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
-import { House, Folders, ShieldCheck, UserCircle } from 'phosphor-react-native'
+import { House, Folders, ShieldCheck, UserCircle, Export } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
 
 export default function TabsLayout() {
@@ -47,6 +47,18 @@ export default function TabsLayout() {
             <View>
               {focused && <View style={styles.indicator} />}
               <ShieldCheck size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="export"
+        options={{
+          title: 'Export',
+          tabBarIcon: ({ color, focused }) => (
+            <View>
+              {focused && <View style={styles.indicator} />}
+              <Export size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
             </View>
           ),
         }}

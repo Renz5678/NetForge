@@ -30,7 +30,7 @@ type ConfigStore = {
   deleteDepartment: (id: string) => Promise<void>
 
   // Allocation pipeline
-  runAllocation: () => void
+  runAllocation: () => NetworkConfig | null
 }
 
 function snakeToCamel(config: Record<string, unknown>): NetworkConfig {
@@ -280,8 +280,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       departments: [...activeConfig.departments, dept],
     }
     set({ activeConfig: updated })
-    get().runAllocation()
-    await get().updateConfig(get().activeConfig!)
+    const allocated = get().runAllocation()
+    await get().updateConfig(allocated ?? get().activeConfig!)
   },
 
   updateDepartment: async (dept) => {
@@ -293,8 +293,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       departments: activeConfig.departments.map((d) => (d.id === dept.id ? dept : d)),
     }
     set({ activeConfig: updated })
-    get().runAllocation()
-    await get().updateConfig(get().activeConfig!)
+    const allocated = get().runAllocation()
+    await get().updateConfig(allocated ?? get().activeConfig!)
   },
 
   deleteDepartment: async (id) => {
@@ -310,19 +310,20 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     const updated: NetworkConfig = { ...activeConfig, departments: cleaned }
     set({ activeConfig: updated })
-    get().runAllocation()
-    await get().updateConfig(get().activeConfig!)
+    const allocated = get().runAllocation()
+    await get().updateConfig(allocated ?? get().activeConfig!)
   },
 
   runAllocation: () => {
     const { activeConfig } = get()
-    if (!activeConfig) return
+    if (!activeConfig) return null
 
     const departments = activeConfig.departments
 
     if (departments.length === 0) {
-      set({ activeConfig: { ...activeConfig, isValid: true } })
-      return
+      const result: NetworkConfig = { ...activeConfig, isValid: true }
+      set({ activeConfig: result })
+      return result
     }
 
     // Step 1: Cycle detection
@@ -337,14 +338,13 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         cidrPrefix: undefined,
         usableHosts: undefined,
       }))
-      set({
-        activeConfig: {
-          ...activeConfig,
-          departments: cleared,
-          isValid: false,
-        },
-      })
-      return
+      const result: NetworkConfig = {
+        ...activeConfig,
+        departments: cleared,
+        isValid: false,
+      }
+      set({ activeConfig: result })
+      return result
     }
 
     // Step 2: Topological sort
@@ -362,15 +362,17 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     // Step 3: Subnet allocation
     try {
       const allocated = allocateSubnets(orderedDepts, activeConfig.baseIp, activeConfig.vlanStart)
-      set({
-        activeConfig: {
-          ...activeConfig,
-          departments: allocated,
-          isValid: true,
-        },
-      })
+      const result: NetworkConfig = {
+        ...activeConfig,
+        departments: allocated,
+        isValid: true,
+      }
+      set({ activeConfig: result })
+      return result
     } catch {
-      set({ activeConfig: { ...activeConfig, isValid: false } })
+      const result: NetworkConfig = { ...activeConfig, isValid: false }
+      set({ activeConfig: result })
+      return result
     }
   },
 }))

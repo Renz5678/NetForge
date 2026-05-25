@@ -77,15 +77,19 @@ export function detectCycles(departments: Department[]): CycleResult {
           current = p ?? undefined
         }
 
-        if (current !== undefined) {
+        if (current === cycleStart) {
+          // Successfully traced back to cycle start
           cycle.push(idToName.get(cycleStart) ?? cycleStart)
-        }
-
-        cycle.reverse()
-
-        // Complete the cycle by appending start again
-        if (cycle.length > 0) {
-          cycle.push(cycle[0])
+          cycle.reverse()
+          // Complete the cycle by appending start again
+          if (cycle.length > 0) {
+            cycle.push(cycle[0])
+          }
+        } else {
+          // Walk ended without reaching cycleStart — return minimal valid cycle
+          cycle.length = 0
+          cycle.push(idToName.get(cycleStart) ?? cycleStart)
+          cycle.push(idToName.get(cycleEnd) ?? cycleEnd)
         }
 
         return { hasCycle: true, cycle }

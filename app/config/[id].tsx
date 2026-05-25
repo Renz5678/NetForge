@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import {
   View,
   Text,
@@ -121,7 +122,7 @@ function PathResultSheet({
   )
 }
 
-import type { DeviceType, InterfacePort, StaticRoute, OspfConfig } from '@/types'
+import type { DeviceType, InterfacePort, StaticRoute, OspfConfig, AclRule } from '@/types'
 
 function initializeDefaultPorts(type: DeviceType, existingPorts?: InterfacePort[]): InterfacePort[] {
   if (existingPorts && existingPorts.length > 0) return existingPorts;
@@ -175,6 +176,7 @@ function DeptSheet({
   const [ospfEnabled, setOspfEnabled] = useState(false)
   const [ospfAreaId, setOspfAreaId] = useState(0)
   const [switchPorts, setSwitchPorts] = useState<InterfacePort[]>([])
+  const [aclRules, setAclRules] = useState<AclRule[]>([])
 
   useEffect(() => {
     if (visible) {
@@ -195,6 +197,7 @@ function DeptSheet({
       } else {
         setSwitchPorts([])
       }
+      setAclRules(dept?.aclRules ?? [])
     }
   }, [visible, dept])
 
@@ -206,7 +209,7 @@ function DeptSheet({
         return prev.filter((p) => p !== peerId)
       } else {
         const newPort: InterfacePort = {
-          id: 'port_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
+          id: uuidv4(),
           name: type === 'switch' ? 'FastEthernet0/1' : 'GigabitEthernet0/0',
           connectedToNodeId: peerId,
         }
@@ -234,6 +237,7 @@ function DeptSheet({
       ports: finalPorts.length > 0 ? finalPorts : initializeDefaultPorts(type),
       ospf: type === 'router' ? { enabled: ospfEnabled, areaId: ospfAreaId } : undefined,
       staticRoutes: type === 'router' ? staticRoutes : undefined,
+      aclRules: type === 'firewall' ? aclRules : undefined,
     })
     onClose()
   }
@@ -380,6 +384,162 @@ function DeptSheet({
           </View>
         )}
 
+        {/* Firewall ACL Rules */}
+        {type === 'firewall' && (
+          <View style={deptSheet.field}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={deptSheet.label}>ACL Rules (ordered, first-match)</Text>
+              <Pressable
+                onPress={() => {
+                  const nextSeq = aclRules.length > 0
+                    ? Math.max(...aclRules.map((r) => r.sequence)) + 10
+                    : 10
+                  setAclRules([...aclRules, {
+                    id: uuidv4(),
+                    sequence: nextSeq,
+                    action: 'permit',
+                    protocol: 'ip',
+                    srcCidr: 'any',
+                    dstCidr: 'any',
+                    remark: '',
+                  }])
+                }}
+              >
+                <Text style={{ color: Colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>+ Add Rule</Text>
+              </Pressable>
+            </View>
+
+            {aclRules.length === 0 && (
+              <Text style={{ fontStyle: 'italic', fontSize: 12, color: Colors.textMuted, textAlign: 'center', paddingVertical: 6 }}>
+                No ACL rules — all traffic implicitly denied.
+              </Text>
+            )}
+
+            {aclRules.map((rule, idx) => (
+              <View
+                key={rule.id}
+                style={{
+                  backgroundColor: rule.action === 'permit'
+                    ? 'rgba(34,197,94,0.08)'
+                    : 'rgba(239,68,68,0.08)',
+                  borderWidth: 1,
+                  borderColor: rule.action === 'permit' ? Colors.success : Colors.error,
+                  borderRadius: 10,
+                  padding: 10,
+                  marginBottom: 8,
+                }}
+              >
+                {/* Row 1: Seq + Action toggle + Protocol + Delete */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 11, color: Colors.textMuted, width: 28 }}>#{rule.sequence}</Text>
+
+                  {/* Action toggle */}
+                  <Pressable
+                    style={{
+                      backgroundColor: rule.action === 'permit' ? Colors.success : Colors.error,
+                      paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+                    }}
+                    onPress={() => {
+                      const updated = [...aclRules]
+                      updated[idx] = { ...rule, action: rule.action === 'permit' ? 'deny' : 'permit' }
+                      setAclRules(updated)
+                    }}
+                  >
+                    <Text style={{ color: Colors.white, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
+                      {rule.action.toUpperCase()}
+                    </Text>
+                  </Pressable>
+
+                  {/* Protocol picker */}
+                  {(['ip', 'tcp', 'udp', 'icmp'] as const).map((proto) => (
+                    <Pressable
+                      key={proto}
+                      style={{
+                        paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6,
+                        backgroundColor: rule.protocol === proto ? Colors.primary : Colors.surfaceAlt,
+                      }}
+                      onPress={() => {
+                        const updated = [...aclRules]
+                        updated[idx] = { ...rule, protocol: proto }
+                        setAclRules(updated)
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, fontFamily: 'Inter_600SemiBold', color: rule.protocol === proto ? Colors.white : Colors.textMuted }}>
+                        {proto.toUpperCase()}
+                      </Text>
+                    </Pressable>
+                  ))}
+
+                  <Pressable
+                    style={{ marginLeft: 'auto' }}
+                    onPress={() => setAclRules(aclRules.filter((_, i) => i !== idx))}
+                  >
+                    <Text style={{ color: Colors.error, fontSize: 18, fontWeight: 'bold' }}>×</Text>
+                  </Pressable>
+                </View>
+
+                {/* Row 2: Src + Dst CIDRs */}
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, color: Colors.textMuted, marginBottom: 2 }}>Source CIDR</Text>
+                    <TextInput
+                      style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 6, paddingHorizontal: 8, height: 30, fontSize: 11 }}
+                      placeholder="any or 10.0.1.0/24"
+                      value={rule.srcCidr}
+                      onChangeText={(text) => {
+                        const updated = [...aclRules]
+                        updated[idx] = { ...rule, srcCidr: text }
+                        setAclRules(updated)
+                      }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 10, color: Colors.textMuted, marginBottom: 2 }}>Dest CIDR</Text>
+                    <TextInput
+                      style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 6, paddingHorizontal: 8, height: 30, fontSize: 11 }}
+                      placeholder="any or 10.0.2.0/24"
+                      value={rule.dstCidr}
+                      onChangeText={(text) => {
+                        const updated = [...aclRules]
+                        updated[idx] = { ...rule, dstCidr: text }
+                        setAclRules(updated)
+                      }}
+                    />
+                  </View>
+                  {(rule.protocol === 'tcp' || rule.protocol === 'udp') && (
+                    <View style={{ width: 54 }}>
+                      <Text style={{ fontSize: 10, color: Colors.textMuted, marginBottom: 2 }}>Port</Text>
+                      <TextInput
+                        style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 6, paddingHorizontal: 8, height: 30, fontSize: 11 }}
+                        placeholder="80"
+                        keyboardType="numeric"
+                        value={rule.dstPort !== undefined ? String(rule.dstPort) : ''}
+                        onChangeText={(text) => {
+                          const updated = [...aclRules]
+                          updated[idx] = { ...rule, dstPort: text ? parseInt(text, 10) : undefined }
+                          setAclRules(updated)
+                        }}
+                      />
+                    </View>
+                  )}
+                </View>
+
+                {/* Row 3: Optional remark */}
+                <TextInput
+                  style={{ marginTop: 6, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 6, paddingHorizontal: 8, height: 28, fontSize: 11, color: Colors.textMuted }}
+                  placeholder="Remark (optional)"
+                  value={rule.remark ?? ''}
+                  onChangeText={(text) => {
+                    const updated = [...aclRules]
+                    updated[idx] = { ...rule, remark: text }
+                    setAclRules(updated)
+                  }}
+                />
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Peer Connections */}
         <View style={deptSheet.field}>
           <Text style={deptSheet.label}>Can communicate with (Edge Peers)</Text>
@@ -423,7 +583,7 @@ function DeptSheet({
                           if (existing) {
                             return prev.map((p) => p.connectedToNodeId === peerId ? { ...p, name: pName } : p)
                           } else {
-                            const newPortId = 'port_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5)
+                            const newPortId = uuidv4()
                             return [...prev, { id: newPortId, name: pName, connectedToNodeId: peerId }]
                           }
                         })

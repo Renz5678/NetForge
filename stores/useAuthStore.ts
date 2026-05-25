@@ -9,7 +9,7 @@ type AuthStore = {
   signUp: (email: string, password: string, fullName: string) => Promise<string | null>
   signIn: (email: string, password: string) => Promise<string | null>
   signOut: () => Promise<void>
-  restoreSession: () => Promise<void>
+  restoreSession: () => Promise<() => void>
   signInAsGuest: () => Promise<void>
 }
 
@@ -41,43 +41,48 @@ export const useAuthStore = create<AuthStore>((set) => ({
       })
       if (error) {
         console.warn('Supabase signIn failed, checking offline fallback:', error.message)
-        // If it's a network, table, key, or validation error that prevents logging in, allow sandbox fallback
-        if (
-          email.includes('netforge.local') ||
-          email === 'guest@netforge.com' ||
-          error.message.includes('Fetch') ||
-          error.message.includes('Invalid API key') ||
-          error.message.includes('network')
-        ) {
-          const mockUser = {
-            id: 'offline_guest_id',
-            email: email,
-            user_metadata: { full_name: 'Offline Administrator' },
-          } as any
-          const mockSession = {
-            access_token: 'offline_token',
-            user: mockUser,
-          } as any
-          set({ user: mockUser, session: mockSession, loading: false })
-          return null
+        if (__DEV__) {
+          // In dev mode only: allow sandbox fallback for local/guest/network errors
+          if (
+            email.includes('netforge.local') ||
+            email === 'guest@netforge.com' ||
+            error.message.includes('Fetch') ||
+            error.message.includes('Invalid API key') ||
+            error.message.includes('network')
+          ) {
+            const mockUser = {
+              id: 'offline_guest_id',
+              email: email,
+              user_metadata: { full_name: 'Offline Administrator' },
+            } as any
+            const mockSession = {
+              access_token: 'offline_token',
+              user: mockUser,
+            } as any
+            set({ user: mockUser, session: mockSession, loading: false })
+            return null
+          }
         }
         return error.message
       }
       set({ user: data.user, session: data.session })
       return null
     } catch (err) {
-      console.warn('signIn exception, falling back to offline:', err)
-      const mockUser = {
-        id: 'offline_guest_id',
-        email: email,
-        user_metadata: { full_name: 'Offline Administrator' },
-      } as any
-      const mockSession = {
-        access_token: 'offline_token',
-        user: mockUser,
-      } as any
-      set({ user: mockUser, session: mockSession, loading: false })
-      return null
+      if (__DEV__) {
+        console.warn('signIn exception, falling back to offline:', err)
+        const mockUser = {
+          id: 'offline_guest_id',
+          email: email,
+          user_metadata: { full_name: 'Offline Administrator' },
+        } as any
+        const mockSession = {
+          access_token: 'offline_token',
+          user: mockUser,
+        } as any
+        set({ user: mockUser, session: mockSession, loading: false })
+        return null
+      }
+      return err instanceof Error ? err.message : 'An unexpected error occurred'
     }
   },
 
@@ -100,12 +105,14 @@ export const useAuthStore = create<AuthStore>((set) => ({
         loading: false,
       })
 
-      supabase.auth.onAuthStateChange((_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         set({ user: session?.user ?? null, session })
       })
+      return () => subscription.unsubscribe()
     } catch (err) {
       console.error('Session restore error:', err)
       set({ loading: false })
+      return () => {}
     }
   },
 
