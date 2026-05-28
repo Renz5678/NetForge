@@ -1,5 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { v4 as uuidv4 } from 'uuid'
+
+// Custom lightweight uuidv4 implementation for React Native / Hermes compatibility
+function uuidv4(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
 import {
   View,
   Text,
@@ -19,18 +28,29 @@ import {
   MagnifyingGlass,
   Funnel,
   CaretRight,
+  Globe,
+  ListNumbers,
+  Warning,
 } from 'phosphor-react-native'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useValidation } from '@/hooks/useValidation'
+import { useVisualizationStore } from '@/stores/useVisualizationStore'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { PeerChip } from '@/components/ui/PeerChip'
 import { StepperInput } from '@/components/ui/StepperInput'
 import { NetworkGraph } from '@/components/graph/NetworkGraph'
+import { AlgorithmSelector } from '@/components/viz/AlgorithmSelector'
+import { AlgorithmVisualizerPanel } from '@/components/viz/AlgorithmVisualizerPanel'
 import { Colors } from '@/constants/colors'
-import type { Department, PathResult } from '@/types'
+import { buildDijkstraSteps } from '@/lib/algorithms/dijkstraVisualizer'
+import { buildAStarSteps } from '@/lib/algorithms/aStarVisualizer'
+import { buildCycleDetectionSteps } from '@/lib/algorithms/cycleDetectionVisualizer'
+import { buildTopologicalSortSteps } from '@/lib/algorithms/topologicalSortVisualizer'
+import { buildPrimsSteps } from '@/lib/algorithms/primsVisualizer'
+import type { Department, PathResult, AlgorithmType } from '@/types'
 
 const generateId = () => 'dept_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9)
 
@@ -611,6 +631,7 @@ export default function ConfigDetailScreen() {
   const user = useAuthStore((s) => s.user)
   const { activeConfig, setActiveConfig, updateConfig, addDepartment, updateDepartment, deleteDepartment } =
     useConfigStore()
+  const departments = activeConfig?.departments ?? []
 
   const [activeTab, setActiveTab] = useState<'departments' | 'subnets' | 'graph'>('departments')
   const [editedName, setEditedName] = useState('')
@@ -619,11 +640,18 @@ export default function ConfigDetailScreen() {
   const [showAddSheet, setShowAddSheet] = useState(false)
   const [editingDept, setEditingDept] = useState<Department | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteConfirmDeptId, setDeleteConfirmDeptId] = useState<string | null>(null)
 
   // Path result sheet state
   const [showPathSheet, setShowPathSheet] = useState(false)
   const [pathResult, setPathResult] = useState<PathResult | null>(null)
   const [showConflictSheet, setShowConflictSheet] = useState(false)
+
+  // Algorithm visualization
+  const [showVizSelector, setShowVizSelector] = useState(false)
+  const { startVisualization } = useVisualizationStore()
+  // Node positions for A* (empty map \u2014 A* degenerates gracefully without positions)
+  const nodePositions = new Map<string, { x: number; y: number }>()
 
   useEffect(() => {
     if (id) setActiveConfig(id)
@@ -671,7 +699,64 @@ export default function ConfigDetailScreen() {
     []
   )
 
-  const departments = activeConfig?.departments ?? []
+  const handleVisualize = useCallback(
+    (config: {
+      algorithm: AlgorithmType
+      sourceId?: string
+      targetId?: string
+      rootId?: string
+    }) => {
+      const depts = departments
+      switch (config.algorithm) {
+        case 'dijkstra': {
+          const res = buildDijkstraSteps(
+            depts,
+            config.sourceId ?? depts[0]?.id ?? '',
+            config.targetId ?? depts[depts.length - 1]?.id ?? ''
+          )
+          startVisualization('dijkstra', res.steps, {
+            sourceId: config.sourceId,
+            targetId: config.targetId,
+            dijkstraVisited: res.visitedNodeIds,
+          })
+          break
+        }
+        case 'aStar': {
+          const res = buildAStarSteps(
+            depts,
+            config.sourceId ?? depts[0]?.id ?? '',
+            config.targetId ?? depts[depts.length - 1]?.id ?? '',
+            nodePositions
+          )
+          startVisualization('aStar', res.steps, {
+            sourceId: config.sourceId,
+            targetId: config.targetId,
+            astarVisited: res.visitedNodeIds,
+          })
+          break
+        }
+        case 'cycleDetection': {
+          const res = buildCycleDetectionSteps(depts)
+          startVisualization('cycleDetection', res.steps)
+          break
+        }
+        case 'topologicalSort': {
+          const res = buildTopologicalSortSteps(depts)
+          startVisualization('topologicalSort', res.steps)
+          break
+        }
+        case 'prims': {
+          const rootId = config.rootId ?? depts[0]?.id ?? ''
+          const res = buildPrimsSteps(depts, rootId)
+          startVisualization('prims', res.steps, { rootId })
+          break
+        }
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [departments, startVisualization]
+  )
+
   const validation = useValidation(departments)
   const allPass =
     validation.cycleCheck.passed &&
@@ -787,7 +872,7 @@ export default function ConfigDetailScreen() {
                       <PencilSimple size={20} color={Colors.textMuted} />
                     </Pressable>
                     <Pressable
-                      onPress={() => handleDeleteDept(item.id)}
+                      onPress={() => setDeleteConfirmDeptId(item.id)}
                       disabled={deletingId === item.id}
                     >
                       <Trash size={20} color={Colors.textMuted} />
@@ -826,11 +911,21 @@ export default function ConfigDetailScreen() {
             )}
             ListEmptyComponent={
               <View style={styles.emptyState}>
-                <Text style={styles.emptyIcon}>🌐</Text>
+                <Globe size={48} color={Colors.primary} weight="duotone" style={{ marginBottom: 12 }} />
                 <Text style={styles.emptyTitle}>No departments yet</Text>
                 <Text style={styles.emptySubtitle}>
-                  Add your first one to start building your network topology.
+                  Add your first department to start building your network topology.
                 </Text>
+                <View style={{ marginTop: 12, width: 180 }}>
+                  <Button
+                    label="Add Department"
+                    variant="primary"
+                    onPress={() => {
+                      setEditingDept(null)
+                      setShowAddSheet(true)
+                    }}
+                  />
+                </View>
               </View>
             }
           />
@@ -900,11 +995,21 @@ export default function ConfigDetailScreen() {
                 })}
                 {departments.length === 0 && (
                   <View style={styles.emptyState}>
-                    <Text style={styles.emptyIcon}>📊</Text>
+                    <ListNumbers size={48} color={Colors.primary} weight="duotone" style={{ marginBottom: 12 }} />
                     <Text style={styles.emptyTitle}>No subnets allocated</Text>
                     <Text style={styles.emptySubtitle}>
                       Add departments to automatically compute subnets.
                     </Text>
+                    <View style={{ marginTop: 12, width: 180 }}>
+                      <Button
+                        label="Add Department"
+                        variant="primary"
+                        onPress={() => {
+                          setEditingDept(null)
+                          setShowAddSheet(true)
+                        }}
+                      />
+                    </View>
                   </View>
                 )}
               </View>
@@ -916,7 +1021,11 @@ export default function ConfigDetailScreen() {
       {/* Graph view */}
       {activeTab === 'graph' && (
         <View style={{ flex: 1, position: 'relative' }}>
-          <NetworkGraph departments={departments} onPathFound={handlePathFound} />
+          <NetworkGraph
+            departments={departments}
+            onPathFound={handlePathFound}
+            onVisualize={() => setShowVizSelector(true)}
+          />
           
           {/* Floating Validation Warning Bar */}
           {!allPass && (
@@ -926,7 +1035,7 @@ export default function ConfigDetailScreen() {
             >
               <View style={styles.warningBarLeft}>
                 <View style={styles.warningIconCircle}>
-                  <Text style={styles.warningIconText}>⚠️</Text>
+                  <Warning size={16} color={Colors.error} weight="fill" />
                 </View>
                 <View style={styles.warningTextContainer}>
                   <Text style={styles.warningTitle}>Invalid Configuration</Text>
@@ -1010,7 +1119,56 @@ export default function ConfigDetailScreen() {
           />
         </View>
       </BottomSheet>
+
+      {/* Algorithm Selector Sheet */}
+      <AlgorithmSelector
+        visible={showVizSelector}
+        onClose={() => setShowVizSelector(false)}
+        onStart={(config) => {
+          setShowVizSelector(false)
+          handleVisualize(config)
+        }}
+        departments={departments}
+      />
+
+      {/* Algorithm Visualizer Panel */}
+      <AlgorithmVisualizerPanel departments={departments} />
+
+      {/* Delete Department Confirmation Bottom Sheet */}
+      <BottomSheet
+        visible={deleteConfirmDeptId !== null}
+        onClose={() => setDeleteConfirmDeptId(null)}
+        snapHeight={250}
+      >
+        <Text style={styles.sheetTitle}>Delete Department?</Text>
+        <Text style={[styles.sheetSubtitle, { marginBottom: 20 }]}>
+          This action is permanent. This department and all its connections to peer nodes will be removed from the network topology.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Button
+              label="Cancel"
+              variant="secondary"
+              onPress={() => setDeleteConfirmDeptId(null)}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button
+              label="Delete"
+              variant="destructive"
+              onPress={async () => {
+                if (deleteConfirmDeptId) {
+                  const targetId = deleteConfirmDeptId
+                  setDeleteConfirmDeptId(null)
+                  await handleDeleteDept(targetId)
+                }
+              }}
+            />
+          </View>
+        </View>
+      </BottomSheet>
     </SafeAreaView>
+
   )
 }
 

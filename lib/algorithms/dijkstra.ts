@@ -67,12 +67,24 @@ export function findShortestPath(
   if (departments.length === 0) return null
   if (sourceId === targetId) return { path: [sourceId], hops: 0 }
 
-  // Build directed adjacency list
+  // Build undirected adjacency list (respects physical link bidirectionality)
   const adj = new Map<string, string[]>()
   const idSet = new Set(departments.map((d) => d.id))
 
   for (const dept of departments) {
-    adj.set(dept.id, dept.peers.filter((p) => idSet.has(p)))
+    adj.set(dept.id, [])
+  }
+
+  for (const dept of departments) {
+    for (const peerId of dept.peers) {
+      if (!idSet.has(peerId)) continue
+      if (!adj.get(dept.id)!.includes(peerId)) {
+        adj.get(dept.id)!.push(peerId)
+      }
+      if (!adj.get(peerId)!.includes(dept.id)) {
+        adj.get(peerId)!.push(dept.id)
+      }
+    }
   }
 
   // Dijkstra initialization

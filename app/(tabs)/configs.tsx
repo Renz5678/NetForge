@@ -8,6 +8,7 @@ import {
   TextInput,
   SafeAreaView,
   StatusBar,
+  Animated,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import {
@@ -37,10 +38,62 @@ function getStatusBadge(config: NetworkConfig): { label: string; variant: BadgeV
   return { label: 'Invalid', variant: 'error' }
 }
 
+function ConfigSkeleton() {
+  const pulseAnim = React.useRef(new Animated.Value(0.4)).current
+
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 0.85,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0.4,
+          duration: 700,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start()
+  }, [pulseAnim])
+
+  const cardStyle = { opacity: pulseAnim }
+
+  return (
+    <View style={styles.listContent}>
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Animated.View key={i} style={[styles.configCard, cardStyle]}>
+          <View style={styles.cardContent}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderLeft}>
+                <View style={[styles.iconContainer, { backgroundColor: Colors.border, width: 40, height: 40, borderRadius: 20 }]} />
+                <View style={[styles.textContainer, { gap: 6 }]}>
+                  <View style={{ width: 140, height: 16, backgroundColor: Colors.border, borderRadius: 4 }} />
+                  <View style={{ width: 90, height: 12, backgroundColor: Colors.border, borderRadius: 4 }} />
+                </View>
+              </View>
+              <View style={{ width: 60, height: 22, backgroundColor: Colors.border, borderRadius: 12 }} />
+            </View>
+          </View>
+          <View style={styles.cardDivider} />
+          <View style={styles.cardActions}>
+            <View style={{ width: 120, height: 12, backgroundColor: Colors.border, borderRadius: 4 }} />
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ width: 70, height: 24, backgroundColor: Colors.border, borderRadius: 6 }} />
+              <View style={{ width: 60, height: 24, backgroundColor: Colors.border, borderRadius: 6 }} />
+            </View>
+          </View>
+        </Animated.View>
+      ))}
+    </View>
+  )
+}
+
 export default function ConfigsScreen() {
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
-  const { configs, loadConfigs, createConfig, deleteConfig, duplicateConfig } = useConfigStore()
+  const { configs, loadConfigs, createConfig, deleteConfig, duplicateConfig, loading } = useConfigStore()
 
   const [search, setSearch] = useState('')
   const [showNewSheet, setShowNewSheet] = useState(false)
@@ -51,6 +104,7 @@ export default function ConfigsScreen() {
   const [vlanStart, setVlanStart] = useState('10')
   const [ipError, setIpError] = useState('')
   const [vlanError, setVlanError] = useState('')
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
   useEffect(() => {
     if (user?.id) loadConfigs(user.id)
@@ -156,7 +210,7 @@ export default function ConfigsScreen() {
               <Copy size={14} color={Colors.medium} />
               <Text style={styles.actionBtnText}>Duplicate</Text>
             </Pressable>
-            <Pressable style={[styles.actionBtn, styles.deleteBtn]} onPress={() => handleDelete(item.id)}>
+            <Pressable style={[styles.actionBtn, styles.deleteBtn]} onPress={() => setDeleteConfirmId(item.id)}>
               <Trash size={14} color={Colors.error} />
               <Text style={[styles.actionBtnText, styles.deleteBtnText]}>Delete</Text>
             </Pressable>
@@ -205,24 +259,43 @@ export default function ConfigsScreen() {
       </View>
 
       {/* Config list */}
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        renderItem={renderConfig}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconContainer}>
-              <FolderSimpleDashed size={48} color={Colors.primary} />
+      {loading ? (
+        <ConfigSkeleton />
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          renderItem={renderConfig}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconContainer}>
+                <FolderSimpleDashed size={48} color={Colors.primary} />
+              </View>
+              <Text style={styles.emptyTitle}>No configurations yet</Text>
+              <Text style={styles.emptySubtitle}>
+                Create a new topology configuration to design and visualize routing algorithms in real time.
+              </Text>
+              <View style={{ marginTop: 8, width: 220 }}>
+                <Button
+                  label="Create Configuration"
+                  variant="primary"
+                  onPress={() => {
+                    setNewName('')
+                    setBaseIp('10.0.0.0')
+                    setVlanStart('10')
+                    setNameError('')
+                    setIpError('')
+                    setVlanError('')
+                    setShowNewSheet(true)
+                  }}
+                />
+              </View>
             </View>
-            <Text style={styles.emptyTitle}>No configurations yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Tap the plus button above or the floating button below to design your first network configuration.
-            </Text>
-          </View>
-        }
-        showsVerticalScrollIndicator={false}
-      />
+          }
+          showsVerticalScrollIndicator={false}
+        />
+      )}
 
       {/* Floating Action Button (FAB) */}
       <Pressable
@@ -284,6 +357,39 @@ export default function ConfigsScreen() {
               variant="ghost"
               fullWidth
               onPress={() => setShowNewSheet(false)}
+            />
+          </View>
+        </View>
+      </BottomSheet>
+
+      {/* Delete Confirmation Bottom Sheet */}
+      <BottomSheet
+        visible={deleteConfirmId !== null}
+        onClose={() => setDeleteConfirmId(null)}
+        snapHeight={250}
+      >
+        <Text style={styles.sheetTitle}>Delete Configuration?</Text>
+        <Text style={[styles.sheetSubtitle, { marginBottom: 20 }]}>
+          This action is permanent. All departments, routing tables, and configurations in this network will be deleted.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Button
+              label="Cancel"
+              variant="secondary"
+              onPress={() => setDeleteConfirmId(null)}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button
+              label="Delete"
+              variant="destructive"
+              onPress={() => {
+                if (deleteConfirmId) {
+                  handleDelete(deleteConfirmId)
+                  setDeleteConfirmId(null)
+                }
+              }}
             />
           </View>
         </View>
@@ -483,7 +589,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     fontSize: 18,
     color: Colors.textPrimary,
-    marginBottom: 20,
+    marginBottom: 12,
+  },
+  sheetSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: Colors.textMuted,
+    lineHeight: 20,
   },
   sheetContent: { gap: 16 },
   sheetButtons: { gap: 8 },

@@ -65,12 +65,12 @@ export function useGraphLayout(
         d3
           .forceLink<D3Node, D3Link>(d3Links)
           .id((n) => n.id)
-          .distance(120)
+          .distance(180)
           .strength(0.5)
       )
-      .force('charge', d3.forceManyBody<D3Node>().strength(-300))
+      .force('charge', d3.forceManyBody<D3Node>().strength(-400))
       .force('center', d3.forceCenter<D3Node>(width / 2, height / 2))
-      .force('collision', d3.forceCollide<D3Node>(60))
+      .force('collision', d3.forceCollide<D3Node>(95))
       .stop()
 
     // Run to completion

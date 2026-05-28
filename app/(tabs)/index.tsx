@@ -9,7 +9,7 @@ import {
   SafeAreaView,
 } from 'react-native'
 import { useRouter } from 'expo-router'
-import { Plus, ArrowRight } from 'phosphor-react-native'
+import { Plus, ArrowRight, Folder } from 'phosphor-react-native'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { MetricTile } from '@/components/ui/MetricTile'
@@ -152,7 +152,7 @@ export default function HomeScreen() {
             activityItems.map((config, index) => (
               <ActivityItem
                 key={config.id}
-                icon="📁"
+                icon={<Folder size={18} color={Colors.primary} weight="duotone" />}
                 description={`Updated config "${config.name}"`}
                 timestamp={config.updatedAt}
                 showDivider={index > 0}

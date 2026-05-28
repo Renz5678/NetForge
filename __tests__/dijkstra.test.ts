@@ -51,13 +51,22 @@ describe('dijkstra', () => {
     expect(result!.path).toEqual(['a', 'b', 'c'])
   })
 
-  it('returns null when no path exists (directed)', () => {
+  it('finds path in both directions (undirected)', () => {
     const depts = [
       makeDept('a', 'Alpha', ['b']),  // a → b
       makeDept('b', 'Beta', []),       // b has no outgoing
     ]
-    // Reverse direction has no path
     const result = findShortestPath(depts, 'b', 'a')
+    expect(result).not.toBeNull()
+    expect(result!.path).toEqual(['b', 'a'])
+  })
+
+  it('returns null when no path exists (disconnected graph)', () => {
+    const depts = [
+      makeDept('a', 'Alpha', []),
+      makeDept('b', 'Beta', []),
+    ]
+    const result = findShortestPath(depts, 'a', 'b')
     expect(result).toBeNull()
   })
 

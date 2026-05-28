@@ -1,9 +1,24 @@
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(),
+    setItem: jest.fn(),
+  },
+}))
+jest.mock('@/lib/supabase', () => ({
+  supabase: {},
+}))
+
 import { ipToUint32, uint32ToIp, ipInSubnet } from '../lib/ipUtils'
 import {
   compileRoutingTables,
   simulateRoute,
 } from '../lib/algorithms/routingSimulator'
 import type { Department } from '../types'
+import { getDemoEnterpriseConfig } from '../stores/useConfigStore'
+import { detectCycles } from '../lib/algorithms/cycleDetection'
+import { checkSubnetOverlap } from '../lib/algorithms/subnetAllocator'
+import { validateConnectivity } from '../lib/algorithms/bfsValidator'
 
 describe('routingSimulator tests', () => {
   test('IP conversion helpers', () => {
@@ -154,5 +169,46 @@ describe('routingSimulator tests', () => {
     const badTrace = simulateRoute(nodes, 'pc_1', '172.16.0.5')
     expect(badTrace.success).toBe(false)
     expect(badTrace.message).toContain('No route found')
+  })
+
+  test('Demo Enterprise Config V4 passes all validation checks and routing simulations', () => {
+    const config = getDemoEnterpriseConfig('test-user')
+    const depts = config.departments
+
+    // 1. Cycle Check
+    const cycleRes = detectCycles(depts)
+    expect(cycleRes.hasCycle).toBe(false)
+
+    // 2. Subnet Overlap Check
+    const overlapRes = checkSubnetOverlap(depts)
+    expect(overlapRes.overlapping).toBe(false)
+    expect(overlapRes.conflicts).toEqual([])
+
+    // 3. Connectivity Check (BFS)
+    const connRes = validateConnectivity(depts)
+    expect(connRes.allReachable).toBe(true)
+    expect(connRes.isolated).toEqual([])
+
+    // 4. Routing Trace between all client departments
+    const clientDepts = depts.filter((d) => d.type === 'department' || !d.type)
+    expect(clientDepts.length).toBeGreaterThan(1)
+
+    for (const src of clientDepts) {
+      for (const dest of clientDepts) {
+        if (src.id === dest.id) continue
+        expect(dest.subnet).toBeDefined()
+        
+        const [baseIp] = dest.subnet!.split('/')
+        const ipParts = baseIp.split('.').map((p) => parseInt(p, 10))
+        ipParts[3] += 1 // Use host IP (e.g., 10.0.0.65)
+        const destHostIp = ipParts.join('.')
+
+        const trace = simulateRoute(depts, src.id, destHostIp)
+        if (!trace.success) {
+          console.error(`FAILED TRACE from ${src.name} to ${dest.name} (${destHostIp}):`, trace.message)
+        }
+        expect(trace.success).toBe(true)
+      }
+    }
   })
 })

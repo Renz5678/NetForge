@@ -37,6 +37,24 @@ export const Colors = {
   nodeValid: '#2563EB',
   nodeCycle: '#EF4444',
   nodeIsolated: '#F59E0B',
+
+  // ── Algorithm Visualization Color Language ─────────────────────────────────
+  // These are canvas-only overlay colors, applied via Skia during viz mode.
+  // Blue     → unvisited / default
+  // Yellow   → in priority queue / BFS queue / MST frontier
+  // Orange   → in current DFS stack (Cycle Detection)
+  // Green    → settled / finalized / in MST
+  // Red      → cycle detected / back-edge
+  // Cyan     → final path highlight
+  // Green dashed → MST accepted edge
+  vizUnvisited:  '#93C5FD',  // light blue (readable on dark canvas background)
+  vizInQueue:    '#FCD34D',  // amber yellow
+  vizInStack:    '#FB923C',  // orange
+  vizSettled:    '#34D399',  // emerald green
+  vizCycle:      '#F87171',  // soft red
+  vizPath:       '#22D3EE',  // cyan
+  vizMstEdge:    '#4ADE80',  // bright green for MST overlay edges
+  vizCandidate:  '#FCD34D',  // yellow for candidate edges
 } as const
 
 export type ColorKey = keyof typeof Colors

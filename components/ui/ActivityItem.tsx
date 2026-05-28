@@ -4,7 +4,7 @@ import { Colors } from '@/constants/colors'
 import { formatActivityTime } from '@/lib/formatters'
 
 type ActivityItemProps = {
-  icon: string
+  icon: React.ReactNode
   description: string
   timestamp: string
   showDivider?: boolean
@@ -16,7 +16,7 @@ export function ActivityItem({ icon, description, timestamp, showDivider = true 
       {showDivider && <View style={styles.divider} />}
       <View style={styles.row}>
         <View style={styles.iconContainer}>
-          <Text style={styles.icon}>{icon}</Text>
+          {typeof icon === 'string' ? <Text style={styles.icon}>{icon}</Text> : icon}
         </View>
         <View style={styles.content}>
           <Text style={styles.description}>{description}</Text>

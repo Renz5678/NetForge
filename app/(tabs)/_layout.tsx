@@ -2,8 +2,11 @@ import { Tabs } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
 import { House, Folders, ShieldCheck, UserCircle, Export } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
+import { useConfigStore } from '@/stores/useConfigStore'
 
 export default function TabsLayout() {
+  const configsCount = useConfigStore((s) => s.configs.length)
+
   return (
     <Tabs
       screenOptions={{
@@ -31,6 +34,13 @@ export default function TabsLayout() {
         name="configs"
         options={{
           title: 'Configs',
+          tabBarBadge: configsCount > 0 ? configsCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: Colors.primary,
+            color: Colors.white,
+            fontSize: 10,
+            lineHeight: 14,
+          },
           tabBarIcon: ({ color, focused }) => (
             <View>
               {focused && <View style={styles.indicator} />}

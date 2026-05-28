@@ -2,6 +2,8 @@
 // Full canvas graph renderer using @shopify/react-native-skia.
 // Pan + pinch zoom via GestureDetector.
 // Node tap: single = tooltip, two nodes = Dijkstra path.
+// Visualization mode: subscribes to useVisualizationStore and applies
+// viz color overlays to nodes and edges via the vizState/vizEdgeState props.
 
 import React, { useState, useCallback } from 'react'
 import {
@@ -25,13 +27,24 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  useDerivedValue,
 } from 'react-native-reanimated'
 import { Colors } from '@/constants/colors'
 import { useGraphLayout } from '@/hooks/useGraphLayout'
 import { findShortestPath } from '@/lib/algorithms/dijkstra'
+import { useVisualizationStore } from '@/stores/useVisualizationStore'
 import { GraphNodeComponent, NODE_WIDTH, NODE_HEIGHT } from './GraphNode'
 import { GraphEdgeComponent } from './GraphEdge'
 import { PathOverlay } from './PathOverlay'
+import { MSTOverlay } from './MSTOverlay'
+import { VizLegend } from './VizLegend'
+import {
+  MagnifyingGlassPlus,
+  MagnifyingGlassMinus,
+  CornersOut,
+  ArrowCounterClockwise,
+  Lightning,
+} from 'phosphor-react-native'
 import type { Department, PathResult } from '@/types'
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
@@ -39,18 +52,20 @@ const CANVAS_HEIGHT = SCREEN_HEIGHT - 200
 
 const systemFont = matchFont({
   fontFamily: Platform.OS === 'ios' ? 'Helvetica' : 'sans-serif',
-  fontSize: 12,
+  fontSize: 13,
   fontWeight: 'bold',
 })
 
 type NetworkGraphProps = {
   departments: Department[]
   onPathFound?: (result: PathResult | null, nodeIds: string[]) => void
+  onVisualize?: () => void // callback to open AlgorithmSelector
 }
 
-export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
+export function NetworkGraph({ departments, onPathFound, onVisualize }: NetworkGraphProps) {
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])
   const [pathResult, setPathResult] = useState<PathResult | null>(null)
+  const [showLegend, setShowLegend] = useState(true)
 
   // Pan & zoom
   const translateX = useSharedValue(0)
@@ -62,9 +77,36 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
 
   const { nodes, edges } = useGraphLayout(departments, SCREEN_WIDTH, CANVAS_HEIGHT)
 
+  // Visualization store — read current step state
+  const vizActive = useVisualizationStore((s) => s.isActive)
+  const vizAlgorithm = useVisualizationStore((s) => s.algorithm)
+  const vizSteps = useVisualizationStore((s) => s.steps)
+  const vizStepIndex = useVisualizationStore((s) => s.currentStepIndex)
+  const currentStep = vizSteps[vizStepIndex] ?? null
+  const isExpanded = useVisualizationStore((s) => s.isExpanded)
+
+  // Auto-center camera offset when visualization is active/expanded
+  React.useEffect(() => {
+    if (vizActive) {
+      if (isExpanded) {
+        // Shift graph up by 140px and zoom out slightly to prevent occlusion by the tall details sheet
+        translateY.value = withSpring(-140)
+        scale.value = withSpring(0.78)
+      } else {
+        // Shift graph up slightly (40px) to clear the small collapsed controls sheet
+        translateY.value = withSpring(-40)
+        scale.value = withSpring(0.9)
+      }
+    } else {
+      // Restore standard camera position
+      translateY.value = withSpring(0)
+      scale.value = withSpring(1)
+      translateX.value = withSpring(0)
+    }
+  }, [vizActive, isExpanded, translateY, translateX, scale])
+
   const hitTestNode = useCallback(
     (touchX: number, touchY: number): string | null => {
-      // Convert screen touch to canvas coordinates
       const canvasX = (touchX - translateX.value) / scale.value
       const canvasY = (touchY - translateY.value) / scale.value
 
@@ -87,10 +129,12 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
 
   const handleTap = useCallback(
     (touchX: number, touchY: number) => {
+      // In viz mode, taps are ignored (no node selection interference)
+      if (vizActive) return
+
       const tappedId = hitTestNode(touchX, touchY)
 
       if (!tappedId) {
-        // Tapped empty space — clear selection
         setSelectedNodes([])
         setPathResult(null)
         onPathFound?.(null, [])
@@ -103,7 +147,6 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
         } else if (prev.length === 1) {
           if (prev[0] === tappedId) return prev
           const newSelected = [prev[0], tappedId]
-          // Run Dijkstra
           const result = findShortestPath(departments, prev[0], tappedId)
           setPathResult(result)
           onPathFound?.(result, newSelected)
@@ -113,7 +156,7 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
         }
       })
     },
-    [hitTestNode, departments, onPathFound]
+    [hitTestNode, departments, onPathFound, vizActive]
   )
 
   const panGesture = Gesture.Pan()
@@ -159,22 +202,54 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
     ],
   }))
 
+  // Resolve viz state for each node from the current step snapshot
+  const getNodeVizState = (nodeId: string) => {
+    if (!vizActive || !currentStep) return undefined
+    return currentStep.nodeStates[nodeId]
+  }
+
+  // Resolve viz state for each edge from the current step snapshot
+  const getEdgeVizState = (srcId: string, tgtId: string) => {
+    if (!vizActive || !currentStep?.edgeStates) return undefined
+    const key = `${srcId}→${tgtId}`
+    const reverseKey = `${tgtId}→${srcId}`
+    return currentStep.edgeStates[key] ?? currentStep.edgeStates[reverseKey]
+  }
+
+  // MST overlay data for Prim's visualization
+  const mstEdges = vizActive && vizAlgorithm === 'prims' ? (currentStep?.mstEdges ?? []) : []
+  const candidateEdge = vizActive && vizAlgorithm === 'prims' ? currentStep?.currentEdge : null
+
+  // Derived transform value forces Skia canvas redraws when zoom/pan values update on UI thread
+  const skiaTransform = useDerivedValue(() => [
+    { translateX: translateX.value },
+    { translateY: translateY.value },
+    { scale: scale.value },
+  ])
+
   return (
     <View style={styles.container}>
-      {/* Reset selection pill */}
-      {selectedNodes.length > 0 && (
+      {/* Viz mode banner */}
+      {vizActive && (
+        <View style={styles.vizBanner}>
+          <View style={styles.vizDot} />
+          <Text style={styles.vizBannerText}>
+            Visualization Mode Active
+          </Text>
+        </View>
+      )}
+
+      {/* Reset selection pill (only when not in viz mode) */}
+      {!vizActive && selectedNodes.length > 0 && (
         <Pressable style={styles.resetPill} onPress={handleReset}>
-          <Text style={styles.resetText}>↺ Reset selection</Text>
+          <ArrowCounterClockwise size={14} color={Colors.primary} style={{ marginRight: 6 }} />
+          <Text style={styles.resetText}>Reset selection</Text>
         </Pressable>
       )}
 
       <GestureDetector gesture={composedGesture}>
         <Canvas style={styles.canvas}>
-          <Group transform={[
-            { translateX: translateX.value },
-            { translateY: translateY.value },
-            { scale: scale.value },
-          ]}>
+          <Group transform={skiaTransform}>
             {/* Render edges first (behind nodes) */}
             {edges.map((edge, i) => (
               <GraphEdgeComponent
@@ -183,11 +258,21 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
                 nodes={nodes}
                 departments={departments}
                 font={systemFont}
+                vizEdgeState={getEdgeVizState(edge.source, edge.target)}
               />
             ))}
 
-            {/* Path overlay */}
-            {pathResult && (
+            {/* MST overlay (Prim's only) */}
+            {vizActive && vizAlgorithm === 'prims' && (
+              <MSTOverlay
+                mstEdges={mstEdges}
+                nodes={nodes}
+                candidateEdge={candidateEdge}
+              />
+            )}
+
+            {/* Path overlay (non-viz mode Dijkstra) */}
+            {!vizActive && pathResult && (
               <PathOverlay path={pathResult.path} nodes={nodes} edges={edges} />
             )}
 
@@ -196,31 +281,33 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
               <GraphNodeComponent
                 key={node.id}
                 node={node}
-                selected={selectedNodes.includes(node.id)}
+                selected={!vizActive && selectedNodes.includes(node.id)}
                 font={systemFont}
+                vizState={getNodeVizState(node.id)}
               />
             ))}
           </Group>
         </Canvas>
       </GestureDetector>
 
+      {/* Viz legend overlay */}
+      {vizActive && vizAlgorithm && showLegend && (
+        <VizLegend algorithm={vizAlgorithm} onDismiss={() => setShowLegend(false)} />
+      )}
+
       {/* Zoom controls */}
       <View style={styles.zoomControls}>
         <Pressable
           style={styles.zoomButton}
-          onPress={() => {
-            scale.value = withSpring(Math.min(scale.value * 1.3, 5))
-          }}
+          onPress={() => { scale.value = withSpring(Math.min(scale.value * 1.3, 5)) }}
         >
-          <Text style={styles.zoomText}>+</Text>
+          <MagnifyingGlassPlus size={20} color={Colors.textPrimary} />
         </Pressable>
         <Pressable
           style={styles.zoomButton}
-          onPress={() => {
-            scale.value = withSpring(Math.max(scale.value / 1.3, 0.3))
-          }}
+          onPress={() => { scale.value = withSpring(Math.max(scale.value / 1.3, 0.3)) }}
         >
-          <Text style={styles.zoomText}>−</Text>
+          <MagnifyingGlassMinus size={20} color={Colors.textPrimary} />
         </Pressable>
         <Pressable
           style={styles.zoomButton}
@@ -230,9 +317,20 @@ export function NetworkGraph({ departments, onPathFound }: NetworkGraphProps) {
             translateY.value = withSpring(0)
           }}
         >
-          <Text style={styles.zoomText}>⊡</Text>
+          <CornersOut size={20} color={Colors.textPrimary} />
         </Pressable>
       </View>
+
+      {/* Visualize FAB — only shown in graph view with 2+ nodes */}
+      {!vizActive && departments.length >= 2 && onVisualize && (
+        <Pressable style={styles.vizFab} onPress={() => {
+          setShowLegend(true)
+          onVisualize()
+        }}>
+          <Lightning size={16} color={Colors.white} weight="fill" />
+          <Text style={styles.vizFabText}>Visualize</Text>
+        </Pressable>
+      )}
     </View>
   )
 }
@@ -246,6 +344,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.surfaceAlt,
   },
+  vizBanner: {
+    position: 'absolute',
+    top: 10,
+    alignSelf: 'center',
+    zIndex: 10,
+    backgroundColor: `${Colors.primary}15`,
+    borderRadius: 9999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}30`,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  vizDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.vizSettled,
+  },
+  vizBannerText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.primary,
+  },
   resetPill: {
     position: 'absolute',
     top: 16,
@@ -257,6 +381,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderWidth: 1,
     borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   resetText: {
     fontFamily: 'Inter_500Medium',
@@ -284,5 +410,28 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     fontSize: 20,
     color: Colors.textPrimary,
+  },
+  vizFab: {
+    position: 'absolute',
+    bottom: 24,
+    left: 16,
+    zIndex: 10,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  vizFabText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: Colors.white,
   },
 })

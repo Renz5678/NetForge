@@ -426,6 +426,13 @@ export function simulateRoute(
     const bestRoute = matches[0]
     hop.routeType = bestRoute.type
 
+    if (node.type === 'router' || node.type === 'firewall') {
+      const targetNode = portOwner || nodes.find((n) => n.subnet && ipInSubnet(targetIp, n.subnet))
+      if (targetNode && targetNode.vlanId !== undefined) {
+        currentVlan = targetNode.vlanId
+      }
+    }
+
     if (bestRoute.nextHop === 'DIRECT') {
       const egressPort = node.ports?.find((p) => p.id === bestRoute.interfaceId)
       

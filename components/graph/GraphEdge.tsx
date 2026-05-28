@@ -1,9 +1,18 @@
 import React from 'react'
 import { Path, Text as SkiaText, matchFont } from '@shopify/react-native-skia'
 import { Colors } from '@/constants/colors'
-import type { GraphNode, GraphEdge, Department } from '@/types'
+import type { GraphNode, GraphEdge, Department, EdgeVizState } from '@/types'
 
 const ARROW_SIZE = 10
+
+// Edge color mappings for visualization mode
+const VIZ_EDGE_COLORS: Partial<Record<EdgeVizState, string>> = {
+  'back-edge': Colors.vizCycle,
+  'path':      Colors.vizPath,
+  'active':    Colors.vizInQueue,
+  'mst':       Colors.vizMstEdge,
+  'candidate': Colors.vizCandidate,
+}
 
 type GraphEdgeProps = {
   edge: GraphEdge
@@ -11,6 +20,7 @@ type GraphEdgeProps = {
   departments?: Department[]
   font?: ReturnType<typeof matchFont>
   highlighted?: boolean
+  vizEdgeState?: EdgeVizState  // when set, overrides highlighted/default coloring
 }
 
 function getArrowPath(
@@ -28,12 +38,12 @@ function getArrowPath(
   const ux = dx / length
   const uy = dy / length
 
-  // Start point: offset from source center (edge of node rectangle ~136px wide, half is 68px)
-  const startX = x1 + ux * 68
+  // Start point: offset from source center (edge of node rectangle ~148px wide, half is 74px)
+  const startX = x1 + ux * 74
   const startY = y1 + uy * 26
 
   // End point: offset from target center (stop before the node edge)
-  const endX = x2 - ux * (68 + ARROW_SIZE)
+  const endX = x2 - ux * (74 + ARROW_SIZE)
   const endY = y2 - uy * (26 + ARROW_SIZE)
 
   // Perpendicular vectors for arrowhead
@@ -41,7 +51,7 @@ function getArrowPath(
   const perpY = ux * ARROW_SIZE * 0.5
 
   // Arrowhead triangle tip
-  const tipX = x2 - ux * 68
+  const tipX = x2 - ux * 74
   const tipY = y2 - uy * 26
 
   return [
@@ -60,6 +70,7 @@ export function GraphEdgeComponent({
   departments,
   font,
   highlighted = false,
+  vizEdgeState,
 }: GraphEdgeProps) {
   const source = nodes.find((n) => n.id === edge.source)
   const target = nodes.find((n) => n.id === edge.target)
@@ -102,21 +113,30 @@ export function GraphEdgeComponent({
   const ux = length > 0 ? dx / length : 0
   const uy = length > 0 ? dy / length : 0
 
-  const showPorts = font && (sourcePortName || targetPortName)
+  const showPorts = font && (sourcePortName || targetPortName) && !vizEdgeState
+
+  // Determine edge color and width based on viz state or highlight
+  let edgeColor: string = highlighted ? Colors.primary : Colors.medium
+  let strokeWidth = highlighted ? 2.5 : 1.5
+
+  if (vizEdgeState && vizEdgeState !== 'default') {
+    edgeColor = VIZ_EDGE_COLORS[vizEdgeState] ?? Colors.medium
+    strokeWidth = vizEdgeState === 'back-edge' ? 3 : 2
+  }
 
   return (
     <>
       <Path
         path={pathData}
-        color={highlighted ? Colors.primary : Colors.medium}
+        color={edgeColor}
         style="stroke"
-        strokeWidth={highlighted ? 2.5 : 1.5}
+        strokeWidth={strokeWidth}
       />
       {showPorts && (
         <>
           {sourcePortName && (
             <SkiaText
-              x={source.x + ux * 83 - font.measureText(sourcePortName).width / 2}
+              x={source.x + ux * 89 - font.measureText(sourcePortName).width / 2}
               y={source.y + uy * 36 + 4}
               text={sourcePortName}
               font={font}
@@ -125,7 +145,7 @@ export function GraphEdgeComponent({
           )}
           {targetPortName && (
             <SkiaText
-              x={target.x - ux * 93 - font.measureText(targetPortName).width / 2}
+              x={target.x - ux * 99 - font.measureText(targetPortName).width / 2}
               y={target.y - uy * 36 + 4}
               text={targetPortName}
               font={font}
