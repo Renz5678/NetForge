@@ -562,7 +562,10 @@ function DeptSheet({
 
         {/* Peer Connections */}
         <View style={deptSheet.field}>
-          <Text style={deptSheet.label}>Can communicate with (Edge Peers)</Text>
+          <Text style={deptSheet.label}>🔗 Connected Nodes</Text>
+          <Text style={{ fontSize: 11, color: Colors.textMuted, marginBottom: 8 }}>
+            Tap to toggle which nodes this device links to.
+          </Text>
           {otherDepts.length === 0 ? (
             <Text style={deptSheet.noPeers}>Add more nodes to define links.</Text>
           ) : (
@@ -579,37 +582,137 @@ function DeptSheet({
           )}
         </View>
 
-        {/* Port Mapping Dropdowns (when connected) */}
+        {/* Port Wiring Cards (shown when peers are selected and device isn't a switch) */}
         {peers.length > 0 && type !== 'switch' && (
           <View style={[deptSheet.field, { marginTop: 8 }]}>
-            <Text style={deptSheet.label}>Wiring Port Configuration</Text>
+            <Text style={deptSheet.label}>🔌 Port Wiring</Text>
+            <Text style={{ fontSize: 11, color: Colors.textMuted, marginBottom: 10 }}>
+              Assign a local interface port to each connected peer.
+            </Text>
             {peers.map((peerId) => {
               const peerNode = otherDepts.find((d) => d.id === peerId)
               if (!peerNode) return null
 
               const currentPort = ports.find((p) => p.connectedToNodeId === peerId)
-              
+              const portName = currentPort?.name ?? ''
+              const portIp   = currentPort?.ipAddress ?? ''
+
+              const presetNames =
+                type === 'router'   ? ['GigabitEthernet0/0', 'GigabitEthernet0/1', 'GigabitEthernet0/2', 'GigabitEthernet0/3'] :
+                type === 'firewall' ? ['inside', 'outside', 'dmz'] :
+                                     ['GigabitEthernet0/0', 'FastEthernet0/1']
+
+              const updatePortField = (field: 'name' | 'ipAddress', value: string) => {
+                setPorts((prev) => {
+                  const existing = prev.find((p) => p.connectedToNodeId === peerId)
+                  if (existing) {
+                    return prev.map((p) =>
+                      p.connectedToNodeId === peerId ? { ...p, [field]: value } : p
+                    )
+                  } else {
+                    return [
+                      ...prev,
+                      { id: uuidv4(), name: field === 'name' ? value : 'GigabitEthernet0/0', ipAddress: field === 'ipAddress' ? value : undefined, connectedToNodeId: peerId },
+                    ]
+                  }
+                })
+              }
+
               return (
-                <View key={peerId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: Colors.ice, padding: 8, borderRadius: 8, marginBottom: 6 }}>
-                  <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 12, color: Colors.primary }}>➔ {peerNode.name}</Text>
-                  <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 10, color: Colors.textSecondary }}>Port Interface:</Text>
-                    <TextInput
-                      style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 6, width: 90, height: 26, paddingHorizontal: 6, fontSize: 11 }}
-                      value={currentPort?.name ?? 'GigabitEthernet0/0'}
-                      onChangeText={(pName) => {
-                        setPorts((prev) => {
-                          const existing = prev.find((p) => p.connectedToNodeId === peerId)
-                          if (existing) {
-                            return prev.map((p) => p.connectedToNodeId === peerId ? { ...p, name: pName } : p)
-                          } else {
-                            const newPortId = uuidv4()
-                            return [...prev, { id: newPortId, name: pName, connectedToNodeId: peerId }]
-                          }
-                        })
-                      }}
-                    />
+                <View
+                  key={peerId}
+                  style={{
+                    backgroundColor: Colors.surfaceAlt,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: Colors.border,
+                    padding: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  {/* Connection header */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 }}>
+                    <View style={{ flex: 1, height: 2, backgroundColor: Colors.primary, borderRadius: 1 }} />
+                    <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 12, color: Colors.primary }}>
+                      {peerNode.name}
+                    </Text>
+                    <View style={{ flex: 1, height: 2, backgroundColor: Colors.primary, borderRadius: 1 }} />
                   </View>
+
+                  {/* Port name presets */}
+                  <Text style={{ fontSize: 10, color: Colors.textMuted, marginBottom: 6 }}>Interface Port</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {presetNames.map((preset) => (
+                      <Pressable
+                        key={preset}
+                        onPress={() => updatePortField('name', preset)}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          borderRadius: 8,
+                          backgroundColor: portName === preset ? Colors.primary : Colors.white,
+                          borderWidth: 1,
+                          borderColor: portName === preset ? Colors.primary : Colors.border,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontFamily: 'Inter_500Medium',
+                            color: portName === preset ? Colors.white : Colors.textSecondary,
+                          }}
+                        >
+                          {preset.replace('GigabitEthernet', 'Gi').replace('FastEthernet', 'Fa')}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+
+                  {/* Custom port name input */}
+                  <TextInput
+                    style={{
+                      borderWidth: 1,
+                      borderColor: Colors.border,
+                      backgroundColor: Colors.white,
+                      borderRadius: 8,
+                      paddingHorizontal: 10,
+                      height: 34,
+                      fontSize: 12,
+                      fontFamily: 'Inter_400Regular',
+                      color: Colors.textPrimary,
+                      marginBottom: 10,
+                    }}
+                    placeholder="Custom interface name…"
+                    value={portName}
+                    onChangeText={(v) => updatePortField('name', v)}
+                  />
+
+                  {/* IP Address (routers & firewalls) */}
+                  {(type === 'router' || type === 'firewall') && (
+                    <>
+                      <Text style={{ fontSize: 10, color: Colors.textMuted, marginBottom: 4 }}>
+                        Interface IP Address (CIDR)
+                      </Text>
+                      <TextInput
+                        style={{
+                          borderWidth: 1,
+                          borderColor: Colors.border,
+                          backgroundColor: Colors.white,
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          height: 34,
+                          fontSize: 12,
+                          fontFamily: 'Inter_400Regular',
+                          color: Colors.textPrimary,
+                        }}
+                        placeholder="e.g. 10.0.0.1/30"
+                        value={portIp}
+                        keyboardType="default"
+                        autoCapitalize="none"
+                        onChangeText={(v) => updatePortField('ipAddress', v)}
+                      />
+                    </>
+                  )}
                 </View>
               )
             })}
@@ -705,6 +808,7 @@ export default function ConfigDetailScreen() {
       sourceId?: string
       targetId?: string
       rootId?: string
+      showSteps?: boolean
     }) => {
       const depts = departments
       switch (config.algorithm) {
@@ -718,6 +822,7 @@ export default function ConfigDetailScreen() {
             sourceId: config.sourceId,
             targetId: config.targetId,
             dijkstraVisited: res.visitedNodeIds,
+            showSteps: config.showSteps,
           })
           break
         }
@@ -732,23 +837,31 @@ export default function ConfigDetailScreen() {
             sourceId: config.sourceId,
             targetId: config.targetId,
             astarVisited: res.visitedNodeIds,
+            showSteps: config.showSteps,
           })
           break
         }
         case 'cycleDetection': {
           const res = buildCycleDetectionSteps(depts)
-          startVisualization('cycleDetection', res.steps)
+          startVisualization('cycleDetection', res.steps, {
+            showSteps: config.showSteps,
+          })
           break
         }
         case 'topologicalSort': {
           const res = buildTopologicalSortSteps(depts)
-          startVisualization('topologicalSort', res.steps)
+          startVisualization('topologicalSort', res.steps, {
+            showSteps: config.showSteps,
+          })
           break
         }
         case 'prims': {
           const rootId = config.rootId ?? depts[0]?.id ?? ''
           const res = buildPrimsSteps(depts, rootId)
-          startVisualization('prims', res.steps, { rootId })
+          startVisualization('prims', res.steps, {
+            rootId,
+            showSteps: config.showSteps,
+          })
           break
         }
       }

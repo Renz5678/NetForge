@@ -304,7 +304,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
   }
 
   return {
-    id: 'demo_enterprise_config_v4',
+    id: 'demo_enterprise_config_v5',
     userId,
     name: '🏢 Enterprise Campus Network (Demo)',
     departments: allocated,
@@ -345,10 +345,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       }
 
       // Filter out older stale demo configs to prevent duplicate listing and stale caches
-      configsList = configsList.filter((c) => !c.id.startsWith('demo_enterprise_config') || c.id === 'demo_enterprise_config_v4')
+      configsList = configsList.filter((c) => !c.id.startsWith('demo_enterprise_config') || c.id === 'demo_enterprise_config_v5')
 
       // Check and inject demo config
-      const hasDemo = configsList.some((c) => c.id === 'demo_enterprise_config_v4')
+      const hasDemo = configsList.some((c) => c.id === 'demo_enterprise_config_v5')
       if (!hasDemo) {
         const demoConfig = getDemoEnterpriseConfig(userId)
         configsList = [demoConfig, ...configsList]
@@ -363,9 +363,9 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         let configsList: NetworkConfig[] = localData ? JSON.parse(localData) : []
         
         // Filter out older stale demo configs to prevent duplicate listing and stale caches
-        configsList = configsList.filter((c) => !c.id.startsWith('demo_enterprise_config') || c.id === 'demo_enterprise_config_v4')
+        configsList = configsList.filter((c) => !c.id.startsWith('demo_enterprise_config') || c.id === 'demo_enterprise_config_v5')
 
-        const hasDemo = configsList.some((c: NetworkConfig) => c.id === 'demo_enterprise_config_v4')
+        const hasDemo = configsList.some((c: NetworkConfig) => c.id === 'demo_enterprise_config_v5')
         if (!hasDemo) {
           const demoConfig = getDemoEnterpriseConfig(userId)
           configsList = [demoConfig, ...configsList]

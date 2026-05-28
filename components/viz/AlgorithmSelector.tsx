@@ -93,6 +93,7 @@ type AlgorithmSelectorProps = {
     sourceId?: string
     targetId?: string
     rootId?: string
+    showSteps?: boolean
   }) => void
 }
 
@@ -124,6 +125,7 @@ export function AlgorithmSelector({
   const [sourceId, setSourceId] = useState<string | null>(null)
   const [targetId, setTargetId] = useState<string | null>(null)
   const [rootId, setRootId] = useState<string | null>(null)
+  const [showSteps, setShowSteps] = useState(false)
 
   useEffect(() => {
     if (visible) {
@@ -132,18 +134,13 @@ export function AlgorithmSelector({
       setSourceId(null)
       setTargetId(null)
       setRootId(null)
+      setShowSteps(false)
     }
   }, [visible])
 
   const handleSelect = (algo: AlgorithmCard) => {
     setSelected(algo)
-    if (!algo.requiresSource && !algo.requiresTarget && !algo.requiresRoot) {
-      // No configuration needed — start immediately
-      onStart({ algorithm: algo.type })
-      onClose()
-    } else {
-      setStep('configure')
-    }
+    setStep('configure')
   }
 
   const handleStart = () => {
@@ -153,6 +150,7 @@ export function AlgorithmSelector({
       sourceId: sourceId ?? undefined,
       targetId: targetId ?? undefined,
       rootId: rootId ?? undefined,
+      showSteps,
     })
     onClose()
   }
@@ -282,7 +280,25 @@ export function AlgorithmSelector({
             </View>
           )}
 
-          <View style={{ marginTop: 16 }}>
+          {/* Toggle showSteps details */}
+          <Pressable
+            style={s.toggleRow}
+            onPress={() => setShowSteps(!showSteps)}
+          >
+            <View style={s.toggleLeft}>
+              <Text style={s.toggleTitle}>Show Step-by-Step Details</Text>
+              <Text style={s.toggleSubtitle}>
+                Explain each step and display internal queue/stack structures in a bottom panel.
+              </Text>
+            </View>
+            <View
+              style={[s.switchTrack, showSteps ? s.switchTrackActive : s.switchTrackInactive]}
+            >
+              <View style={[s.switchThumb, showSteps ? s.switchThumbActive : s.switchThumbInactive]} />
+            </View>
+          </Pressable>
+
+          <View style={{ marginTop: 8 }}>
             <Button
               label="Start Visualization"
               variant="primary"
@@ -391,4 +407,62 @@ const s = StyleSheet.create({
   },
   nodeChipTextActive: { color: Colors.white },
   nodeChipTextActiveGreen: { color: Colors.white },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  toggleLeft: {
+    flex: 1,
+    marginRight: 16,
+  },
+  toggleTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: Colors.textPrimary,
+  },
+  toggleSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  switchTrack: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  switchTrackActive: {
+    backgroundColor: Colors.primary,
+  },
+  switchTrackInactive: {
+    backgroundColor: Colors.border,
+  },
+  switchThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  switchThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  switchThumbInactive: {
+    alignSelf: 'flex-start',
+  },
 })

@@ -1,41 +1,84 @@
 // GraphNode.tsx
 // Renders a single network node on the Skia canvas.
-// Rounded rectangle, color by status, white label.
-// When vizState is provided (during algorithm visualization), the node's fill
-// color is overridden using the visualization color language.
+//
+// Layout (left → right inside the card):
+//   [TYPE BADGE 32×32] [label 12px bold]
+//                      [subnet · VLAN 8px mono]
+//
+// NO SVG icons — they cause viewBox scaling bugs in Skia on Android/web.
+// Instead, each device type gets a colored pill badge with a 2-letter abbreviation.
+//
+// Skia Text y = baseline (not top), so all y values are computed as:
+//   baseline = topOfNode + topPadding + fontSize
 
 import React from 'react'
+import {
+  Group,
+  RoundedRect,
+  Rect,
+  Text as SkiaText,
+  matchFont,
+} from '@shopify/react-native-skia'
 import { Platform } from 'react-native'
-import { Group, RoundedRect, Text as SkiaText, matchFont, vec, ImageSVG, useSVG } from '@shopify/react-native-skia'
 import { Colors } from '@/constants/colors'
 import type { GraphNode, NodeVizState } from '@/types'
 
+// ── Node dimensions ────────────────────────────────────────────────────────
+export const NODE_WIDTH  = 164
+export const NODE_HEIGHT = 54
+const RADIUS = 13
+
+// ── Fonts ──────────────────────────────────────────────────────────────────
+const labelFont = matchFont({
+  fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
+  fontSize:   12,
+  fontWeight: 'bold',
+})
+
 const subFont = matchFont({
-  fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-  fontSize: 8.5,
+  fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+  fontSize:   8,
   fontWeight: 'normal',
 })
 
-const NODE_WIDTH = 148 // Slightly wider to fit icon + text comfortably
-const NODE_HEIGHT = 52
-const NODE_RADIUS = 12
+const badgeFont = matchFont({
+  fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
+  fontSize:   11,
+  fontWeight: 'bold',
+})
 
-const STATUS_COLORS: Record<GraphNode['status'], string> = {
-  valid: Colors.nodeValid,
-  cycle: Colors.nodeCycle,
+// ── Color maps ─────────────────────────────────────────────────────────────
+const TYPE_FILL: Record<string, string> = {
+  router:     '#1D4ED8',
+  switch:     '#0F766E',
+  firewall:   '#B45309',
+  wan:        '#065F46',
+  department: '#3B82F6',
+}
+
+const TYPE_BADGE_FILL: Record<string, string> = {
+  router:     'rgba(255,255,255,0.22)',
+  switch:     'rgba(255,255,255,0.22)',
+  firewall:   'rgba(255,255,255,0.22)',
+  wan:        'rgba(255,255,255,0.22)',
+  department: 'rgba(255,255,255,0.22)',
+}
+
+const TYPE_ABBR: Record<string, string> = {
+  router:     'RT',
+  switch:     'SW',
+  firewall:   'FW',
+  wan:        'WAN',
+  department: 'DEP',
+}
+
+const STATUS_FILL: Record<string, string> = {
+  valid:    Colors.nodeValid,
+  cycle:    Colors.nodeCycle,
   isolated: Colors.nodeIsolated,
 }
 
-const TYPE_COLORS: Record<NonNullable<GraphNode['type']>, string> = {
-  router: '#1E3A8A',     // Deep Navy Blue
-  switch: '#0D9488',     // Teal
-  firewall: '#C2410C',   // Rust Orange
-  wan: '#047857',        // Forest Green
-  department: Colors.nodeValid,
-}
-
-// Visualization color overrides — applied when vizState prop is set
-const VIZ_COLORS: Record<NodeVizState, string> = {
+const VIZ_FILL: Record<NodeVizState, string> = {
   unvisited:   Colors.vizUnvisited,
   inQueue:     Colors.vizInQueue,
   inStack:     Colors.vizInStack,
@@ -46,163 +89,141 @@ const VIZ_COLORS: Record<NodeVizState, string> = {
   mstFrontier: Colors.vizInQueue,
 }
 
-// States that should show a glow ring (actively being processed)
-const GLOW_STATES: Set<NodeVizState> = new Set(['inQueue', 'inStack', 'mstFrontier', 'path'])
+const GLOW_STATES = new Set<NodeVizState>(['inQueue','inStack','mstFrontier','path'])
 
-type GraphNodeProps = {
-  node: GraphNode
-  selected?: boolean
-  font: ReturnType<typeof matchFont>
-  vizState?: NodeVizState  // when set, overrides normal status coloring
+// ── Layout constants ───────────────────────────────────────────────────────
+const BADGE_W      = 34
+const BADGE_H      = 34
+const BADGE_LEFT   = 10
+const BADGE_TOP    = (NODE_HEIGHT - BADGE_H) / 2   // = 10
+
+const TEXT_LEFT    = BADGE_LEFT + BADGE_W + 10      // = 54
+
+// Two-line block: 12 (label) + 5 (gap) + 8 (sub) = 25px
+// Centered in NODE_HEIGHT=54 → top of block at (54-25)/2 = 14.5
+const LABEL_TOP    = (NODE_HEIGHT - 25) / 2         // 14.5
+const LABEL_BASE   = LABEL_TOP + 12                 // 26.5 → baseline of label
+const SUB_BASE     = LABEL_TOP + 12 + 5 + 8         // 39.5 → baseline of subtext
+
+function truncate(s: string, max: number) {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s
 }
 
-export function GraphNodeComponent({ node, selected, font, vizState }: GraphNodeProps) {
-  const x = node.x - NODE_WIDTH / 2
-  const y = node.y - NODE_HEIGHT / 2
+type Props = {
+  node: GraphNode
+  selected?: boolean
+  font: ReturnType<typeof matchFont>  // kept for API compat
+  vizState?: NodeVizState
+}
 
-  // If in visualization mode, use the viz color language.
-  // Otherwise fall back to normal status/type coloring.
-  const fillColor = vizState
-    ? VIZ_COLORS[vizState]
+export function GraphNodeComponent({ node, selected, vizState }: Props) {
+  const nx = node.x - NODE_WIDTH / 2
+  const ny = node.y - NODE_HEIGHT / 2
+
+  const typeKey = node.type ?? 'department'
+
+  // Card fill
+  const fill = vizState
+    ? VIZ_FILL[vizState]
     : node.status !== 'valid'
-      ? STATUS_COLORS[node.status]
-      : (TYPE_COLORS[node.type ?? 'department'] ?? Colors.nodeValid)
+      ? STATUS_FILL[node.status]
+      : (TYPE_FILL[typeKey] ?? TYPE_FILL.department)
 
   const showGlow = vizState ? GLOW_STATES.has(vizState) : false
 
-  // Load SVG assets inside component using Skia's useSVG hook
-  // We use relative paths for Metro bundler resolution
-  const routerSvg = useSVG(require('../../assets/icons/router.svg'))
-  const switchSvg = useSVG(require('../../assets/icons/switch.svg'))
-  const firewallSvg = useSVG(require('../../assets/icons/firewall.svg'))
-  const wanSvg = useSVG(require('../../assets/icons/wan.svg'))
-  const departmentSvg = useSVG(require('../../assets/icons/department.svg'))
+  // Badge abbreviation
+  const abbr = TYPE_ABBR[typeKey] ?? 'DEP'
 
-  const getSvg = () => {
-    switch (node.type) {
-      case 'router':
-        return routerSvg
-      case 'switch':
-        return switchSvg
-      case 'firewall':
-        return firewallSvg
-      case 'wan':
-        return wanSvg
-      default:
-        return departmentSvg
-    }
-  }
+  // Label and subtext — measured and truncated
+  const labelText = truncate(node.label, 14)
+  const subtext   = node.subnet && node.subnet !== '—'
+    ? truncate(`${node.subnet}  V${node.vlanId}`, 20)
+    : typeKey.toUpperCase()
 
-  const svg = getSvg()
-
-  const subtext = node.subnet && node.subnet !== '—'
-    ? `${node.subnet} · V:${node.vlanId}`
-    : node.type ? `${node.type.toUpperCase()}` : ''
-
-  const getLabelWithPrefix = () => {
-    switch (node.type) {
-      case 'router':
-        return `🖧 ${node.label}`
-      case 'switch':
-        return `🔀 ${node.label}`
-      case 'firewall':
-        return `🧱 ${node.label}`
-      case 'wan':
-        return `☁️ ${node.label}`
-      default:
-        return `🏢 ${node.label}`
-    }
-  }
+  // Badge font offset (center the abbreviation inside the badge)
+  const abbrW   = badgeFont ? badgeFont.measureText(abbr).width : 0
+  const abbrX   = nx + BADGE_LEFT + (BADGE_W - abbrW) / 2
+  const abbrY   = ny + BADGE_TOP + (BADGE_H + 10) / 2  // vertically center baseline
 
   return (
     <Group>
-      {/* Visualization glow ring (pulsing halo for active states) */}
+      {/* Glow halo */}
       {showGlow && (
         <RoundedRect
-          x={x - 6}
-          y={y - 6}
-          width={NODE_WIDTH + 12}
-          height={NODE_HEIGHT + 12}
-          r={NODE_RADIUS + 6}
-          color={`${fillColor}30`}
+          x={nx - 8} y={ny - 8}
+          width={NODE_WIDTH + 16} height={NODE_HEIGHT + 16}
+          r={RADIUS + 8}
+          color={`${fill}30`}
         />
       )}
+
       {/* Selection ring */}
       {selected && (
         <RoundedRect
-          x={x - 4}
-          y={y - 4}
-          width={NODE_WIDTH + 8}
-          height={NODE_HEIGHT + 8}
-          r={NODE_RADIUS + 4}
-          color={`${fillColor}40`}
+          x={nx - 4} y={ny - 4}
+          width={NODE_WIDTH + 8} height={NODE_HEIGHT + 8}
+          r={RADIUS + 4}
+          color="rgba(255,255,255,0.30)"
         />
-      )}  
-      {/* Node rectangle */}
+      )}
+
+      {/* Card background */}
       <RoundedRect
-        x={x}
-        y={y}
-        width={NODE_WIDTH}
-        height={NODE_HEIGHT}
-        r={NODE_RADIUS}
-        color={fillColor}
+        x={nx} y={ny}
+        width={NODE_WIDTH} height={NODE_HEIGHT}
+        r={RADIUS}
+        color={fill}
       />
-      
-      {/* Render SVG Icon if successfully loaded, otherwise fallback to unicode character prefix */}
-      {svg ? (
-        <Group>
-          <ImageSVG
-            svg={svg}
-            x={x + 10}
-            y={y + (NODE_HEIGHT - 28) / 2}
-            width={28}
-            height={28}
-          />
-          {font && (
-            <>
-              <SkiaText
-                x={x + 44}
-                y={node.y - 2}
-                text={node.label.length > 15 ? `${node.label.substring(0, 14)}…` : node.label}
-                font={font}
-                color={Colors.white}
-              />
-              {subFont && (
-                <SkiaText
-                  x={x + 44}
-                  y={node.y + 13}
-                  text={subtext}
-                  font={subFont}
-                  color="#E2E8F0"
-                />
-              )}
-            </>
-          )}
-        </Group>
-      ) : (
-        font && (
-          <>
-            <SkiaText
-              x={node.x - (font.measureText(getLabelWithPrefix().substring(0, 14)).width / 2)}
-              y={node.y - 2}
-              text={getLabelWithPrefix().length > 14 ? `${getLabelWithPrefix().substring(0, 13)}…` : getLabelWithPrefix()}
-              font={font}
-              color={Colors.white}
-            />
-            {subFont && (
-              <SkiaText
-                x={node.x - (subFont.measureText(subtext).width / 2)}
-                y={node.y + 13}
-                text={subtext}
-                font={subFont}
-                color="#E2E8F0"
-              />
-            )}
-          </>
-        )
+
+      {/* Left accent strip — stays within card thanks to Group clipping via RoundedRect */}
+      <Rect
+        x={nx}
+        y={ny + RADIUS}
+        width={4}
+        height={NODE_HEIGHT - RADIUS * 2}
+        color="rgba(255,255,255,0.28)"
+      />
+
+      {/* Badge pill */}
+      <RoundedRect
+        x={nx + BADGE_LEFT} y={ny + BADGE_TOP}
+        width={BADGE_W} height={BADGE_H}
+        r={8}
+        color={TYPE_BADGE_FILL[typeKey] ?? 'rgba(255,255,255,0.20)'}
+      />
+
+      {/* Badge label */}
+      {badgeFont && (
+        <SkiaText
+          x={abbrX}
+          y={abbrY}
+          text={abbr}
+          font={badgeFont}
+          color="rgba(255,255,255,0.95)"
+        />
+      )}
+
+      {/* Node label */}
+      {labelFont && (
+        <SkiaText
+          x={nx + TEXT_LEFT}
+          y={ny + LABEL_BASE}
+          text={labelText}
+          font={labelFont}
+          color="#FFFFFF"
+        />
+      )}
+
+      {/* Subnet / VLAN subtext */}
+      {subFont && (
+        <SkiaText
+          x={nx + TEXT_LEFT}
+          y={ny + SUB_BASE}
+          text={subtext}
+          font={subFont}
+          color="rgba(210,228,255,0.85)"
+        />
       )}
     </Group>
   )
 }
-
-export { NODE_WIDTH, NODE_HEIGHT }

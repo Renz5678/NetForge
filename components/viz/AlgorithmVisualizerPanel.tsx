@@ -65,8 +65,9 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
   const isPlaying = useVisualizationStore((s) => s.isPlaying)
   const speed = useVisualizationStore((s) => s.speed)
   const isExpanded = useVisualizationStore((s) => s.isExpanded)
+  const showSteps = useVisualizationStore((s) => s.showSteps)
 
-  const { stopVisualization, play, pause, stepForward, stepBack, setStep, setSpeed, setIsExpanded, _advanceStep } =
+  const { stopVisualization, play, pause, stepForward, stepBack, setStep, setSpeed, setIsExpanded, setShowSteps, _advanceStep } =
     useVisualizationStore()
 
   const currentStep = steps[currentStepIndex] ?? null
@@ -93,7 +94,7 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
 
   // Slide-up / slide-down animation
   useEffect(() => {
-    const currentPanelHeight = isExpanded ? PANEL_HEIGHT : COLLAPSED_HEIGHT
+    const currentPanelHeight = showSteps ? (isExpanded ? PANEL_HEIGHT : COLLAPSED_HEIGHT) : 72
     if (isActive) {
       Animated.spring(translateY, {
         toValue: 0,
@@ -108,19 +109,81 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
         useNativeDriver: true,
       }).start()
     }
-  }, [isActive, isExpanded, translateY])
+  }, [isActive, isExpanded, showSteps, translateY])
 
   if (!isActive || !algorithm || !currentStep) return null
 
   const progress = totalSteps > 1 ? currentStepIndex / (totalSteps - 1) : 0
   const explanationColor = getExplanationColor(currentStep.explanation)
-  const currentPanelHeight = isExpanded ? PANEL_HEIGHT : COLLAPSED_HEIGHT
+  const currentPanelHeight = showSteps ? (isExpanded ? PANEL_HEIGHT : COLLAPSED_HEIGHT) : 72
 
   const deptList = departments.map((d) => ({ id: d.id, name: d.name }))
 
   const handleToggleExpand = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
     setIsExpanded(!isExpanded)
+  }
+
+  // Render a minimal floating bar if showSteps is disabled
+  if (!showSteps) {
+    return (
+      <Animated.View
+        style={[
+          styles.miniPanel,
+          {
+            height: 72,
+            transform: [{ translateY }],
+          },
+        ]}
+      >
+        <View style={styles.miniContainer}>
+          <View style={styles.miniTextSection}>
+            <View style={styles.miniTitleRow}>
+              <View style={styles.miniDot} />
+              <Text style={styles.miniTitle} numberOfLines={1}>
+                {getAlgorithmLabel(algorithm)}
+              </Text>
+            </View>
+            <Text style={styles.miniSubtitle}>
+              Step {currentStepIndex + 1} of {totalSteps} • {Math.round(progress * 100)}%
+            </Text>
+          </View>
+
+          <View style={styles.miniActions}>
+            {/* Play/Pause */}
+            <Pressable
+              onPress={isPlaying ? pause : play}
+              style={styles.miniActionBtn}
+              hitSlop={8}
+            >
+              <Text style={styles.miniActionIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+            </Pressable>
+
+            {/* Show Steps button */}
+            <Pressable
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+                setShowSteps(true)
+                setIsExpanded(true)
+              }}
+              style={styles.miniStepsBtn}
+              hitSlop={8}
+            >
+              <Text style={styles.miniStepsText}>Show Steps</Text>
+            </Pressable>
+
+            {/* Close */}
+            <Pressable
+              onPress={stopVisualization}
+              style={styles.miniCloseBtn}
+              hitSlop={8}
+            >
+              <Text style={styles.miniCloseText}>✕</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Animated.View>
+    )
   }
 
   return (
@@ -438,5 +501,94 @@ const styles = StyleSheet.create({
   },
   speedChipTextActive: {
     color: Colors.white,
+  },
+  miniPanel: {
+    position: 'absolute',
+    bottom: 24,
+    left: 16,
+    right: 16,
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    zIndex: 50,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 10,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  miniContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  miniTextSection: {
+    flex: 1,
+    marginRight: 12,
+  },
+  miniTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  miniDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.primary,
+  },
+  miniTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: Colors.textPrimary,
+  },
+  miniSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  miniActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  miniActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: `${Colors.primary}10`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniActionIcon: {
+    fontSize: 12,
+    color: Colors.primary,
+  },
+  miniStepsBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.primary,
+  },
+  miniStepsText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+    color: Colors.white,
+  },
+  miniCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniCloseText: {
+    fontSize: 12,
+    color: Colors.textMuted,
   },
 })

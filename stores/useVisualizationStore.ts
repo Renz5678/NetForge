@@ -37,6 +37,8 @@ type VisualizationStore = {
   dijkstraVisited: Set<string>
   astarVisited: Set<string>
 
+  showSteps: boolean
+
   // ── Derived ────────────────────────────────────────────────────────────────
   currentStep: VisualizationStep | null
 
@@ -44,6 +46,9 @@ type VisualizationStore = {
 
   /** Toggle the detailed data structure view. */
   setIsExpanded: (expanded: boolean) => void
+
+  /** Toggle the detailed step display mode. */
+  setShowSteps: (show: boolean) => void
 
   /** Start a new visualization with a pre-computed step array. */
   startVisualization: (
@@ -55,6 +60,7 @@ type VisualizationStore = {
       rootId?: string
       dijkstraVisited?: Set<string>
       astarVisited?: Set<string>
+      showSteps?: boolean
     }
   ) => void
 
@@ -92,6 +98,7 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
   isPlaying: false,
   speed: 'normal',
   isExpanded: true,
+  showSteps: false,
   sourceId: null,
   targetId: null,
   rootId: null,
@@ -107,14 +114,20 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
     set({ isExpanded })
   },
 
+  setShowSteps: (showSteps) => {
+    set({ showSteps })
+  },
+
   startVisualization: (algorithm, steps, options = {}) => {
+    const showSteps = options.showSteps ?? false
     set({
       isActive: true,
       algorithm,
       steps,
       currentStepIndex: 0,
-      isPlaying: false,
-      isExpanded: true,
+      isPlaying: !showSteps, // Autoplay if steps are not shown
+      isExpanded: showSteps,
+      showSteps,
       sourceId: options.sourceId ?? null,
       targetId: options.targetId ?? null,
       rootId: options.rootId ?? null,
@@ -131,6 +144,7 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
       currentStepIndex: 0,
       isPlaying: false,
       isExpanded: true,
+      showSteps: false,
       sourceId: null,
       targetId: null,
       rootId: null,
