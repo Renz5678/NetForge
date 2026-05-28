@@ -1,3 +1,4 @@
+import React from 'react'
 import { useState, useCallback } from 'react'
 import {
   View,
@@ -17,6 +18,47 @@ import { useConfigStore } from '@/stores/useConfigStore'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { generateFullTopologyConfig } from '@/lib/configGenerator'
 import { Colors } from '@/constants/colors'
+
+function highlightCiscoIOS(text: string): React.ReactNode {
+  const lines = text.split('\n')
+  return lines.map((line, i) => {
+    // Comments (lines starting with !)
+    if (line.trimStart().startsWith('!')) {
+      return <Text key={i} style={[styles.codeText, { color: '#6A9955' }]}>{line + '\n'}</Text>
+    }
+    // Keywords
+    const keywordMatch = line.match(/^(\s*)(interface|router ospf|router bgp|ip route|ip access-list|switchport|vlan|hostname|spanning-tree|no shutdown|ip address|ip nat|access-group)(\s.*)?$/)
+    if (keywordMatch) {
+      const keyword = keywordMatch[2]
+      const rest = line.slice(line.indexOf(keyword) + keyword.length)
+      const prefix = line.slice(0, line.indexOf(keyword))
+      return (
+        <Text key={i} style={styles.codeText}>
+          <Text style={{ color: '#999' }}>{prefix}</Text>
+          <Text style={{ color: '#569CD6', fontFamily: 'Inter_600SemiBold' }}>{keyword}</Text>
+          <Text style={{ color: '#9CDCFE' }}>{rest}</Text>
+          {'\n'}
+        </Text>
+      )
+    }
+    // IP addresses (simple pattern)
+    const ipLine = line.replace(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d{1,2})?)/g, '|||$1|||')
+    if (ipLine.includes('|||')) {
+      const parts = ipLine.split('|||')
+      return (
+        <Text key={i} style={styles.codeText}>
+          {parts.map((p, j) =>
+            /^\d{1,3}\.\d{1,3}/.test(p)
+              ? <Text key={j} style={{ color: '#B5CEA8' }}>{p}</Text>
+              : <Text key={j}>{p}</Text>
+          )}
+          {'\n'}
+        </Text>
+      )
+    }
+    return <Text key={i} style={styles.codeText}>{line + '\n'}</Text>
+  })
+}
 
 export default function ExportScreen() {
   const activeConfig = useConfigStore((s) => s.activeConfig)
@@ -183,7 +225,9 @@ export default function ExportScreen() {
             showsVerticalScrollIndicator
             contentContainerStyle={{ paddingBottom: 40 }}
           >
-            <Text style={styles.codeText} selectable>{previewText}</Text>
+            <Text selectable style={styles.codeText}>
+              {highlightCiscoIOS(previewText)}
+            </Text>
           </ScrollView>
 
           <View style={styles.modalFooter}>
@@ -271,7 +315,7 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: Colors.textPrimary, flex: 1, marginRight: 12 },
   codeScroll: { flex: 1, backgroundColor: '#0F1117', padding: 16 },
-  codeText: { fontFamily: 'Inter_400Regular', fontSize: 11, color: '#A6E3A1', lineHeight: 18 },
+  codeText: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 18, color: '#cdd6f4' },
   modalFooter: {
     flexDirection: 'row', padding: 16,
     borderTopWidth: 1, borderTopColor: Colors.border,

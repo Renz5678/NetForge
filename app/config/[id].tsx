@@ -94,27 +94,56 @@ function PathResultSheet({
   onClose,
   result,
   departments,
+  onReplay,
 }: {
   visible: boolean
   onClose: () => void
   result: PathResult | null
   departments: Department[]
+  onReplay?: () => void
 }) {
   if (!result) return null
 
   const getDept = (id: string) => departments.find((d) => d.id === id)
 
+  // Route type badge config
+  const routeBadgeStyle = (type?: string) => {
+    switch (type) {
+      case 'OSPF':   return { bg: '#EFF6FF', color: '#2563EB', label: 'OSPF' }
+      case 'STATIC': return { bg: '#FFF7ED', color: '#EA580C', label: 'STATIC' }
+      case 'L2':     return { bg: '#ECFDF5', color: '#059669', label: 'L2 Switch' }
+      default:       return { bg: '#F5F3FF', color: '#7C3AED', label: 'DIRECT' }
+    }
+  }
+
   return (
-    <BottomSheet visible={visible} onClose={onClose} snapHeight={400}>
-      <Text style={pathSheet.title}>
-        Path: {getDept(result.path[0])?.name ?? '?'} → {getDept(result.path[result.path.length - 1])?.name ?? '?'}
-      </Text>
-      <Text style={pathSheet.subtitle}>{result.hops} {result.hops === 1 ? 'hop' : 'hops'} · Shortest route</Text>
+    <BottomSheet visible={visible} onClose={onClose} snapHeight={460}>
+      {/* Header with Dijkstra badge */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 8 }}>
+        <Text style={pathSheet.title}>
+          {getDept(result.path[0])?.name ?? '?'} → {getDept(result.path[result.path.length - 1])?.name ?? '?'}
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <View style={{ backgroundColor: `${Colors.primary}12`, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+          <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 10, color: Colors.primary, letterSpacing: 0.4 }}>DIJKSTRA</Text>
+        </View>
+        <Text style={pathSheet.subtitle}>{result.hops} {result.hops === 1 ? 'hop' : 'hops'} · Shortest route</Text>
+        {onReplay && (
+          <Pressable onPress={onReplay} style={{ marginLeft: 'auto' }}>
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 12, color: Colors.primary }}>Step-by-step ›</Text>
+          </Pressable>
+        )}
+      </View>
 
       <ScrollView style={pathSheet.list} showsVerticalScrollIndicator={false}>
         {result.path.map((id, index) => {
           const dept = getDept(id)
           const isLast = index === result.path.length - 1
+          // Access hop detail from result if it's a PathTraceResult
+          const hopDetail = (result as any).hops?.[index]
+          const decision = hopDetail?.decisionReason
+          const badge = routeBadgeStyle(hopDetail?.routeType ?? decision?.routeType)
 
           return (
             <View key={id} style={pathSheet.step}>
@@ -125,10 +154,40 @@ function PathResultSheet({
                 {!isLast && <View style={pathSheet.connector} />}
               </View>
               <View style={pathSheet.stepContent}>
-                <Text style={pathSheet.stepName}>{dept?.name ?? id}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                  <Text style={pathSheet.stepName}>{dept?.name ?? id}</Text>
+                  {(hopDetail?.routeType || decision?.routeType) && (
+                    <View style={{ backgroundColor: badge.bg, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}>
+                      <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 9, color: badge.color }}>{badge.label}</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={pathSheet.stepMeta}>
                   {dept?.subnet ?? '—'} · VLAN {dept?.vlanId ?? '—'}
                 </Text>
+                {/* Routing decision detail */}
+                {decision && (
+                  <View style={pathSheet.decisionBox}>
+                    {decision.aclVerdict ? (
+                      <Text style={[pathSheet.decisionText, { color: decision.aclVerdict === 'permit' ? Colors.success : Colors.error }]}>
+                        ACL seq {decision.aclRuleSeq ?? '?'}: {decision.aclVerdict.toUpperCase()}
+                        {decision.aclVerdict === 'deny' ? ' — packet blocked' : ' — forwarding allowed'}
+                      </Text>
+                    ) : decision.nextHop === 'Default Gateway' ? (
+                      <Text style={pathSheet.decisionText}>
+                        Forwarded via default gateway · VLAN {decision.vlanId ?? '—'}
+                      </Text>
+                    ) : (
+                      <Text style={pathSheet.decisionText}>
+                        LPM match: {decision.matchedPrefix} (/{decision.prefixLength})
+                        {decision.nextHop !== 'DIRECT' && ` → via ${decision.nextHop}`}
+                      </Text>
+                    )}
+                    {hopDetail?.egressPortName && (
+                      <Text style={pathSheet.decisionPort}>Egress: {hopDetail.egressPortName}</Text>
+                    )}
+                  </View>
+                )}
               </View>
             </View>
           )
@@ -1138,8 +1197,14 @@ export default function ConfigDetailScreen() {
             departments={departments}
             onPathFound={handlePathFound}
             onVisualize={() => setShowVizSelector(true)}
+            validationWarnings={
+              [validation.cycleCheck, validation.allocationCheck,
+               validation.connectivityCheck, validation.vlanCheck
+              ].filter(c => !c.passed).length
+            }
+            validationPassed={allPass}
           />
-          
+
           {/* Floating Validation Warning Bar */}
           {!allPass && (
             <Pressable
@@ -1182,6 +1247,21 @@ export default function ConfigDetailScreen() {
         }}
         result={pathResult}
         departments={departments}
+        onReplay={() => {
+          // Open step-by-step Dijkstra replay for the same nodes
+          if (pathResult && pathResult.path.length >= 2) {
+            const srcId = pathResult.path[0]
+            const tgtId = pathResult.path[pathResult.path.length - 1]
+            const steps = buildDijkstraSteps(departments, srcId, tgtId)
+            startVisualization('dijkstra', steps.steps, {
+              sourceId: srcId,
+              targetId: tgtId,
+              dijkstraVisited: steps.visitedNodeIds,
+              showSteps: true,
+            })
+            setShowPathSheet(false)
+          }
+        }}
       />
 
       {/* Topology Conflicts Bottom Sheet */}
@@ -1686,5 +1766,26 @@ const pathSheet = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     fontSize: 15,
     color: Colors.primary,
+  },
+  decisionBox: {
+    marginTop: 5,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderLeftWidth: 2.5,
+    borderLeftColor: Colors.primary,
+  },
+  decisionText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: Colors.textSecondary,
+    lineHeight: 17,
+  },
+  decisionPort: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 10,
+    color: Colors.textMuted,
+    marginTop: 3,
   },
 })

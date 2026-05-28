@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react'
-import { View, Text, StyleSheet, Animated } from 'react-native'
+import { View, Text, StyleSheet, Animated, ScrollView } from 'react-native'
 import { Colors } from '@/constants/colors'
 import type { CheckResult } from '@/types'
 
@@ -68,18 +68,39 @@ export function ValidationCard({ title, description, result, index = 0 }: Valida
         </View>
         <Text style={styles.description}>{description}</Text>
 
-        {/* Failure detail section */}
         {!result.passed && result.affected && result.affected.length > 0 && (
-          <View style={styles.failDetail}>
-            <Text style={styles.failDetailLabel}>Affected:</Text>
-            <View style={styles.chipRow}>
-              {result.affected.map((name, i) => (
-                <View key={i} style={styles.chip}>
-                  <Text style={styles.chipText}>{name}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 6, paddingBottom: 4 }}>
+              {result.affected.slice(0, 8).map((name, i) => (
+                <View key={i} style={{
+                  backgroundColor: Colors.errorContainer,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 3,
+                  borderWidth: 1,
+                  borderColor: `${Colors.error}30`,
+                }}>
+                  <Text style={{
+                    fontFamily: 'Inter_500Medium',
+                    fontSize: 11,
+                    color: Colors.error,
+                  }}>{name}</Text>
                 </View>
               ))}
+              {result.affected.length > 8 && (
+                <View style={{
+                  backgroundColor: Colors.errorContainer,
+                  borderRadius: 999,
+                  paddingHorizontal: 10,
+                  paddingVertical: 3,
+                }}>
+                  <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 11, color: Colors.error }}>
+                    +{result.affected.length - 8} more
+                  </Text>
+                </View>
+              )}
             </View>
-          </View>
+          </ScrollView>
         )}
       </View>
     </Animated.View>

@@ -22,6 +22,16 @@ export type HopDetail = {
   egressPortId?: string;
   egressPortName?: string;
   routeType?: 'DIRECT' | 'STATIC' | 'OSPF' | 'L2';
+  // The winning route decision at this hop — surfaced in the path result UI
+  decisionReason?: {
+    matchedPrefix: string;       // e.g. "10.0.1.0/24"
+    prefixLength: number;        // e.g. 24 (longer = higher priority)
+    nextHop: string;             // e.g. "10.0.0.2" or "DIRECT"
+    routeType: 'DIRECT' | 'STATIC' | 'OSPF';
+    aclVerdict?: 'permit' | 'deny';
+    aclRuleSeq?: number;
+    vlanId?: number;
+  };
 }
 
 export type PathTraceResult = {
@@ -281,6 +291,14 @@ export function simulateRoute(
           ? ` (seq ${matchedRule.sequence}: ${matchedRule.action} ${matchedRule.protocol} ${matchedRule.srcCidr} → ${matchedRule.dstCidr}${matchedRule.dstPort !== undefined ? ` port ${matchedRule.dstPort}` : ''})`
           : ' (implicit deny)'
         hop.routeType = 'DIRECT'
+        hop.decisionReason = {
+          matchedPrefix: matchedRule?.dstCidr ?? 'any',
+          prefixLength: 0,
+          nextHop: 'BLOCKED',
+          routeType: 'DIRECT',
+          aclVerdict: 'deny',
+          aclRuleSeq: matchedRule?.sequence,
+        }
         hops.push(hop)
         return {
           success: false,
@@ -289,20 +307,38 @@ export function simulateRoute(
           message: `Packet blocked by ACL on Firewall "${node.name}"${ruleInfo}.`
         }
       }
-      // permit — continue forwarding
+      // ACL permit — record the matching rule and continue forwarding
+      const permitRule = findMatchingRule(node.aclRules, activePacket)
+      if (permitRule) {
+        hop.decisionReason = {
+          matchedPrefix: permitRule.dstCidr,
+          prefixLength: 0,
+          nextHop: 'PERMIT',
+          routeType: 'DIRECT',
+          aclVerdict: 'permit',
+          aclRuleSeq: permitRule.sequence,
+        }
+      }
     }
 
     // Default Gateway peer routing for client PC departments
     if ((node.type === 'department' || !node.type) && node.peers.length > 0) {
       const nextNodeId = node.peers[0]
       hop.routeType = 'DIRECT'
-      
+      hop.decisionReason = {
+        matchedPrefix: node.subnet ?? '0.0.0.0/0',
+        prefixLength: node.subnet ? parseInt(node.subnet.split('/')[1] ?? '24', 10) : 0,
+        nextHop: 'Default Gateway',
+        routeType: 'DIRECT',
+        vlanId: node.vlanId,
+      }
+
       const egressPort = node.ports?.find((p) => p.connectedToNodeId === nextNodeId)
       if (egressPort) {
         hop.egressPortId = egressPort.id
         hop.egressPortName = egressPort.name
       }
-      
+
       hops.push(hop)
       
       if (visitedNodes.has(nextNodeId)) {
@@ -425,6 +461,12 @@ export function simulateRoute(
 
     const bestRoute = matches[0]
     hop.routeType = bestRoute.type
+    hop.decisionReason = {
+      matchedPrefix: bestRoute.destination,
+      prefixLength: bestRoute.prefixLength,
+      nextHop: bestRoute.nextHop,
+      routeType: bestRoute.type,
+    }
 
     if (node.type === 'router' || node.type === 'firewall') {
       const targetNode = portOwner || nodes.find((n) => n.subnet && ipInSubnet(targetIp, n.subnet))

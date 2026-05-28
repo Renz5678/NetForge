@@ -1,11 +1,18 @@
 // NetworkGraph.tsx
 // Full canvas graph renderer using @shopify/react-native-skia.
 // Pan + pinch zoom via GestureDetector.
-// Node tap: single = tooltip, two nodes = Dijkstra path.
+// Node tap: single = tooltip, two nodes = auto-Dijkstra sweep then path highlight.
 // Visualization mode: subscribes to useVisualizationStore and applies
 // viz color overlays to nodes and edges via the vizState/vizEdgeState props.
+//
+// KEY BEHAVIOUR CHANGE:
+// When two nodes are selected, Dijkstra fires automatically at 'fast' speed
+// with no expanded panel (showSteps=false). The algorithm is *visible* as
+// the frontier sweeps but the user never had to select "Dijkstra" from a menu.
+// After it completes, an AlgorithmToast badge appears: "Shortest path · Dijkstra · N hops"
+// with a "Step-by-step ›" link that opens the full visualizer panel.
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useRef } from 'react'
 import {
   View,
   StyleSheet,
@@ -21,6 +28,8 @@ import {
   RoundedRect,
   Text as SkiaText,
   matchFont,
+  Circle,
+  Paint,
 } from '@shopify/react-native-skia'
 import { GestureDetector, Gesture } from 'react-native-gesture-handler'
 import Animated, {
@@ -38,11 +47,13 @@ import { GraphEdgeComponent } from './GraphEdge'
 import { PathOverlay } from './PathOverlay'
 import { MSTOverlay } from './MSTOverlay'
 import { VizLegend } from './VizLegend'
+import { AlgorithmToast, type ToastData } from '@/components/ui/AlgorithmToast'
 import {
   MagnifyingGlassPlus,
   MagnifyingGlassMinus,
   CornersOut,
   ArrowCounterClockwise,
+  BookOpen,
   Lightning,
 } from 'phosphor-react-native'
 import type { Department, PathResult } from '@/types'
@@ -56,16 +67,35 @@ const systemFont = matchFont({
   fontWeight: 'bold',
 })
 
+// Dot-grid density: every N canvas pixels a dot is drawn
+const GRID_SPACING = 28
+const GRID_DOT_RADIUS = 1.2
+
 type NetworkGraphProps = {
   departments: Department[]
   onPathFound?: (result: PathResult | null, nodeIds: string[]) => void
-  onVisualize?: () => void // callback to open AlgorithmSelector
+  onVisualize?: () => void // callback to open AlgorithmSelector (now "Explore Algorithms")
+  // Validation summary for the live badge
+  validationWarnings?: number
+  validationPassed?: boolean
 }
 
-export function NetworkGraph({ departments, onPathFound, onVisualize }: NetworkGraphProps) {
+export function NetworkGraph({
+  departments,
+  onPathFound,
+  onVisualize,
+  validationWarnings = 0,
+  validationPassed,
+}: NetworkGraphProps) {
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])
   const [pathResult, setPathResult] = useState<PathResult | null>(null)
   const [showLegend, setShowLegend] = useState(true)
+  const [toast, setToast] = useState<ToastData | null>(null)
+
+  // Mirror of selectedNodes in a ref so handleTap can read the current
+  // value without a functional updater — critical to avoid calling setState
+  // (setPathResult, onPathFound) inside another setState's updater function.
+  const selectedNodesRef = useRef<string[]>([])
 
   // Pan & zoom
   const translateX = useSharedValue(0)
@@ -84,21 +114,36 @@ export function NetworkGraph({ departments, onPathFound, onVisualize }: NetworkG
   const vizStepIndex = useVisualizationStore((s) => s.currentStepIndex)
   const currentStep = vizSteps[vizStepIndex] ?? null
   const isExpanded = useVisualizationStore((s) => s.isExpanded)
+  const isPlaying = useVisualizationStore((s) => s.isPlaying)
+  const { startVisualization, stopVisualization, setShowSteps, setIsExpanded } =
+    useVisualizationStore()
+
+  // Track if the current viz is an auto-triggered Dijkstra (not user-selected)
+  // so we can show the toast and "Step-by-step" CTA instead of the full panel
+  const autoVizRef = useRef(false)
+
+  // Stop auto viz and dismiss toast when it finishes playing
+  const prevIsPlaying = useRef(isPlaying)
+  React.useEffect(() => {
+    if (autoVizRef.current && prevIsPlaying.current && !isPlaying && vizActive) {
+      // Auto-viz finished playing — stop it so the path overlay takes over
+      stopVisualization()
+      autoVizRef.current = false
+    }
+    prevIsPlaying.current = isPlaying
+  }, [isPlaying, vizActive])
 
   // Auto-center camera offset when visualization is active/expanded
   React.useEffect(() => {
     if (vizActive) {
       if (isExpanded) {
-        // Shift graph up by 140px and zoom out slightly to prevent occlusion by the tall details sheet
         translateY.value = withSpring(-140)
         scale.value = withSpring(0.78)
       } else {
-        // Shift graph up slightly (40px) to clear the small collapsed controls sheet
         translateY.value = withSpring(-40)
         scale.value = withSpring(0.9)
       }
     } else {
-      // Restore standard camera position
       translateY.value = withSpring(0)
       scale.value = withSpring(1)
       translateX.value = withSpring(0)
@@ -133,30 +178,91 @@ export function NetworkGraph({ departments, onPathFound, onVisualize }: NetworkG
       if (vizActive) return
 
       const tappedId = hitTestNode(touchX, touchY)
+      // Read current selection from ref — avoids functional updater pattern
+      // which would cause setState-during-render errors when calling onPathFound
+      const prev = selectedNodesRef.current
 
       if (!tappedId) {
+        selectedNodesRef.current = []
         setSelectedNodes([])
         setPathResult(null)
+        setToast(null)
         onPathFound?.(null, [])
         return
       }
 
-      setSelectedNodes((prev) => {
-        if (prev.length === 0) {
-          return [tappedId]
-        } else if (prev.length === 1) {
-          if (prev[0] === tappedId) return prev
-          const newSelected = [prev[0], tappedId]
-          const result = findShortestPath(departments, prev[0], tappedId)
-          setPathResult(result)
-          onPathFound?.(result, newSelected)
-          return newSelected
-        } else {
-          return [tappedId]
-        }
-      })
+      if (prev.length === 0) {
+        // First node selected — just highlight it
+        selectedNodesRef.current = [tappedId]
+        setSelectedNodes([tappedId])
+        return
+      }
+
+      if (prev.length === 1) {
+        if (prev[0] === tappedId) return // tapped same node again
+
+        const srcId = prev[0]
+        const tgtId = tappedId
+        const newSelected = [srcId, tgtId]
+        selectedNodesRef.current = newSelected
+        setSelectedNodes(newSelected)
+
+        // Compute path — all state updates are at handler top level, never inside
+        // a setState updater, so React won't complain about setState-during-render
+        const pathFindResult = findShortestPath(departments, srcId, tgtId)
+        setPathResult(pathFindResult)
+        onPathFound?.(pathFindResult, newSelected)
+
+        // ── Auto-trigger Dijkstra visualization ──────────────────────────
+        // Dynamic import to avoid a circular dep at module level
+        import('@/lib/algorithms/dijkstraVisualizer').then(({ buildDijkstraSteps }) => {
+          const vizResult = buildDijkstraSteps(departments, srcId, tgtId)
+          const steps = vizResult.steps
+          if (steps.length > 0) {
+            autoVizRef.current = true
+            setToast(null) // clear any existing toast while viz plays
+            startVisualization('dijkstra', steps, {
+              sourceId: srcId,
+              targetId: tgtId,
+              showSteps: false, // mini-panel only, no expanded data structure view
+            })
+
+            // Show toast after viz auto-play finishes (~steps * speed interval)
+            const hops = pathFindResult?.hops ?? 0
+            const srcName = departments.find((d) => d.id === srcId)?.name ?? srcId
+            const tgtName = departments.find((d) => d.id === tgtId)?.name ?? tgtId
+            setTimeout(() => {
+              const toastLabel = pathFindResult
+                ? `${srcName} \u2192 ${tgtName} \u00b7 Dijkstra \u00b7 ${hops} hop${hops !== 1 ? 's' : ''}`
+                : `No path found \u00b7 Dijkstra`
+              setToast({
+                label: toastLabel,
+                success: !!pathFindResult,
+                onReplay: () => {
+                  startVisualization('dijkstra', steps, {
+                    sourceId: srcId,
+                    targetId: tgtId,
+                    showSteps: true,
+                  })
+                  setIsExpanded(true)
+                  setShowSteps(true)
+                  setToast(null)
+                },
+              })
+            }, (steps.length * 200) + 200)
+          }
+        })
+        return
+      }
+
+      // Third+ tap — reset to new single selection
+      selectedNodesRef.current = [tappedId]
+      setSelectedNodes([tappedId])
+      setPathResult(null)
+      setToast(null)
+      onPathFound?.(null, [])
     },
-    [hitTestNode, departments, onPathFound, vizActive]
+    [hitTestNode, departments, onPathFound, vizActive, startVisualization, setIsExpanded, setShowSteps]
   )
 
   const panGesture = Gesture.Pan()
@@ -191,6 +297,7 @@ export function NetworkGraph({ departments, onPathFound, onVisualize }: NetworkG
   const handleReset = () => {
     setSelectedNodes([])
     setPathResult(null)
+    setToast(null)
     onPathFound?.(null, [])
   }
 
@@ -227,10 +334,31 @@ export function NetworkGraph({ departments, onPathFound, onVisualize }: NetworkG
     { scale: scale.value },
   ])
 
+  // Build dot-grid positions (static, computed once at render)
+  const dotGridPoints = React.useMemo(() => {
+    const pts: { x: number; y: number }[] = []
+    const cols = Math.ceil(SCREEN_WIDTH / GRID_SPACING) + 1
+    const rows = Math.ceil(CANVAS_HEIGHT / GRID_SPACING) + 1
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        pts.push({ x: c * GRID_SPACING, y: r * GRID_SPACING })
+      }
+    }
+    return pts
+  }, [])
+
+  // Validation badge color
+  const hasBadge = departments.length > 0 && validationPassed !== undefined
+  const badgeColor = validationPassed ? Colors.success : Colors.warning
+  const badgeBg = validationPassed ? Colors.successContainer : Colors.warningContainer
+  const badgeLabel = validationPassed
+    ? '✓ Valid'
+    : `⚠ ${validationWarnings} warning${validationWarnings !== 1 ? 's' : ''}`
+
   return (
     <View style={styles.container}>
       {/* Viz mode banner */}
-      {vizActive && (
+      {vizActive && !autoVizRef.current && (
         <View style={styles.vizBanner}>
           <View style={styles.vizDot} />
           <Text style={styles.vizBannerText}>
@@ -247,8 +375,29 @@ export function NetworkGraph({ departments, onPathFound, onVisualize }: NetworkG
         </Pressable>
       )}
 
+      {/* Algorithm result toast — appears after auto-Dijkstra / auto-Prim's */}
+      <AlgorithmToast toast={toast} onDismiss={() => setToast(null)} />
+
+      {/* Live validation badge */}
+      {hasBadge && !vizActive && selectedNodes.length === 0 && (
+        <View style={[styles.validationBadge, { backgroundColor: badgeBg, borderColor: `${badgeColor}40` }]}>
+          <Text style={[styles.validationBadgeText, { color: badgeColor }]}>{badgeLabel}</Text>
+        </View>
+      )}
+
       <GestureDetector gesture={composedGesture}>
         <Canvas style={styles.canvas}>
+          {/* Dot-grid background — rendered outside the zoom group so it stays fixed */}
+          {dotGridPoints.map((pt, i) => (
+            <Circle
+              key={i}
+              cx={pt.x}
+              cy={pt.y}
+              r={GRID_DOT_RADIUS}
+              color={`${Colors.primary}18`}
+            />
+          ))}
+
           <Group transform={skiaTransform}>
             {/* Render edges first (behind nodes) */}
             {edges.map((edge, i) => (
@@ -321,14 +470,14 @@ export function NetworkGraph({ departments, onPathFound, onVisualize }: NetworkG
         </Pressable>
       </View>
 
-      {/* Visualize FAB — only shown in graph view with 2+ nodes */}
+      {/* "Explore Algorithms" — demoted to a text link, not a primary FAB */}
       {!vizActive && departments.length >= 2 && onVisualize && (
-        <Pressable style={styles.vizFab} onPress={() => {
+        <Pressable style={styles.exploreLink} onPress={() => {
           setShowLegend(true)
           onVisualize()
         }}>
-          <Lightning size={16} color={Colors.white} weight="fill" />
-          <Text style={styles.vizFabText}>Visualize</Text>
+          <BookOpen size={13} color={Colors.medium} weight="fill" />
+          <Text style={styles.exploreLinkText}>Explore Algorithms</Text>
         </Pressable>
       )}
     </View>
@@ -389,6 +538,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.primary,
   },
+  validationBadge: {
+    position: 'absolute',
+    top: 10,
+    right: 68,
+    zIndex: 10,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderWidth: 1,
+  },
+  validationBadgeText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+  },
   zoomControls: {
     position: 'absolute',
     bottom: 24,
@@ -406,32 +569,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  zoomText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 20,
-    color: Colors.textPrimary,
-  },
-  vizFab: {
+  // "Explore Algorithms" demoted to a subtle text link at bottom-left
+  exploreLink: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 28,
     left: 16,
     zIndex: 10,
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    gap: 5,
+    backgroundColor: Colors.white,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  vizFabText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
-    color: Colors.white,
+  exploreLinkText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.medium,
   },
 })

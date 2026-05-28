@@ -27,7 +27,7 @@ export default function ProfileScreen() {
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
   const signOut = useAuthStore((s) => s.signOut)
-  const { activeConfig, configs, loadConfigs, createConfig } = useConfigStore()
+  const { activeConfig, configs, loadConfigs, createConfig, updateConfig } = useConfigStore()
 
   const [notifications, setNotifications] = useState(true)
   const [showClearSheet, setShowClearSheet] = useState(false)
@@ -79,9 +79,14 @@ export default function ProfileScreen() {
 
       if (!user?.id) return
 
-      const newConfig = await createConfig(parsed.name, user.id)
+      const newConfig = await createConfig(parsed.name, user.id, parsed.baseIp, parsed.vlanStart)
       if (newConfig && parsed.departments) {
-        // TODO: update with imported departments
+        await updateConfig({
+          ...newConfig,
+          departments: parsed.departments,
+          baseIp: parsed.baseIp ?? newConfig.baseIp,
+          vlanStart: parsed.vlanStart ?? newConfig.vlanStart,
+        })
       }
     } catch (err) {
       console.error('Import error:', err)
