@@ -19,6 +19,7 @@ import { useAuthStore } from '@/stores/useAuthStore'
 import { generateFullTopologyConfig } from '@/lib/configGenerator'
 import { Colors } from '@/constants/colors'
 import { useRouter } from 'expo-router'
+import { TopHeader } from '@/components/ui/TopHeader'
 
 function highlightCiscoIOS(text: string): React.ReactNode {
   const lines = text.split('\n')
@@ -128,9 +129,7 @@ export default function ExportScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       {/* Consistent Fixed Header */}
-      <View style={styles.fixedHeader}>
-        <Text style={styles.fixedHeaderTitle}>Config Export</Text>
-      </View>
+      <TopHeader title="Config Export" />
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 

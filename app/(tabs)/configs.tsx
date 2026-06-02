@@ -28,6 +28,7 @@ import {
 } from 'phosphor-react-native'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useConfigStore } from '@/stores/useConfigStore'
+import { usePreferencesStore } from '@/stores/usePreferencesStore'
 import { Badge, type BadgeVariant } from '@/components/ui/Badge'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
@@ -37,6 +38,7 @@ import { pluralize, formatRelativeTime } from '@/lib/formatters'
 import type { NetworkConfig } from '@/types'
 import { SyncStatusBanner } from '@/components/ui/SyncStatusBanner'
 import { SyncConflictSheet } from '@/components/ui/SyncConflictSheet'
+import { TopHeader } from '@/components/ui/TopHeader'
 
 function getStatusBadge(config: NetworkConfig): { label: string; variant: BadgeVariant } {
   if (config.isValid === undefined || config.departments.length === 0) {
@@ -173,6 +175,7 @@ export default function ConfigsScreen() {
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
   const { configs, loadConfigs, createConfig, deleteConfig, duplicateConfig, loading } = useConfigStore()
+  const { defaultBaseIp, defaultVlanStart } = usePreferencesStore()
 
   const fabScale = useSharedValue(1)
   const animatedFabStyle = useAnimatedStyle(() => ({
@@ -184,8 +187,8 @@ export default function ConfigsScreen() {
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
   const [nameError, setNameError] = useState('')
-  const [baseIp, setBaseIp] = useState('10.0.0.0')
-  const [vlanStart, setVlanStart] = useState('10')
+  const [baseIp, setBaseIp] = useState(defaultBaseIp)
+  const [vlanStart, setVlanStart] = useState(defaultVlanStart)
   const [ipError, setIpError] = useState('')
   const [vlanError, setVlanError] = useState('')
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -237,8 +240,8 @@ export default function ConfigsScreen() {
     setCreating(false)
     setShowNewSheet(false)
     setNewName('')
-    setBaseIp('10.0.0.0')
-    setVlanStart('10')
+    setBaseIp(defaultBaseIp)
+    setVlanStart(defaultVlanStart)
     setNameError('')
     setIpError('')
     setVlanError('')
@@ -311,26 +314,26 @@ export default function ConfigsScreen() {
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
       
       {/* Premium Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <ShareNetwork size={22} color={Colors.primary} weight="bold" />
-        </View>
-        <Text style={styles.title}>My Configurations</Text>
-        <Pressable
-          style={styles.headerPlus}
-          onPress={() => {
-            setNewName('')
-            setBaseIp('10.0.0.0')
-            setVlanStart('10')
-            setNameError('')
-            setIpError('')
-            setVlanError('')
-            setShowNewSheet(true)
-          }}
-        >
-          <Plus size={24} color={Colors.primary} />
-        </Pressable>
-      </View>
+      <TopHeader
+        title="My Configurations"
+        leftIcon={<ShareNetwork size={22} color={Colors.primary} weight="bold" />}
+        rightActions={
+          <Pressable
+            style={styles.headerPlus}
+            onPress={() => {
+              setNewName('')
+              setBaseIp(defaultBaseIp)
+              setVlanStart(defaultVlanStart)
+              setNameError('')
+              setIpError('')
+              setVlanError('')
+              setShowNewSheet(true)
+            }}
+          >
+            <Plus size={24} color={Colors.primary} />
+          </Pressable>
+        }
+      />
 
       <SyncStatusBanner />
 

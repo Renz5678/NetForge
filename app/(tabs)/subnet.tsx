@@ -48,6 +48,7 @@ import {
   type SubnetResult,
   type VlsmCalculation,
 } from '@/lib/algorithms/vlsmCalculator'
+import { TopHeader } from '@/components/ui/TopHeader'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -370,30 +371,30 @@ export default function SubnetScreen() {
   return (
     <SafeAreaView style={s.safe}>
       {/* Header */}
-      <View style={s.header}>
-        <View style={s.headerLeft}>
+      <TopHeader
+        title="Subnet Calculator"
+        subtitle="VLSM · Greedy allocation"
+        leftIcon={
           <View style={s.iconWrap}>
             <ChartPieSlice size={20} color={Colors.white} weight="fill" />
           </View>
-          <View>
-            <Text style={s.headerTitle}>Subnet Calculator</Text>
-            <Text style={s.headerSub}>VLSM · Greedy allocation</Text>
-          </View>
-        </View>
-        <Pressable
-          style={[s.explainBtn, explainMode && s.explainBtnOn]}
-          onPress={() => setExplainMode(!explainMode)}
-        >
-          <Lightning
-            size={14}
-            color={explainMode ? Colors.white : Colors.primary}
-            weight={explainMode ? 'fill' : 'regular'}
-          />
-          <Text style={[s.explainText, explainMode && s.explainTextOn]}>
-            {explainMode ? 'Explain On' : 'Explain'}
-          </Text>
-        </Pressable>
-      </View>
+        }
+        rightActions={
+          <Pressable
+            style={[s.explainBtn, explainMode && s.explainBtnOn]}
+            onPress={() => setExplainMode(!explainMode)}
+          >
+            <Lightning
+              size={14}
+              color={explainMode ? Colors.white : Colors.primary}
+              weight={explainMode ? 'fill' : 'regular'}
+            />
+            <Text style={[s.explainText, explainMode && s.explainTextOn]}>
+              {explainMode ? 'Explain' : 'Explain'}
+            </Text>
+          </Pressable>
+        }
+      />
 
       {/* Tab bar */}
       <View style={s.tabBar}>

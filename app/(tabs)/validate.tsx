@@ -14,6 +14,7 @@ import { useValidation } from '@/hooks/useValidation'
 import { ValidationCard } from '@/components/ui/ValidationCard'
 import { Button } from '@/components/ui/Button'
 import { Colors } from '@/constants/colors'
+import { TopHeader } from '@/components/ui/TopHeader'
 
 export default function ValidateScreen() {
   const router = useRouter()
@@ -42,9 +43,7 @@ export default function ValidateScreen() {
   if (!activeConfig) {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Validation</Text>
-        </View>
+        <TopHeader title="Validation" leftIcon={<ShieldCheck size={22} color={Colors.primary} />} />
         <View style={styles.emptyState}>
           <ShieldCheck size={56} color={Colors.pale} />
           <Text style={styles.emptyTitle}>No configuration selected</Text>
@@ -62,16 +61,17 @@ export default function ValidateScreen() {
   if (!hasRun) {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.headerTitle}>Validation</Text>
+        <TopHeader 
+          title="Validation" 
+          leftIcon={<ShieldCheck size={22} color={Colors.primary} />}
+          subtitle={
             <Pressable onPress={() => router.push('/(tabs)/configs')}>
               <Text style={styles.configName}>
                 Config: <Text style={styles.configNameLink}>{activeConfig.name}</Text>
               </Text>
             </Pressable>
-          </View>
-        </View>
+          }
+        />
         <View style={styles.emptyState}>
           <CheckCircle size={48} color={Colors.pale} />
           <Text style={styles.emptyTitle}>Validate Network Topology</Text>
@@ -112,16 +112,17 @@ export default function ValidateScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Validation</Text>
+      <TopHeader 
+        title="Validation" 
+        leftIcon={<ShieldCheck size={22} color={Colors.primary} />}
+        subtitle={
           <Pressable onPress={() => router.push('/(tabs)/configs')}>
             <Text style={styles.configName}>
               Config: <Text style={styles.configNameLink}>{activeConfig.name}</Text>
             </Text>
           </Pressable>
-        </View>
-      </View>
+        }
+      />
 
       <ScrollView
         contentContainerStyle={styles.content}

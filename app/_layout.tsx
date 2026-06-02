@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import Toast from 'react-native-toast-message'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { usePreferencesStore } from '@/stores/usePreferencesStore'
 import { Colors } from '@/constants/colors'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
@@ -14,12 +15,17 @@ function RootLayoutNav() {
   const session = useAuthStore((s) => s.session)
   const loading = useAuthStore((s) => s.loading)
   const restoreSession = useAuthStore((s) => s.restoreSession)
+  const loadPreferences = usePreferencesStore((s) => s.loadPreferences)
   const segments = useSegments()
   const router = useRouter()
 
   useEffect(() => {
     let isCancelled = false
     let unsubscribe: (() => void) | undefined
+    
+    // Load local preferences
+    loadPreferences()
+
     restoreSession()
       .then((unsub) => {
         if (isCancelled) {

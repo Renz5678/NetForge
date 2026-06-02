@@ -20,7 +20,7 @@ import { Colors } from '@/constants/colors'
 import { getGreeting, formatRelativeTime, pluralize } from '@/lib/formatters'
 import { NETWORK_TEMPLATES } from '@/lib/templates'
 import type { NetworkConfig } from '@/types'
-import { NetForgeLogo } from '@/components/ui/NetForgeLogo'
+import { TopHeader } from '@/components/ui/TopHeader'
 
 function MiniGraphThumbnail({ config }: { config: NetworkConfig }) {
   const depts = config.departments
@@ -154,24 +154,12 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <TopHeader />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.logoRow}>
-            <NetForgeLogo size={20} />
-            <Text style={styles.logo}>NetForge</Text>
-          </View>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>
-              {firstName[0]?.toUpperCase() ?? 'U'}
-            </Text>
-          </View>
-        </View>
-
         {/* Greeting with Border Divider */}
         <View style={styles.greetingContainer}>
           <Text style={styles.greeting}>
