@@ -6,10 +6,10 @@ import {
   ScrollView,
   StyleSheet,
   Pressable,
-  SafeAreaView,
   PixelRatio,
-  Animated,
+  Animated
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Plus, ArrowRight, Folder, TreeStructure, Atom } from 'phosphor-react-native'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -241,13 +241,23 @@ export default function HomeScreen() {
                     const { getTemplateConfig } = await import('@/lib/templates')
                     const config = getTemplateConfig(template.id, user.id)
                     if (!config) return
-                    // Add to store locally
+
+                    // Upsert directly into the store: updateConfig only updates existing entries,
+                    // so we must inject templates manually into the configs array if not present.
                     const store = useConfigStore.getState()
                     const existing = store.configs.find((c) => c.id === config.id)
                     if (!existing) {
-                      await store.updateConfig(config)
+                      // Directly insert into store + persist locally (templates never sync to Supabase)
+                      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default
+                      const LOCAL_KEY = `@netforge_configs_${user.id}`
+                      useConfigStore.setState((state) => {
+                        const updated = [config, ...state.configs]
+                        AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(updated)).catch(console.error)
+                        return { configs: updated }
+                      })
                     }
-                    store.setActiveConfig(config.id)
+                    // Now setActiveConfig will find it in the array
+                    useConfigStore.getState().setActiveConfig(config.id)
                     router.push(`/config/${config.id}`)
                   }}
                 />

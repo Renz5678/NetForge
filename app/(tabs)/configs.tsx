@@ -6,11 +6,11 @@ import {
   StyleSheet,
   Pressable,
   TextInput,
-  SafeAreaView,
   StatusBar,
   Animated,
-  Dimensions,
+  Dimensions
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { PanGestureHandler } from 'react-native-gesture-handler'
 import AnimatedReanimated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS } from 'react-native-reanimated'

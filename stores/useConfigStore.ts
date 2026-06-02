@@ -702,6 +702,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         if (!op.configId.startsWith('local_')) {
           updatedOps.push(op)
         }
+      } else if (op.configId.startsWith('local_')) {
+        // Skip syncing template / local-only configs entirely
       } else {
         updatedOps = updatedOps.filter(
           (o) => !(o.configId === op.configId && o.type === 'update')
@@ -729,6 +731,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   },
 
   flushPendingOps: async (userId) => {
+    // Don't sync if no real authenticated session (guest mode / offline)
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    if (!UUID_RE.test(userId)) return
+
     const { syncing, pendingOps, conflictConfig } = get()
     if (syncing || pendingOps.length === 0 || conflictConfig) return
 

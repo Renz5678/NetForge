@@ -43,8 +43,8 @@ export function CoachMark({ visible, text, onDismiss }: CoachMarkProps) {
     }
   }, [visible])
 
-  if (!visible) return null
-
+  // ── Hooks must always be called unconditionally ────────────────────────────
+  // These MUST live above any early return to satisfy the Rules of Hooks.
   const animatedBubbleStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }))
@@ -52,6 +52,8 @@ export function CoachMark({ visible, text, onDismiss }: CoachMarkProps) {
   const animatedArrowStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: arrowY.value }],
   }))
+
+  if (!visible) return null
 
   return (
     <Pressable style={styles.overlay} onPress={onDismiss}>

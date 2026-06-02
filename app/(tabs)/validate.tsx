@@ -4,9 +4,9 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
-  Pressable,
+  Pressable
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { ShieldCheck, ArrowsClockwise, CheckCircle } from 'phosphor-react-native'
 import { useConfigStore } from '@/stores/useConfigStore'

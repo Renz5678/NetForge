@@ -35,7 +35,9 @@ function buildConfig(
   const missing = rawDepts.filter((d) => !sorted.includes(d.id))
   const allocated = allocateSubnets([...sortedDepts, ...missing], baseIp, vlanStart)
   return {
-    id,
+    // Prefix with 'local_' so the sync queue skips this config.
+    // Templates are read-only scenarios — they don't belong in Supabase.
+    id: `local_${id}`,
     userId,
     name,
     departments: allocated,

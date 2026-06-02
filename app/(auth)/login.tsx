@@ -6,9 +6,9 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
-  SafeAreaView,
+  Pressable
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Eye, EyeSlash, Lightning } from 'phosphor-react-native'
 import { Input } from '@/components/ui/Input'

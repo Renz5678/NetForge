@@ -1,6 +1,28 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { User, Session } from '@supabase/supabase-js'
+
+// Stable guest UUID — generated once and persisted so it never changes between sessions.
+// Using a real UUID format ensures Supabase postgres never rejects it.
+const GUEST_UUID_KEY = '@netforge_guest_uuid'
+function makeUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+  })
+}
+async function getOrCreateGuestId(): Promise<string> {
+  try {
+    const stored = await AsyncStorage.getItem(GUEST_UUID_KEY)
+    if (stored) return stored
+    const fresh = makeUUID()
+    await AsyncStorage.setItem(GUEST_UUID_KEY, fresh)
+    return fresh
+  } catch {
+    return makeUUID() // fallback: ephemeral UUID if storage fails
+  }
+}
 
 type AuthStore = {
   user: User | null
@@ -42,7 +64,6 @@ export const useAuthStore = create<AuthStore>((set) => ({
       if (error) {
         console.warn('Supabase signIn failed, checking offline fallback:', error.message)
         if (__DEV__) {
-          // In dev mode only: allow sandbox fallback for local/guest/network errors
           if (
             email.includes('netforge.local') ||
             email === 'guest@netforge.com' ||
@@ -50,15 +71,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
             error.message.includes('Invalid API key') ||
             error.message.includes('network')
           ) {
+            const guestId = await getOrCreateGuestId()
             const mockUser = {
-              id: 'offline_guest_id',
+              id: guestId,
               email: email,
               user_metadata: { full_name: 'Offline Administrator' },
             } as any
-            const mockSession = {
-              access_token: 'offline_token',
-              user: mockUser,
-            } as any
+            const mockSession = { access_token: 'offline_token', user: mockUser } as any
             set({ user: mockUser, session: mockSession, loading: false })
             return null
           }
@@ -70,15 +89,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
     } catch (err) {
       if (__DEV__) {
         console.warn('signIn exception, falling back to offline:', err)
+        const guestId = await getOrCreateGuestId()
         const mockUser = {
-          id: 'offline_guest_id',
+          id: guestId,
           email: email,
           user_metadata: { full_name: 'Offline Administrator' },
         } as any
-        const mockSession = {
-          access_token: 'offline_token',
-          user: mockUser,
-        } as any
+        const mockSession = { access_token: 'offline_token', user: mockUser } as any
         set({ user: mockUser, session: mockSession, loading: false })
         return null
       }
@@ -125,15 +142,13 @@ export const useAuthStore = create<AuthStore>((set) => ({
     if (!__DEV__) {
       throw new Error('Guest mode is only available in development builds')
     }
+    const guestId = await getOrCreateGuestId()
     const mockUser = {
-      id: 'offline_guest_id',
+      id: guestId,
       email: 'guest@netforge.local',
       user_metadata: { full_name: 'Guest Administrator' },
     } as any
-    const mockSession = {
-      access_token: 'offline_token',
-      user: mockUser,
-    } as any
+    const mockSession = { access_token: 'offline_token', user: mockUser } as any
     set({ user: mockUser, session: mockSession, loading: false })
   },
 }))

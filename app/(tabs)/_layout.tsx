@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
-import { House, Folders, ShieldCheck, UserCircle, Export } from 'phosphor-react-native'
+import { House, Folders, ShieldCheck, UserCircle, Export, ChartPieSlice } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
 import { useConfigStore } from '@/stores/useConfigStore'
 
@@ -57,6 +57,18 @@ export default function TabsLayout() {
             <View>
               {focused && <View style={styles.indicator} />}
               <ShieldCheck size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="subnet"
+        options={{
+          title: 'Subnet',
+          tabBarIcon: ({ color, focused }) => (
+            <View>
+              {focused && <View style={styles.indicator} />}
+              <ChartPieSlice size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
             </View>
           ),
         }}
