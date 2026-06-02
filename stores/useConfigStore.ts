@@ -7,7 +7,7 @@ import { topologicalSort } from '@/lib/algorithms/topologicalSort'
 import { allocateSubnets } from '@/lib/algorithms/subnetAllocator'
 import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
 import { DepartmentSchema } from '@/lib/validators'
-import type { Department, NetworkConfig } from '@/types'
+import type { Department, NetworkConfig, NetworkInsight } from '@/types'
 
 const LOCAL_CONFIGS_KEY = '@netforge_configs'
 
@@ -26,6 +26,16 @@ type ConfigStore = {
   pendingOps: PendingOp[]
   syncing: boolean
   conflictConfig: { local: NetworkConfig; remote: NetworkConfig } | null
+
+  // Explain Mode: when true, algorithm decisions become visible
+  explainMode: boolean
+  setExplainMode: (enabled: boolean) => void
+
+  // Network Insights Panel: auto-surfaced findings
+  insights: NetworkInsight[]
+  addInsight: (insight: NetworkInsight) => void
+  removeInsight: (id: string) => void
+  clearInsights: () => void
 
   // Fetch & selection
   loadConfigs: (userId: string) => Promise<void>
@@ -343,6 +353,23 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   pendingOps: [],
   syncing: false,
   conflictConfig: null,
+  explainMode: false,
+  insights: [],
+
+  setExplainMode: (enabled) => set({ explainMode: enabled }),
+
+  addInsight: (insight) => set((state) => ({
+    insights: [
+      insight,
+      ...state.insights.filter((i) => i.id !== insight.id),
+    ].slice(0, 20), // keep max 20 insights
+  })),
+
+  removeInsight: (id) => set((state) => ({
+    insights: state.insights.filter((i) => i.id !== id),
+  })),
+
+  clearInsights: () => set({ insights: [] }),
 
   loadConfigs: async (userId) => {
     set({ loading: true, error: null })

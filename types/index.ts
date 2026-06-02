@@ -102,6 +102,30 @@ export type PathResult = {
   hops: number
 }
 
+// ─── Algorithm Impact Summary ──────────────────────────────────────────────────
+// Shown after every algorithm completes to explain the networking impact.
+export type AlgorithmImpactSummary = {
+  whatHappened: string      // e.g. "Best route found."
+  whyItMatters: string      // e.g. "This path reduces total cost from 34 to 18."
+  behindTheScenes: string   // e.g. "Dijkstra's Algorithm evaluated 12 nodes."
+}
+
+// ─── Network Insights ───────────────────────────────────────────────────────────
+// Auto-surfaced findings shown in the Insights Panel.
+export type InsightSeverity = 'info' | 'warning' | 'error'
+
+export type NetworkInsight = {
+  id: string
+  severity: InsightSeverity
+  title: string             // Short summary
+  explanation: string       // What was found
+  suggestedAction: string   // What to do about it
+  algorithmRef?: string     // Human-friendly name of algorithm used
+  algorithmKey?: AlgorithmType // Underlying algorithm key
+  affectedNodeIds?: string[] // Node IDs involved in the insight
+  timestamp: number
+}
+
 // ─── Algorithm Visualization Types ────────────────────────────────────────────
 // NodeVizState: the visual state a graph node can be in during algorithm replay.
 // Mapped to the color language:
@@ -147,10 +171,15 @@ export type PrimsResult = {
 
 // VisualizationStep: a single snapshot of algorithm state, pre-computed.
 // The visualizer replays an array of these — one per animation frame.
+export type StoryPhase = 'before' | 'during' | 'after'
+
 export type VisualizationStep = {
   stepIndex: number
   explanation: string                          // Plain-English description of this step
+  networkingContext?: string                   // Networking-first framing ("OSPF selected...")  
   hint?: string                                // Conceptual hint for "Why this step?"
+  storyPhase?: StoryPhase                      // Which storytelling phase this step belongs to
+  impactSummary?: AlgorithmImpactSummary       // Only present on the final 'after' step
   nodeStates: Record<string, NodeVizState>     // Visual state per node ID
   edgeStates?: Record<string, EdgeVizState>    // Visual state per "srcId→targetId" edge key
 

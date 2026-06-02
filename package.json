@@ -23,7 +23,7 @@
     "expo-status-bar": "~3.0.9",
     "expo-updates": "^56.0.17",
     "phosphor-react-native": "^3.0.6",
-    "react": "^19.1.0",
+    "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-reanimated": "~4.1.1",
@@ -56,5 +56,9 @@
     "web": "expo start --web",
     "test": "jest"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  }
 }

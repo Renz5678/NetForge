@@ -39,45 +39,45 @@ type AlgorithmCard = {
 const ALGORITHMS: AlgorithmCard[] = [
   {
     type: 'dijkstra',
-    title: "Dijkstra's Shortest Path",
-    subtitle: 'Finds the fewest hops between two nodes',
-    description: 'Explores all directions systematically. Shows the priority queue and distance table updating in real-time.',
+    title: 'Find Best Route',
+    subtitle: 'Select the lowest-cost path between two devices',
+    description: 'NetForge will trace the optimal path between two points on your network, counting hops and evaluating link costs. This is the same logic OSPF routers use when selecting next-hops.',
     requiresSource: true,
     requiresTarget: true,
     requiresRoot: false,
   },
   {
     type: 'aStar',
-    title: 'A* Guided Search',
-    subtitle: 'Smarter pathfinding using spatial heuristics',
-    description: 'Uses distance-to-target estimates to explore fewer nodes. Compare side-by-side with Dijkstra to see the difference.',
+    title: 'Guided Path Search',
+    subtitle: 'Faster route analysis with spatial awareness',
+    description: 'Uses distance-to-target estimates to find a route more efficiently. Compare side-by-side with the standard route analysis to see which nodes were explored.',
     requiresSource: true,
     requiresTarget: true,
     requiresRoot: false,
   },
   {
     type: 'cycleDetection',
-    title: 'Cycle Detection',
-    subtitle: 'Find routing loops in the topology',
-    description: 'DFS with white/gray/black coloring. Watch the recursion stack grow and identify the back-edge that causes a loop.',
+    title: 'Check for Routing Loops',
+    subtitle: 'Detect circular paths that cause traffic storms',
+    description: 'Scans your topology for routing loops — cyclic dependencies that would cause packets to loop indefinitely instead of reaching their destination. Essential before deploying a configuration.',
     requiresSource: false,
     requiresTarget: false,
     requiresRoot: false,
   },
   {
     type: 'topologicalSort',
-    title: 'Topological Sort',
-    subtitle: 'Dependency-ordered configuration sequence',
-    description: "Kahn's algorithm with in-degree tracking. Shows which nodes can be configured first (no dependencies).",
+    title: 'Deployment Order Analysis',
+    subtitle: 'Determine safe device startup sequence',
+    description: 'Analyzes your topology to determine the correct order for bringing devices online, ensuring upstream dependencies are ready before downstream devices activate.',
     requiresSource: false,
     requiresTarget: false,
     requiresRoot: false,
   },
   {
     type: 'prims',
-    title: 'Optimal Wiring',
-    subtitle: 'Minimum cables to connect everything',
-    description: "Prim's MST algorithm. Finds the minimum set of links needed to keep all nodes connected at lowest cost.",
+    title: 'Optimal Cabling Plan',
+    subtitle: 'Find the minimum links needed for full connectivity',
+    description: "Identifies redundant links in your topology and shows the minimum set of connections needed to keep all devices reachable. Useful for cost optimization in campus and data center designs.",
     requiresSource: false,
     requiresTarget: false,
     requiresRoot: true,
@@ -166,12 +166,12 @@ export function AlgorithmSelector({
     : true
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} snapHeight={520}>
+    <BottomSheet visible={visible} onClose={onClose} snapHeight={540}>
       {step === 'choose' ? (
         <>
-          <Text style={s.title}>Visualize Algorithm</Text>
-          <Text style={s.subtitle}>Choose an algorithm to run on your topology</Text>
-          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
+          <Text style={s.title}>Analyze Network</Text>
+          <Text style={s.subtitle}>Choose an analysis to run on your current topology</Text>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
             <View style={s.cards}>
               {ALGORITHMS.map((algo) => (
                 <Pressable
@@ -286,9 +286,9 @@ export function AlgorithmSelector({
             onPress={() => setShowSteps(!showSteps)}
           >
             <View style={s.toggleLeft}>
-              <Text style={s.toggleTitle}>Show Step-by-Step Details</Text>
+              <Text style={s.toggleTitle}>Show Step-by-Step Analysis</Text>
               <Text style={s.toggleSubtitle}>
-                Explain each step and display internal queue/stack structures in a bottom panel.
+                Reveal how NetForge arrived at this result, with a running breakdown of each decision.
               </Text>
             </View>
             <View
@@ -300,7 +300,7 @@ export function AlgorithmSelector({
 
           <View style={{ marginTop: 8 }}>
             <Button
-              label="Start Visualization"
+              label="Run Analysis"
               variant="primary"
               fullWidth
               disabled={!canStart}

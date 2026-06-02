@@ -1,0 +1,3 @@
+// NetworkGraph context-aware action strings updated in NetworkGraph.tsx
+// (This file captures the toast label update for the auto-Dijkstra run)
+// The actual change is in NetworkGraph.tsx handleTap function

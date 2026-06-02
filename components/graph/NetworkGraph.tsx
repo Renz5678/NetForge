@@ -59,6 +59,7 @@ import {
 } from 'phosphor-react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { CoachMark } from '@/components/ui/CoachMark'
+import { ExplainModeToggle } from '@/components/ui/ExplainModeToggle'
 import type { Department, PathResult } from '@/types'
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
@@ -270,8 +271,8 @@ export function NetworkGraph({
             const tgtName = departments.find((d) => d.id === tgtId)?.name ?? tgtId
             setTimeout(() => {
               const toastLabel = pathFindResult
-                ? `${srcName} \u2192 ${tgtName} \u00b7 Dijkstra \u00b7 ${hops} hop${hops !== 1 ? 's' : ''}`
-                : `No path found \u00b7 Dijkstra`
+                ? `${srcName} \u2192 ${tgtName} \u00b7 ${hops} hop${hops !== 1 ? 's' : ''} \u00b7 Shortest Route Analysis`
+                : `No route found between ${srcName} and ${tgtName}`
               setToast({
                 label: toastLabel,
                 success: !!pathFindResult,
@@ -422,11 +423,11 @@ export function NetworkGraph({
         </View>
       )}
 
-      {/* Shortest path / Algorithm Hint Banner */}
+      {/* Hint banner — networking language */}
       {!vizActive && departments.length >= 2 && !sessionHasSelectedTwoNodes && !dismissAlgoHintRef.current && (
         <View style={styles.hintBanner}>
           <Text style={styles.hintBannerText}>
-            Tap two nodes to find the shortest path, or run a full algorithm.
+            Tap two devices to find the best route, or run a full network analysis.
           </Text>
         </View>
       )}
@@ -516,7 +517,7 @@ export function NetworkGraph({
         </Pressable>
       </View>
 
-      {/* "Run Algorithm" — primary action at bottom-left */}
+      {/* "Analyze Network" — primary action at bottom-left */}
       {!vizActive && departments.length >= 2 && onVisualize && (
         <Pressable
           style={({ pressed }) => [styles.exploreLink, pressed && { opacity: 0.85 }]}
@@ -527,11 +528,16 @@ export function NetworkGraph({
             onVisualize()
           }}
           accessibilityRole="button"
-          accessibilityLabel="Run Algorithm"
+          accessibilityLabel="Analyze Network"
         >
           <Play size={18} color={Colors.white} weight="fill" />
-          <Text style={styles.exploreLinkText}>Run Algorithm</Text>
+          <Text style={styles.exploreLinkText}>Analyze Network</Text>
         </Pressable>
+      )}
+
+      {/* Explain Mode Toggle — top-right corner */}
+      {departments.length >= 1 && (
+        <ExplainModeToggle style={styles.explainToggle} />
       )}
 
       <CoachMark
@@ -651,6 +657,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
     color: Colors.white,
+  },
+  explainToggle: {
+    position: 'absolute',
+    top: 10,
+    right: 16,
+    zIndex: 11,
   },
   hintBanner: {
     position: 'absolute',

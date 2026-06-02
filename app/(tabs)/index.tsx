@@ -11,13 +11,14 @@ import {
   Animated,
 } from 'react-native'
 import { useRouter } from 'expo-router'
-import { Plus, ArrowRight, Folder, TreeStructure } from 'phosphor-react-native'
+import { Plus, ArrowRight, Folder, TreeStructure, Atom } from 'phosphor-react-native'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { MetricTile } from '@/components/ui/MetricTile'
 import { ActivityItem } from '@/components/ui/ActivityItem'
 import { Colors } from '@/constants/colors'
 import { getGreeting, formatRelativeTime, pluralize } from '@/lib/formatters'
+import { NETWORK_TEMPLATES } from '@/lib/templates'
 import type { NetworkConfig } from '@/types'
 import { NetForgeLogo } from '@/components/ui/NetForgeLogo'
 
@@ -103,10 +104,28 @@ function HomeSkeleton() {
   )
 }
 
+// Template scenario card
+function TemplateCard({ template, onPress }: { template: typeof NETWORK_TEMPLATES[0], onPress: () => void }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.templateCard, pressed && { opacity: 0.85 }]}
+      onPress={onPress}
+    >
+      <Text style={styles.templateEmoji}>{template.emoji}</Text>
+      <View style={styles.templateBody}>
+        <Text style={styles.templateName} numberOfLines={1}>{template.name}</Text>
+        <Text style={styles.templateDesc} numberOfLines={2}>{template.description}</Text>
+        <Text style={styles.templateTeaser} numberOfLines={2}>{template.algorithmTeaser}</Text>
+      </View>
+      <ArrowRight size={14} color={Colors.primary} />
+    </Pressable>
+  )
+}
+
 export default function HomeScreen() {
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
-  const { configs, loadConfigs, loading } = useConfigStore()
+  const { configs, loadConfigs, loading, createConfig, setActiveConfig } = useConfigStore()
 
   useEffect(() => {
     if (user?.id) loadConfigs(user.id)
@@ -204,6 +223,36 @@ export default function HomeScreen() {
                 )
               }}
             />
+
+            {/* Network Scenarios */}
+            <View style={styles.sectionHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Atom size={14} color={Colors.textMuted} />
+                <Text style={styles.sectionLabel}>NETWORK SCENARIOS</Text>
+              </View>
+            </View>
+            <View style={styles.templateList}>
+              {NETWORK_TEMPLATES.map((template) => (
+                <TemplateCard
+                  key={template.id}
+                  template={template}
+                  onPress={async () => {
+                    if (!user?.id) return
+                    const { getTemplateConfig } = await import('@/lib/templates')
+                    const config = getTemplateConfig(template.id, user.id)
+                    if (!config) return
+                    // Add to store locally
+                    const store = useConfigStore.getState()
+                    const existing = store.configs.find((c) => c.id === config.id)
+                    if (!existing) {
+                      await store.updateConfig(config)
+                    }
+                    store.setActiveConfig(config.id)
+                    router.push(`/config/${config.id}`)
+                  }}
+                />
+              ))}
+            </View>
 
             {/* Metric Tiles or illustrated Empty State */}
             {configs.length === 0 ? (
@@ -401,6 +450,48 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
     marginBottom: 16,
+  },
+  templateList: {
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    gap: 8,
+  },
+  templateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 14,
+  },
+  templateEmoji: {
+    fontSize: 26,
+    width: 38,
+    textAlign: 'center',
+  },
+  templateBody: {
+    flex: 1,
+    gap: 2,
+  },
+  templateName: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: Colors.textPrimary,
+  },
+  templateDesc: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 17,
+  },
+  templateTeaser: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    color: Colors.primary,
+    marginTop: 4,
+    lineHeight: 15,
   },
   emptyStateButton: {
     backgroundColor: Colors.primary,

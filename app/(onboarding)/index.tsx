@@ -1,294 +1,342 @@
-import React, { useState } from 'react'
+// app/(onboarding)/index.tsx
+// 7-step interactive product walkthrough.
+// Philosophy: Teach networking concepts through hands-on interaction.
+// Algorithms are revealed naturally as explanations of what NetForge does.
+// Never "this is an algorithm tutorial" — always "here's what your network is doing."
+
+import React, { useState, useRef } from 'react'
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
-  Dimensions,
   Pressable,
+  Animated,
+  Dimensions,
 } from 'react-native'
 import { useRouter } from 'expo-router'
 import { Button } from '@/components/ui/Button'
 import { Colors } from '@/constants/colors'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { NetForgeLogo } from '@/components/ui/NetForgeLogo'
-import { ShieldCheck, Check } from 'phosphor-react-native'
+import {
+  ArrowsLeftRight,
+  CheckCircle,
+  Export,
+  ShieldCheck,
+  GraduationCap,
+  ArrowRight,
+  HardDrives,
+  Globe,
+  TreeStructure,
+} from 'phosphor-react-native'
+import { RouterIcon } from '@/components/ui/DeviceIcons'
 
 const { width } = Dimensions.get('window')
 
-// Slide 1: Diamond topology representation
-function TopologyIllustration() {
-  const cx = 140
-  const cy = 100
+// ─── Illustrations ──────────────────────────────────────────────────────────
+
+function TopologyBuilderIllustration({ step }: { step: number }) {
+  // Shows progressive topology building across the 3 design steps
+  const showSwitch = step >= 1
+  const showLink = step >= 2
+  const showIPs = step >= 3
 
   const nodes = [
-    { x: cx, y: 15, r: 12, fill: Colors.primary },
-    { x: cx - 90, y: 90, r: 14, fill: Colors.medium },
-    { x: cx + 90, y: 90, r: 10, fill: Colors.medium },
-    { x: cx, y: 165, r: 18, fill: Colors.pale },
-  ]
-
-  const edges = [
-    [nodes[0], nodes[1]],
-    [nodes[0], nodes[2]],
-    [nodes[1], nodes[3]],
-    [nodes[2], nodes[3]],
-    [nodes[0], nodes[3]],
-    [nodes[1], nodes[2]],
+    { x: 90, y: 80, label: 'Router', color: Colors.primary, type: 'circle' },
+    { x: 210, y: 80, label: 'Switch', color: Colors.medium, type: 'circle', show: showSwitch },
   ]
 
   return (
-    <View style={illustration.svgWrapper}>
-      {edges.map(([a, b], i) => {
-        const isDashed = i === 5
-        const len = Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2))
-        const angle = Math.atan2(b.y - a.y, b.x - a.x)
-        return (
-          <View
-            key={i}
-            style={[
-              illustration.edge,
-              {
-                left: a.x,
-                top: a.y,
-                width: len,
-                transform: [
-                  { rotate: `${angle}rad` },
-                ],
-                borderStyle: isDashed ? 'dashed' : 'solid',
-                borderColor: isDashed ? Colors.soft : Colors.ice,
-                borderTopWidth: 2,
-              },
-            ]}
-          />
-        )
-      })}
-      {nodes.map((n, i) => (
+    <View style={illus.wrapper}>
+      {/* Link between router and switch */}
+      {showLink && (
         <View
-          key={i}
           style={[
-            illustration.node,
+            illus.link,
             {
-              left: n.x - n.r,
-              top: n.y - n.r,
-              width: n.r * 2,
-              height: n.r * 2,
-              borderRadius: n.r,
-              backgroundColor: n.fill,
-              borderWidth: 2,
-              borderColor: Colors.white,
-              shadowColor: Colors.primary,
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.1,
-              shadowRadius: 4,
-              elevation: 2,
+              left: 118,
+              top: 84,
+              width: 74,
+              borderColor: Colors.vizSettled,
+              borderStyle: 'solid',
             },
           ]}
         />
-      ))}
-    </View>
-  )
-}
+      )}
 
-// Slide 2: Relaxing edges / queue representation
-function AlgorithmIllustration() {
-  const cx = 140
-  const cy = 100
+      {/* Router */}
+      <View style={[illus.node, { left: 60, top: 56, backgroundColor: Colors.primary }]}>
+        <RouterIcon size={20} color={Colors.white} />
+        <Text style={illus.nodeLabel}>Router</Text>
+      </View>
 
-  // Showing step-by-step search
-  const nodes = [
-    { x: cx - 80, y: 100, r: 14, fill: Colors.vizSettled, label: 'Start (Settled)', sub: 'g=0' },
-    { x: cx + 10, y: 40, r: 16, fill: Colors.vizInQueue, label: 'Queue', sub: 'g=5' },
-    { x: cx + 10, y: 160, r: 12, fill: Colors.vizUnvisited, label: 'Unvisited', sub: 'g=∞' },
-    { x: cx + 90, y: 100, r: 12, fill: Colors.vizUnvisited, label: 'Target', sub: 'g=∞' },
-  ]
-
-  const edges = [
-    { from: nodes[0], to: nodes[1], color: Colors.vizSettled, width: 3 },
-    { from: nodes[0], to: nodes[2], color: Colors.vizInQueue, width: 2, dashed: true },
-    { from: nodes[1], to: nodes[3], color: Colors.ice, width: 1.5 },
-    { from: nodes[2], to: nodes[3], color: Colors.ice, width: 1.5 },
-  ]
-
-  return (
-    <View style={illustration.svgWrapper}>
-      {edges.map((e, i) => {
-        const a = e.from
-        const b = e.to
-        const len = Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2))
-        const angle = Math.atan2(b.y - a.y, b.x - a.x)
-        return (
-          <View
-            key={i}
-            style={[
-              illustration.edge,
-              {
-                left: a.x,
-                top: a.y,
-                width: len,
-                transform: [
-                  { rotate: `${angle}rad` },
-                ],
-                borderStyle: e.dashed ? 'dashed' : 'solid',
-                borderColor: e.color,
-                borderTopWidth: e.width,
-              },
-            ]}
-          />
-        )
-      })}
-      {nodes.map((n, i) => (
-        <View
-          key={i}
-          style={[
-            illustration.node,
-            {
-              left: n.x - n.r,
-              top: n.y - n.r,
-              width: n.r * 2,
-              height: n.r * 2,
-              borderRadius: n.r,
-              backgroundColor: n.fill,
-              borderWidth: 2,
-              borderColor: Colors.white,
-              justifyContent: 'center',
-              alignItems: 'center',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.08,
-              shadowRadius: 3,
-              elevation: 2,
-            },
-          ]}
-        >
-          <Text style={{ fontSize: 9, fontWeight: 'bold', color: Colors.textPrimary }}>
-            {n.sub}
-          </Text>
+      {/* Switch */}
+      {showSwitch && (
+        <View style={[illus.node, { left: 178, top: 56, backgroundColor: Colors.medium }]}>
+          <Globe size={20} color={Colors.white} weight="fill" />
+          <Text style={illus.nodeLabel}>Switch</Text>
         </View>
-      ))}
-      <View style={{ position: 'absolute', top: 10, left: 10, backgroundColor: `${Colors.vizSettled}15`, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-        <Text style={{ fontSize: 10, color: Colors.success, fontWeight: 'bold' }}>🟢 Settled</Text>
-      </View>
-      <View style={{ position: 'absolute', bottom: 10, right: 10, backgroundColor: `${Colors.vizInQueue}15`, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-        <Text style={{ fontSize: 10, color: Colors.warning, fontWeight: 'bold' }}>🟡 In Queue</Text>
+      )}
+
+      {/* IP Labels */}
+      {showIPs && (
+        <>
+          <View style={[illus.ipBadge, { left: 50, top: 110 }]}>
+            <Text style={illus.ipText}>10.0.0.1/30</Text>
+          </View>
+          <View style={[illus.ipBadge, { left: 166, top: 110 }]}>
+            <Text style={illus.ipText}>10.0.0.2/30</Text>
+          </View>
+        </>
+      )}
+
+      {/* Status bar */}
+      <View style={illus.statusBar}>
+        <View style={[illus.statusDot, { backgroundColor: step >= 0 ? Colors.success : Colors.border }]} />
+        <Text style={illus.statusText}>{step >= 0 ? 'Router placed' : 'Empty canvas'}</Text>
       </View>
     </View>
   )
 }
 
-// Slide 3: Validation checks / shield representation
-function ComplianceIllustration() {
+function ValidationIllustration({ passed }: { passed: boolean }) {
   const checks = [
-    { title: 'Routing Loops Check', desc: 'No cyclic paths detected', status: 'pass' },
-    { title: 'Subnet Allocations Check', desc: 'All IP addresses unique & isolated', status: 'pass' },
-    { title: 'VLAN Tag Assignment Check', desc: 'Zero collision/VLAN leaks', status: 'pass' },
+    { label: 'No routing loops', pass: true },
+    { label: 'IP ranges valid', pass: true },
+    { label: 'All devices reachable', pass: passed },
+    { label: 'VLAN tags assigned', pass: passed },
   ]
 
   return (
-    <View style={[illustration.svgWrapper, { justifyContent: 'center', gap: 10 }]}>
-      <View style={illustration.shield}>
-        <ShieldCheck size={20} color={Colors.success} weight="fill" />
-        <Text style={{ fontSize: 13, fontWeight: 'bold', color: Colors.success }}>COMPLIANT</Text>
-      </View>
-      <View style={{ gap: 6, width: '100%', paddingHorizontal: 20 }}>
+    <View style={illus.wrapper}>
+      <View style={illus.checkList}>
         {checks.map((c, i) => (
-          <View key={i} style={illustration.checkRow}>
-            <Check size={14} color={Colors.success} weight="bold" style={{ marginTop: 2 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={illustration.checkTitle}>{c.title}</Text>
-              <Text style={illustration.checkDesc}>{c.desc}</Text>
-            </View>
+          <View key={i} style={illus.checkRow}>
+            {c.pass ? (
+              <CheckCircle size={16} color={Colors.success} weight="fill" />
+            ) : (
+              <View style={illus.warningDot} />
+            )}
+            <Text style={[illus.checkLabel, { color: c.pass ? Colors.textPrimary : Colors.warning }]}>
+              {c.label}
+            </Text>
           </View>
         ))}
       </View>
+      <View style={[illus.validBadge, { borderColor: passed ? Colors.success : Colors.warning, backgroundColor: passed ? Colors.successContainer : Colors.warningContainer }]}>
+        <ShieldCheck size={14} color={passed ? Colors.success : Colors.warning} weight="fill" />
+        <Text style={[illus.validBadgeText, { color: passed ? Colors.success : Colors.warning }]}>
+          {passed ? 'Topology Valid' : '1 Warning'}
+        </Text>
+      </View>
     </View>
   )
 }
 
+function RouteIllustration() {
+  const pathNodes = ['Router', 'Switch', 'PC-A']
+  return (
+    <View style={illus.wrapper}>
+      <View style={illus.routeRow}>
+        {pathNodes.map((n, i) => (
+          <React.Fragment key={n}>
+            <View style={[illus.routeNode, { backgroundColor: i === 0 ? Colors.primary : i === pathNodes.length - 1 ? Colors.vizPath : Colors.medium }]}>
+              <Text style={illus.routeNodeText}>{n}</Text>
+            </View>
+            {i < pathNodes.length - 1 && (
+              <ArrowRight size={14} color={Colors.vizSettled} />
+            )}
+          </React.Fragment>
+        ))}
+      </View>
+
+      <View style={illus.routeResult}>
+        <Text style={illus.routeResultText}>
+          Best route: 2 hops · Cost: 2
+        </Text>
+      </View>
+
+      <View style={illus.ospfNote}>
+        <GraduationCap size={13} color={Colors.primary} weight="fill" />
+        <Text style={illus.ospfNoteText}>
+          NetForge uses the same shortest-path logic as OSPF
+        </Text>
+      </View>
+    </View>
+  )
+}
+
+function ExportIllustration() {
+  const lines = [
+    'interface GigabitEthernet0/0',
+    ' ip address 10.0.0.1 255.255.255.252',
+    ' no shutdown',
+    '!',
+    'router ospf 1',
+    ' network 10.0.0.0 0.0.0.3 area 0',
+  ]
+  return (
+    <View style={illus.wrapper}>
+      <View style={illus.cliBox}>
+        {lines.map((line, i) => (
+          <Text key={i} style={[illus.cliLine, { color: line.startsWith('interface') || line.startsWith('router') ? Colors.vizPath : line.startsWith(' ip') || line.startsWith(' network') ? Colors.vizSettled : Colors.textMuted }]}>
+            {line}
+          </Text>
+        ))}
+      </View>
+      <View style={illus.exportBadge}>
+        <Export size={13} color={Colors.primary} />
+        <Text style={illus.exportBadgeText}>Cisco IOS CLI Ready</Text>
+      </View>
+    </View>
+  )
+}
+
+// ─── Slide definitions ───────────────────────────────────────────────────────
+type Slide = {
+  icon: React.ReactNode
+  title: string
+  subtitle: string
+  illustration: React.ReactNode
+  tip?: string
+  tipLabel?: string
+}
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 export default function OnboardingScreen() {
   const router = useRouter()
   const [activeSlide, setActiveSlide] = useState(0)
+  const fadeAnim = useRef(new Animated.Value(1)).current
 
-  const slides = [
+  const slides: Slide[] = [
     {
-      title: 'Design & Wire Networks',
-      subtitle: 'Build interactive network topologies. Connect subnets visually, configure routing paths, and design network hardware without spreadsheets.',
-      illustration: <TopologyIllustration />,
+      icon: <RouterIcon size={24} color={Colors.primary} />,
+      title: 'Design Networks Visually',
+      subtitle: 'Drop routers, switches, firewalls, and WAN uplinks onto a canvas. Wire them together in seconds.',
+      illustration: <TopologyBuilderIllustration step={0} />,
     },
     {
-      title: 'Expose Routing Algorithms',
-      subtitle: 'Never treat networks like a black box. Watch Dijkstra, A* Search, Kahn\'s Topological Sort, and Prim\'s MST work step-by-step with live queues.',
-      illustration: <AlgorithmIllustration />,
+      icon: <Globe size={24} color={Colors.primary} weight="fill" />,
+      title: 'Add Switches & Connect Devices',
+      subtitle: 'Tap a node to configure ports, VLANs, and IP addresses. Drag to connect devices with smart link snapping.',
+      illustration: <TopologyBuilderIllustration step={1} />,
     },
     {
-      title: 'Real-time Compliance',
-      subtitle: 'Automatically check for network loops, IP range collisions, isolated nodes, and VLAN conflicts as you draw your layout.',
-      illustration: <ComplianceIllustration />,
+      icon: <ArrowsLeftRight size={24} color={Colors.primary} weight="fill" />,
+      title: 'Wire & Configure Interfaces',
+      subtitle: 'Assign IP addresses to router interfaces, configure trunk and access VLAN ports on switches.',
+      illustration: <TopologyBuilderIllustration step={2} />,
+      tip: 'Each physical link corresponds to a real interface on the device.',
+      tipLabel: 'Interface tip',
+    },
+    {
+      icon: <ShieldCheck size={24} color={Colors.primary} weight="fill" />,
+      title: 'Live Validation',
+      subtitle: 'NetForge automatically checks for routing loops, IP conflicts, isolated devices, and VLAN mismatches as you build.',
+      illustration: <ValidationIllustration passed={true} />,
+      tip: 'Validation runs in real-time. You\'ll see warnings the moment a problem appears.',
+      tipLabel: 'Always-on',
+    },
+    {
+      icon: <ArrowRight size={24} color={Colors.primary} weight="fill" />,
+      title: 'Find the Best Route',
+      subtitle: 'Tap any two devices to instantly trace the best path between them. NetForge shows every hop and the routing decision.',
+      illustration: <RouteIllustration />,
+      tip: 'Behind the scenes, NetForge uses the same shortest-path logic found in OSPF — Dijkstra\'s algorithm. You can reveal the full step-by-step analysis anytime.',
+      tipLabel: 'How it works',
+    },
+    {
+      icon: <GraduationCap size={24} color={Colors.primary} weight="fill" />,
+      title: 'Understand Every Decision',
+      subtitle: 'Enable Explain Mode to see why routes were selected, why validation failed, and how redundant links are optimized.',
+      illustration: <ValidationIllustration passed={false} />,
+      tip: 'Explain Mode never interrupts your workflow. It only reveals details when you want them.',
+      tipLabel: 'Optional depth',
+    },
+    {
+      icon: <Export size={24} color={Colors.primary} weight="fill" />,
+      title: 'Export to Cisco CLI',
+      subtitle: 'When you\'re happy with the design, export production-ready Cisco IOS configuration scripts with one tap.',
+      illustration: <ExportIllustration />,
     },
   ]
 
   const handleNext = () => {
-    if (activeSlide < slides.length - 1) {
-      setActiveSlide(activeSlide + 1)
-    }
+    if (activeSlide >= slides.length - 1) return
+    Animated.sequence([
+      Animated.timing(fadeAnim, { toValue: 0, duration: 120, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]).start()
+    setActiveSlide(activeSlide + 1)
   }
 
-  const handleSkip = () => {
-    setActiveSlide(slides.length - 1)
-  }
+  const handleSkip = () => setActiveSlide(slides.length - 1)
 
   const current = slides[activeSlide]
+  const isLast = activeSlide === slides.length - 1
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top Header / Skip Button */}
+      {/* Header */}
       <View style={styles.headerRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <NetForgeLogo size={28} />
           <Text style={styles.wordmark}>NetForge</Text>
         </View>
-        {activeSlide < slides.length - 1 && (
+        {!isLast && (
           <Pressable onPress={handleSkip} style={styles.skipButton}>
             <Text style={styles.skipText}>Skip</Text>
           </Pressable>
         )}
       </View>
 
-      {/* Slide Content */}
-      <View style={styles.content}>
+      {/* Progress dots */}
+      <View style={styles.dotsRow}>
+        {slides.map((_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.dot,
+              activeSlide === i ? styles.dotActive : activeSlide > i ? styles.dotDone : styles.dotInactive,
+            ]}
+          />
+        ))}
+      </View>
+
+      <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+        {/* Step badge */}
+        <View style={styles.stepBadge}>
+          {current.icon}
+          <Text style={styles.stepBadgeText}>Step {activeSlide + 1} of {slides.length}</Text>
+        </View>
+
+        {/* Illustration */}
         <View style={styles.illustrationWrapper}>
           {current.illustration}
         </View>
 
+        {/* Text */}
         <View style={styles.textContainer}>
           <Text style={styles.slideTitle}>{current.title}</Text>
           <Text style={styles.slideSubtitle}>{current.subtitle}</Text>
         </View>
 
-        {/* Page Dots */}
-        <View style={styles.dotsRow}>
-          {slides.map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                activeSlide === i ? styles.dotActive : styles.dotInactive,
-              ]}
-            />
-          ))}
-        </View>
-      </View>
+        {/* Tip / Educational reveal */}
+        {current.tip && (
+          <View style={styles.tipCard}>
+            <View style={styles.tipHeader}>
+              <GraduationCap size={14} color={Colors.primary} weight="fill" />
+              <Text style={styles.tipLabel}>{current.tipLabel ?? 'Tip'}</Text>
+            </View>
+            <Text style={styles.tipText}>{current.tip}</Text>
+          </View>
+        )}
+      </Animated.View>
 
-      {/* Interactive Navigation / Auth Buttons */}
+      {/* Action buttons */}
       <View style={styles.buttons}>
-        {activeSlide < slides.length - 1 ? (
-          <Button
-            label="Next"
-            variant="primary"
-            fullWidth
-            onPress={handleNext}
-          />
-        ) : (
+        {isLast ? (
           <>
             <Button
               label="Create account"
@@ -304,7 +352,7 @@ export default function OnboardingScreen() {
             />
             {__DEV__ && (
               <Button
-                label="Continue in Offline Mode (Bypass)"
+                label="Continue in Offline Mode"
                 variant="ghost"
                 fullWidth
                 onPress={async () => {
@@ -314,6 +362,13 @@ export default function OnboardingScreen() {
               />
             )}
           </>
+        ) : (
+          <Button
+            label={activeSlide === slides.length - 2 ? "Let's go →" : 'Next'}
+            variant="primary"
+            fullWidth
+            onPress={handleNext}
+          />
         )}
       </View>
     </SafeAreaView>
@@ -347,24 +402,60 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textMuted,
   },
+  dotsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 16,
+  },
+  dot: {
+    height: 6,
+    borderRadius: 3,
+  },
+  dotActive: {
+    width: 20,
+    backgroundColor: Colors.primary,
+  },
+  dotDone: {
+    width: 6,
+    backgroundColor: Colors.medium,
+  },
+  dotInactive: {
+    width: 6,
+    backgroundColor: Colors.ice,
+  },
   content: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 20,
+  },
+  stepBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: `${Colors.primary}10`,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}20`,
+    marginBottom: 20,
+  },
+  stepBadgeText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    color: Colors.primary,
   },
   illustrationWrapper: {
-    height: 200,
     width: '100%',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
   },
   textContainer: {
     alignItems: 'center',
-    paddingHorizontal: 10,
-    marginBottom: 24,
-    gap: 12,
+    gap: 10,
+    marginBottom: 16,
+    paddingHorizontal: 8,
   },
   slideTitle: {
     fontFamily: 'Inter_600SemiBold',
@@ -379,24 +470,30 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-  dotsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+  tipCard: {
+    width: '100%',
+    backgroundColor: `${Colors.primary}08`,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}20`,
+    padding: 14,
     gap: 8,
-    marginTop: 8,
   },
-  dot: {
-    height: 8,
-    borderRadius: 4,
+  tipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
-  dotActive: {
-    width: 20,
-    backgroundColor: Colors.primary,
+  tipLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
+    color: Colors.primary,
   },
-  dotInactive: {
-    width: 8,
-    backgroundColor: Colors.ice,
+  tipText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 20,
   },
   buttons: {
     gap: 12,
@@ -404,51 +501,197 @@ const styles = StyleSheet.create({
   },
 })
 
-const illustration = StyleSheet.create({
-  svgWrapper: {
+const illus = StyleSheet.create({
+  wrapper: {
     position: 'relative',
-    width: 280,
-    height: 180,
+    width: Math.min(width - 48, 320),
+    height: 170,
     backgroundColor: Colors.surfaceAlt,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  edge: {
+  link: {
     position: 'absolute',
     height: 2,
-    transformOrigin: 'left center',
+    borderTopWidth: 2,
   },
   node: {
     position: 'absolute',
+    width: 60,
+    height: 52,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  shield: {
+  nodeLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+    color: Colors.white,
+  },
+  ipBadge: {
+    position: 'absolute',
+    backgroundColor: Colors.white,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  ipText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 9,
+    color: Colors.textSecondary,
+  },
+  statusBar: {
+    position: 'absolute',
+    bottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'center',
     gap: 6,
     backgroundColor: Colors.white,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 99,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderWidth: 1,
-    borderColor: Colors.success,
-    marginTop: 10,
+    borderColor: Colors.border,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 10,
+    color: Colors.textSecondary,
+  },
+
+  // Validation
+  checkList: {
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingTop: 16,
   },
   checkRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 8,
   },
-  checkTitle: {
+  checkLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.textPrimary,
+  },
+  warningDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.warningContainer,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+  },
+  validBadge: {
+    position: 'absolute',
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  validBadgeText: {
     fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+  },
+
+  // Route
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  routeNode: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  routeNodeText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+    color: Colors.white,
+  },
+  routeResult: {
+    backgroundColor: Colors.white,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 10,
+  },
+  routeResultText: {
+    fontFamily: 'Inter_500Medium',
     fontSize: 11,
     color: Colors.textPrimary,
   },
-  checkDesc: {
+  ospfNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: `${Colors.primary}10`,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  ospfNoteText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 10,
+    color: Colors.primary,
+    flex: 1,
+    lineHeight: 14,
+  },
+
+  // CLI export
+  cliBox: {
+    backgroundColor: Colors.textPrimary,
+    borderRadius: 10,
+    padding: 10,
+    gap: 1,
+    width: 240,
+    marginBottom: 8,
+  },
+  cliLine: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 9,
-    color: Colors.textMuted,
+    fontSize: 9.5,
+    lineHeight: 14,
+  },
+  exportBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: Colors.white,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  exportBadgeText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+    color: Colors.primary,
   },
 })

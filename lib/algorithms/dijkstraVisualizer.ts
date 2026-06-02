@@ -142,8 +142,10 @@ export function buildDijkstraSteps(
   // Step 0: Initialization
   steps.push({
     stepIndex: 0,
-    explanation: `Initializing Dijkstra from "${label(sourceId, names)}". Setting its distance to 0; all other nodes start at ∞. Adding "${label(sourceId, names)}" to the priority queue.`,
-    hint: `Initialize the search from the starting segment by setting its cumulative path cost to 0.`,
+    explanation: `Starting route analysis from "${label(sourceId, names)}" to "${label(targetId, names)}". Setting source cost to 0 — all other devices start at unknown (\u221e). This is how OSPF begins calculating next-hops.`,
+    networkingContext: `Source: ${label(sourceId, names)} → Destination: ${label(targetId, names)}`,
+    hint: `Just like a real router calculating OSPF routes, we start from the source device and fan out to discover the cheapest path to every other device.`,
+    storyPhase: 'before',
     nodeStates: snapshotNodeStates(settled, inQueue),
     priorityQueue: heap.contents.map((n) => ({ id: n.id, dist: n.dist })),
     distances: Object.fromEntries(dist),
@@ -163,8 +165,9 @@ export function buildDijkstraSteps(
     if (current.id === targetId) {
       steps.push({
         stepIndex: steps.length,
-        explanation: `Reached target "${label(targetId, names)}" with distance ${distStr(dist.get(targetId) ?? Infinity)}! Dijkstra is done.`,
-        hint: `We have reached the destination. Since we process nodes in order of minimum path cost, this path is guaranteed to be the shortest.`,
+        explanation: `Reached "${label(targetId, names)}"! Route confirmed with a total cost of ${distStr(dist.get(targetId) ?? Infinity)}. This is the lowest-cost path — the same result OSPF would have selected.`,
+        hint: `Because we always process the lowest-cost device first, the first time we reach the destination it is guaranteed to be via the optimal route.`,
+        storyPhase: 'during',
         nodeStates: snapshotNodeStates(settled, inQueue),
         priorityQueue: heap.contents.map((n) => ({ id: n.id, dist: n.dist })),
         distances: Object.fromEntries(dist),
@@ -188,13 +191,14 @@ export function buildDijkstraSteps(
     }
 
     const explanation = updatedNeighbors.length > 0
-      ? `Expanded "${label(current.id, names)}" (distance: ${distStr(current.dist)}). Relaxed edges to: ${updatedNeighbors.join(', ')}.`
-      : `Expanded "${label(current.id, names)}" (distance: ${distStr(current.dist)}). No new shorter paths found.`
+      ? `Evaluating links from "${label(current.id, names)}" (path cost: ${distStr(current.dist)}). Updated route cost to: ${updatedNeighbors.join(', ')}.`
+      : `Checked all links from "${label(current.id, names)}" (path cost: ${distStr(current.dist)}). No cheaper routes found through this device.`
 
     steps.push({
       stepIndex: steps.length,
       explanation,
-      hint: `We expand the current node and update the distance to all its connected neighbors if the new path through this node is shorter.`,
+      hint: `A real router checks all its neighbors and picks the best next-hop. NetForge does the same — updating a device's cost only if a cheaper path is found through the current device.`,
+      storyPhase: 'during',
       nodeStates: snapshotNodeStates(settled, inQueue),
       priorityQueue: heap.contents.map((n) => ({ id: n.id, dist: n.dist })),
       distances: Object.fromEntries(dist),
@@ -207,8 +211,9 @@ export function buildDijkstraSteps(
   if (finalDist === undefined || finalDist === Infinity) {
     steps.push({
       stepIndex: steps.length,
-      explanation: `No path exists from "${label(sourceId, names)}" to "${label(targetId, names)}". The queue is empty and the target was never reached.`,
-      hint: `All reachable node options have been exhausted. There are no links connecting the start and target segments.`,
+      explanation: `No route exists from "${label(sourceId, names)}" to "${label(targetId, names)}". All reachable devices were checked and the destination was never reached. In a real network, this means there is no configured path between these devices.`,
+      hint: `Check whether the devices are connected through any shared path in the topology.`,
+      storyPhase: 'after',
       nodeStates: snapshotNodeStates(settled, inQueue),
       distances: Object.fromEntries(dist),
     })
@@ -232,8 +237,9 @@ export function buildDijkstraSteps(
   // Final step: show the path
   steps.push({
     stepIndex: steps.length,
-    explanation: `Shortest path found: ${path.map((id) => `"${label(id, names)}"`).join(' → ')} — ${path.length - 1} hop${path.length - 1 !== 1 ? 's' : ''}. Highlighted in blue on the graph.`,
-    hint: `We reconstruct the shortest path by backtracking from the destination back to the source.`,
+    explanation: `Best route found: ${path.map((id) => `"${label(id, names)}"`).join(' \u2192 ')} — ${path.length - 1} hop${path.length - 1 !== 1 ? 's' : ''}. This is the same route OSPF would select. Highlighted in blue on the topology.`,
+    hint: `The path is reconstructed by tracing back from the destination to the source using the predecessor map built during route analysis.`,
+    storyPhase: 'after',
     nodeStates: snapshotNodeStates(settled, new Set(), pathSet),
     distances: Object.fromEntries(dist),
   })

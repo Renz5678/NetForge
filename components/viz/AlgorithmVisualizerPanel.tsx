@@ -40,11 +40,22 @@ type AlgorithmVisualizerPanelProps = {
 
 function getAlgorithmLabel(algorithm: string): string {
   switch (algorithm) {
-    case 'dijkstra': return "Dijkstra's Shortest Path"
-    case 'aStar': return 'A* Guided Search'
-    case 'cycleDetection': return 'Cycle Detection'
-    case 'topologicalSort': return 'Topological Sort'
-    case 'prims': return 'Optimal Wiring (Prim\'s MST)'
+    case 'dijkstra': return 'Shortest Route Analysis'
+    case 'aStar': return 'Guided Path Search'
+    case 'cycleDetection': return 'Loop Detection'
+    case 'topologicalSort': return 'Deployment Order Analysis'
+    case 'prims': return 'Optimal Cabling Plan'
+    default: return algorithm
+  }
+}
+
+function getAlgorithmTechnicalName(algorithm: string): string {
+  switch (algorithm) {
+    case 'dijkstra': return "Dijkstra's SPF Algorithm"
+    case 'aStar': return 'A* Heuristic Search'
+    case 'cycleDetection': return 'DFS Cycle Detection'
+    case 'topologicalSort': return "Kahn's Topological Sort"
+    case 'prims': return "Prim's Minimum Spanning Tree"
     default: return algorithm
   }
 }
@@ -110,6 +121,7 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
   const insets = useSafeAreaInsets()
   const translateY = useRef(new Animated.Value(PANEL_HEIGHT)).current
   const [showHint, setShowHint] = useState(false)
+  const [showTechDetails, setShowTechDetails] = useState(false)
 
   const isActive = useVisualizationStore((s) => s.isActive)
   const algorithm = useVisualizationStore((s) => s.algorithm)
@@ -253,14 +265,83 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
   const isCompleted = currentStepIndex === totalStepsVal - 1
 
   const renderResultSummary = () => {
+    // Build a networking-first impact summary
+    const buildImpactSummary = () => {
+      if (algorithm === 'dijkstra' || algorithm === 'aStar') {
+        const pathNodeIds = reconstructPathFromSet(sourceId, targetId, currentStep.nodeStates, departments)
+        const hops = pathNodeIds.length > 0 ? pathNodeIds.length - 1 : 0
+        const totalCost = currentStep.distances && targetId ? currentStep.distances[targetId] : null
+        const srcName = departments.find((d) => d.id === sourceId)?.name ?? sourceId ?? 'Source'
+        const tgtName = departments.find((d) => d.id === targetId)?.name ?? targetId ?? 'Target'
+        const nodesEvaluated = Object.keys(currentStep.nodeStates).filter(
+          (id) => currentStep.nodeStates[id] === 'settled' || currentStep.nodeStates[id] === 'path'
+        ).length
+
+        return {
+          whatHappened: pathNodeIds.length > 0
+            ? `Best route found: ${srcName} → ${tgtName} in ${hops} hop${hops !== 1 ? 's' : ''}.`
+            : `No route exists between ${srcName} and ${tgtName}.`,
+          whyItMatters: pathNodeIds.length > 0
+            ? `Traffic between these devices will follow this ${hops}-hop path. Path cost: ${totalCost !== null && totalCost !== Infinity ? totalCost : 'N/A'}.`
+            : `These devices cannot communicate. Check links and routing configuration.`,
+          behindTheScenes: `${getAlgorithmTechnicalName(algorithm)} evaluated ${nodesEvaluated} device${nodesEvaluated !== 1 ? 's' : ''} and ${Object.keys(currentStep.distances ?? {}).length} links.`,
+        }
+      }
+      if (algorithm === 'prims') {
+        const edgeCount = currentStep.mstEdges?.length ?? 0
+        const cost = currentStep.mstCost ?? 0
+        const totalLinks = departments.reduce((sum, d) => sum + d.peers.length, 0) / 2
+        const removed = Math.max(0, Math.round(totalLinks) - edgeCount)
+        return {
+          whatHappened: `Optimal cabling plan complete. ${edgeCount} links maintain full connectivity.`,
+          whyItMatters: removed > 0
+            ? `${removed} redundant link${removed !== 1 ? 's' : ''} identified. Removing them would not disconnect any device.`
+            : `All links in your topology are necessary for full connectivity.`,
+          behindTheScenes: `Prim's Minimum Spanning Tree grew from a root device, adding the lowest-cost crossing link at each step. Total MST weight: ${cost}.`,
+        }
+      }
+      if (algorithm === 'cycleDetection') {
+        const cycleNodes = Object.keys(currentStep.nodeStates).filter(
+          (id) => currentStep.nodeStates[id] === 'cycle'
+        )
+        return {
+          whatHappened: cycleNodes.length > 0
+            ? `Routing loop detected involving ${cycleNodes.length} device${cycleNodes.length !== 1 ? 's' : ''}.`
+            : `No routing loops found. Topology is loop-free.`,
+          whyItMatters: cycleNodes.length > 0
+            ? `Loops cause broadcast storms and routing instability. Fix the cyclic path before deploying.`
+            : `Your network is safe to deploy. No circular dependencies were found.`,
+          behindTheScenes: `DFS-based cycle detection traced all paths in the graph looking for back-edges that indicate cycles.`,
+        }
+      }
+      if (algorithm === 'topologicalSort') {
+        const sorted = currentStep.sortedResult ?? []
+        return {
+          whatHappened: `Startup sequence for ${sorted.length} device${sorted.length !== 1 ? 's' : ''} determined.`,
+          whyItMatters: `Bringing devices online in this order ensures each device's upstream dependencies are ready first, preventing configuration failures.`,
+          behindTheScenes: `Kahn's algorithm processed in-degree counts to find devices with no dependencies, placing them first in the startup order.`,
+        }
+      }
+      return null
+    }
+
+    const impact = buildImpactSummary()
+
     if (algorithm === 'dijkstra' || algorithm === 'aStar') {
       const pathNodeIds = reconstructPathFromSet(sourceId, targetId, currentStep.nodeStates, departments)
       const hops = pathNodeIds.length > 0 ? pathNodeIds.length - 1 : 0
       const totalCost = currentStep.distances && targetId ? currentStep.distances[targetId] : null
-
       return (
         <View style={styles.resultContainer}>
-          <Text style={styles.resultTitle}>Pathfinding Summary</Text>
+          {/* Before / After story */}
+          {impact && (
+            <View style={styles.impactBlock}>
+              <Text style={styles.impactWhatHappened}>{impact.whatHappened}</Text>
+              <Text style={styles.impactWhyItMatters}>{impact.whyItMatters}</Text>
+            </View>
+          )}
+
+          <Text style={styles.resultTitle}>Route Details</Text>
           <View style={styles.resultMetrics}>
             <View style={styles.resultMetricItem}>
               <Text style={styles.resultMetricVal}>{hops}</Text>
@@ -292,6 +373,27 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
           ) : (
             <Text style={styles.resultEmptyText}>No path was found between these segments.</Text>
           )}
+
+          {/* Behind the scenes reveal */}
+          {impact && (
+            <Pressable
+              style={styles.behindScenesToggle}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+                setShowTechDetails(!showTechDetails)
+              }}
+            >
+              <Info size={13} color={Colors.textMuted} />
+              <Text style={styles.behindScenesText}>
+                {showTechDetails ? 'Hide technical details' : 'Behind the scenes'}
+              </Text>
+            </Pressable>
+          )}
+          {showTechDetails && impact && (
+            <View style={styles.behindScenesReveal}>
+              <Text style={styles.behindScenesRevealText}>{impact.behindTheScenes}</Text>
+            </View>
+          )}
         </View>
       )
     }
@@ -301,20 +403,42 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
       const edgeCount = currentStep.mstEdges?.length ?? 0
       return (
         <View style={styles.resultContainer}>
-          <Text style={styles.resultTitle}>Minimum Spanning Tree Summary</Text>
+          {impact && (
+            <View style={styles.impactBlock}>
+              <Text style={styles.impactWhatHappened}>{impact.whatHappened}</Text>
+              <Text style={styles.impactWhyItMatters}>{impact.whyItMatters}</Text>
+            </View>
+          )}
+          <Text style={styles.resultTitle}>Cabling Plan Summary</Text>
           <View style={styles.resultMetrics}>
             <View style={styles.resultMetricItem}>
               <Text style={styles.resultMetricVal}>{edgeCount}</Text>
-              <Text style={styles.resultMetricLbl}>Edges Connected</Text>
+              <Text style={styles.resultMetricLbl}>Links in Plan</Text>
             </View>
             <View style={styles.resultMetricItem}>
               <Text style={styles.resultMetricVal}>{cost}</Text>
-              <Text style={styles.resultMetricLbl}>Total MST Weight</Text>
+              <Text style={styles.resultMetricLbl}>Total Cost</Text>
             </View>
           </View>
-          <Text style={styles.resultInfoText}>
-            Prim's algorithm successfully connected all reachable segments at the lowest cumulative link cost.
-          </Text>
+          {impact && (
+            <Pressable
+              style={styles.behindScenesToggle}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+                setShowTechDetails(!showTechDetails)
+              }}
+            >
+              <Info size={13} color={Colors.textMuted} />
+              <Text style={styles.behindScenesText}>
+                {showTechDetails ? 'Hide technical details' : 'Behind the scenes'}
+              </Text>
+            </Pressable>
+          )}
+          {showTechDetails && impact && (
+            <View style={styles.behindScenesReveal}>
+              <Text style={styles.behindScenesRevealText}>{impact.behindTheScenes}</Text>
+            </View>
+          )}
         </View>
       )
     }
@@ -329,14 +453,20 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
 
       return (
         <View style={styles.resultContainer}>
-          <Text style={styles.resultTitle}>Cycle Verification Result</Text>
+          {impact && (
+            <View style={styles.impactBlock}>
+              <Text style={styles.impactWhatHappened}>{impact.whatHappened}</Text>
+              <Text style={styles.impactWhyItMatters}>{impact.whyItMatters}</Text>
+            </View>
+          )}
+          <Text style={styles.resultTitle}>Loop Detection Result</Text>
           {cycleNodes.length > 0 ? (
             <View style={{ alignItems: 'center' }}>
               <View style={[styles.resultBadge, { backgroundColor: Colors.errorContainer, borderColor: Colors.error }]}>
-                <Text style={[styles.resultBadgeText, { color: Colors.error }]}>LOOP DETECTED</Text>
+                <Text style={[styles.resultBadgeText, { color: Colors.error }]}>ROUTING LOOP FOUND</Text>
               </View>
               <Text style={styles.resultInfoText}>
-                A loop was detected in the active routing path, circulating between these segments:
+                A routing loop was detected. Packets would circulate indefinitely between these devices:
               </Text>
               <View style={styles.resultPathRow}>
                 {cycleNodes.map((id) => {
@@ -355,8 +485,27 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
                 <Text style={[styles.resultBadgeText, { color: Colors.success }]}>LOOP FREE</Text>
               </View>
               <Text style={styles.resultInfoText}>
-                No routing loops or cyclic dependencies found in the network designer canvas.
+                No routing loops found. Your topology is safe to deploy.
               </Text>
+            </View>
+          )}
+          {impact && (
+            <Pressable
+              style={styles.behindScenesToggle}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+                setShowTechDetails(!showTechDetails)
+              }}
+            >
+              <Info size={13} color={Colors.textMuted} />
+              <Text style={styles.behindScenesText}>
+                {showTechDetails ? 'Hide technical details' : 'Behind the scenes'}
+              </Text>
+            </Pressable>
+          )}
+          {showTechDetails && impact && (
+            <View style={styles.behindScenesReveal}>
+              <Text style={styles.behindScenesRevealText}>{impact.behindTheScenes}</Text>
             </View>
           )}
         </View>
@@ -367,9 +516,15 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
       const sorted = currentStep.sortedResult ?? []
       return (
         <View style={styles.resultContainer}>
-          <Text style={styles.resultTitle}>Topological Activation Order</Text>
+          {impact && (
+            <View style={styles.impactBlock}>
+              <Text style={styles.impactWhatHappened}>{impact.whatHappened}</Text>
+              <Text style={styles.impactWhyItMatters}>{impact.whyItMatters}</Text>
+            </View>
+          )}
+          <Text style={styles.resultTitle}>Startup Sequence</Text>
           <Text style={styles.resultInfoText}>
-            Recommended startup sequence based on directional connection dependencies:
+            Bring devices online in this order to ensure upstream links are ready:
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.resultScroll}>
             <View style={styles.resultPathRow}>
@@ -377,8 +532,10 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
                 const nodeName = departments.find((d) => d.id === id)?.name ?? id
                 return (
                   <React.Fragment key={id}>
-                    <View style={styles.pathChip}>
-                      <Text style={styles.pathChipText}>{nodeName}</Text>
+                    <View style={[styles.pathChip, { borderColor: `${Colors.primary}30` }]}>
+                      <Text style={[styles.pathChipText, { color: Colors.primary }]}>
+                        {index + 1}. {nodeName}
+                      </Text>
                     </View>
                     {index < sorted.length - 1 && (
                       <ArrowRight size={14} color={Colors.textMuted} style={styles.pathArrow} />
@@ -388,6 +545,25 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
               })}
             </View>
           </ScrollView>
+          {impact && (
+            <Pressable
+              style={styles.behindScenesToggle}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+                setShowTechDetails(!showTechDetails)
+              }}
+            >
+              <Info size={13} color={Colors.textMuted} />
+              <Text style={styles.behindScenesText}>
+                {showTechDetails ? 'Hide technical details' : 'Behind the scenes'}
+              </Text>
+            </Pressable>
+          )}
+          {showTechDetails && impact && (
+            <View style={styles.behindScenesReveal}>
+              <Text style={styles.behindScenesRevealText}>{impact.behindTheScenes}</Text>
+            </View>
+          )}
         </View>
       )
     }
@@ -397,12 +573,12 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
 
   const defaultHint = () => {
     switch (algorithm) {
-      case 'dijkstra': return "Dijkstra's algorithm relaxes edges from the node with the absolute lowest path cost."
-      case 'aStar': return "A* guided search incorporates distance heuristics to locate target segments faster."
-      case 'prims': return "Prim's MST grows connected cabling spans by greedily adding the lowest weight crossing edge."
-      case 'cycleDetection': return "DFS tracking uncovers cyclic loops when it encounters a segment already in the active trace stack."
-      case 'topologicalSort': return "Kahn's algorithm orders segments by resolving inbound device dependencies."
-      default: return "Conceptual walkthrough details explaining the currently executing execution step."
+      case 'dijkstra': return 'OSPF routers use the same logic to choose next-hop routes. NetForge is calculating the lowest-cost path the same way.'
+      case 'aStar': return 'A spatial heuristic guides the search toward the target, so fewer devices need to be evaluated than a full Dijkstra sweep.'
+      case 'prims': return "NetForge is growing a 'minimum cabling tree' by always picking the cheapest available link that connects a new device."
+      case 'cycleDetection': return 'DFS tracks which devices are currently being traced. A routing loop is detected when a device is encountered that is already in the current trace path.'
+      case 'topologicalSort': return "Devices with no dependencies (nothing they need to wait for) are activated first. This mirrors how a real data center powers up hardware in dependency order."
+      default: return 'This step is part of the automated analysis running on your network topology.'
     }
   }
 
@@ -426,7 +602,7 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.algoBadge}>
-            <Text style={styles.algoBadgeText}>ALGO</Text>
+            <Text style={styles.algoBadgeText}>NETWORK</Text>
           </View>
           <Text style={styles.title} numberOfLines={1}>
             {getAlgorithmLabel(algorithm)}
@@ -912,6 +1088,53 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 10,
     alignItems: 'stretch',
+  },
+  impactBlock: {
+    backgroundColor: `${Colors.primary}08`,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
+    gap: 4,
+  },
+  impactWhatHappened: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: Colors.textPrimary,
+    lineHeight: 20,
+  },
+  impactWhyItMatters: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  behindScenesToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 6,
+  },
+  behindScenesText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  behindScenesReveal: {
+    backgroundColor: Colors.white,
+    borderRadius: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginTop: 4,
+  },
+  behindScenesRevealText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    fontStyle: 'italic',
   },
   resultTitle: {
     fontFamily: 'Inter_600SemiBold',
