@@ -158,6 +158,7 @@ export function buildPrimsSteps(
   steps.push({
     stepIndex: 0,
     explanation: `Starting Optimal Wiring from ${lbl(rootId)}. This node is now in the MST (green). We see ${frontier.size} reachable neighbor${frontier.size !== 1 ? 's' : ''} on the frontier (yellow). The cheapest crossing edge will be added next.`,
+    hint: `Initialize the Minimum Spanning Tree from the root segment and add all adjacent outgoing links to the frontier.`,
     nodeStates: snapshotStates(frontier),
     mstEdges: [],
     mstCost: 0,
@@ -173,6 +174,7 @@ export function buildPrimsSteps(
       steps.push({
         stepIndex: steps.length,
         explanation: `Considered adding ${lbl(entry.nodeId)} via ${lbl(entry.fromId ?? '')} (cost ${entry.cost}), but it's already in the MST. Skipping this crossing edge.`,
+        hint: `We ignore this link because the node it connects to has already been absorbed into the spanning tree.`,
         nodeStates: snapshotStates(frontier),
         mstEdges: [...mstEdges],
         mstCost: totalCost,
@@ -212,6 +214,7 @@ export function buildPrimsSteps(
     steps.push({
       stepIndex: steps.length,
       explanation: baseExp + frontierExp,
+      hint: `We select the cheapest link on the frontier to connect a new node, then add its neighbors to expand the frontier.`,
       nodeStates: snapshotStates(frontier, entry.nodeId),
       mstEdges: [...mstEdges],
       mstCost: totalCost,
@@ -228,6 +231,7 @@ export function buildPrimsSteps(
     explanation: isComplete
       ? `Optimal Wiring complete! The MST uses ${mstEdges.length} cable${mstEdges.length !== 1 ? 's' : ''} with a total cost of ${totalCost} hop${totalCost !== 1 ? 's' : ''}. This is the minimum number of links needed to keep all ${departments.length} nodes connected.`
       : `Wiring stopped — only ${inMST.size} of ${departments.length} nodes are connected. The remaining nodes may be in a disconnected subgraph.`,
+    hint: `All nodes are connected in a loop-free tree using the minimum total path weight.`,
     nodeStates: snapshotStates(new Set()),
     mstEdges: [...mstEdges],
     mstCost: totalCost,

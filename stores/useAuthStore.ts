@@ -98,7 +98,12 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   restoreSession: async () => {
     try {
-      const { data } = await supabase.auth.getSession()
+      const sessionPromise = supabase.auth.getSession()
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Session restore timed out')), 30000)
+      )
+      
+      const { data } = await Promise.race([sessionPromise, timeoutPromise])
       set({
         user: data.session?.user ?? null,
         session: data.session,
@@ -117,6 +122,9 @@ export const useAuthStore = create<AuthStore>((set) => ({
   },
 
   signInAsGuest: async () => {
+    if (!__DEV__) {
+      throw new Error('Guest mode is only available in development builds')
+    }
     const mockUser = {
       id: 'offline_guest_id',
       email: 'guest@netforge.local',

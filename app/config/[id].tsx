@@ -38,10 +38,12 @@ import { useValidation } from '@/hooks/useValidation'
 import { useVisualizationStore } from '@/stores/useVisualizationStore'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
+import { SyncConflictSheet } from '@/components/ui/SyncConflictSheet'
 import { Input } from '@/components/ui/Input'
 import { PeerChip } from '@/components/ui/PeerChip'
 import { StepperInput } from '@/components/ui/StepperInput'
 import { NetworkGraph } from '@/components/graph/NetworkGraph'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { AlgorithmSelector } from '@/components/viz/AlgorithmSelector'
 import { AlgorithmVisualizerPanel } from '@/components/viz/AlgorithmVisualizerPanel'
 import { Colors } from '@/constants/colors'
@@ -51,6 +53,7 @@ import { buildCycleDetectionSteps } from '@/lib/algorithms/cycleDetectionVisuali
 import { buildTopologicalSortSteps } from '@/lib/algorithms/topologicalSortVisualizer'
 import { buildPrimsSteps } from '@/lib/algorithms/primsVisualizer'
 import type { Department, PathResult, AlgorithmType } from '@/types'
+import { DepartmentSchema } from '@/lib/validators'
 
 const generateId = () => 'dept_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9)
 
@@ -248,6 +251,7 @@ function DeptSheet({
   const [deviceCount, setDeviceCount] = useState(1)
   const [peers, setPeers] = useState<string[]>([])
   const [nameError, setNameError] = useState('')
+  const [deviceCountError, setDeviceCountError] = useState('')
 
   const [type, setType] = useState<DeviceType>('department')
   const [ports, setPorts] = useState<InterfacePort[]>([])
@@ -263,6 +267,7 @@ function DeptSheet({
       setDeviceCount(dept?.deviceCount ?? 1)
       setPeers(dept?.peers ?? [])
       setNameError('')
+      setDeviceCountError('')
 
       const resolvedType = dept?.type ?? 'department'
       setType(resolvedType)
@@ -299,15 +304,13 @@ function DeptSheet({
   }
 
   const handleSave = () => {
-    if (!name.trim()) {
-      setNameError('Device/Department name is required')
-      return
-    }
+    setNameError('')
+    setDeviceCountError('')
     
     // Compile final ports list
     const finalPorts = type === 'switch' ? switchPorts : ports;
 
-    onSave({
+    const finalDept: Department = {
       id: dept?.id ?? generateId(),
       name: name.trim(),
       deviceCount,
@@ -317,7 +320,21 @@ function DeptSheet({
       ospf: type === 'router' ? { enabled: ospfEnabled, areaId: ospfAreaId } : undefined,
       staticRoutes: type === 'router' ? staticRoutes : undefined,
       aclRules: type === 'firewall' ? aclRules : undefined,
-    })
+    }
+
+    const validationResult = DepartmentSchema.safeParse(finalDept)
+    if (!validationResult.success) {
+      const formatted = validationResult.error.format()
+      if (formatted.name) {
+        setNameError(formatted.name._errors.join(', '))
+      }
+      if (formatted.deviceCount) {
+        setDeviceCountError(formatted.deviceCount._errors.join(', '))
+      }
+      return
+    }
+
+    onSave(validationResult.data as Department)
     onClose()
   }
 
@@ -364,6 +381,11 @@ function DeptSheet({
           <View style={deptSheet.field}>
             <Text style={deptSheet.label}>Number of End Devices</Text>
             <StepperInput value={deviceCount} onChange={setDeviceCount} min={1} />
+            {deviceCountError ? (
+              <Text style={{ color: Colors.error, fontSize: 12, marginTop: 4, fontFamily: 'Inter_500Medium' }}>
+                {deviceCountError}
+              </Text>
+            ) : null}
           </View>
         )}
 
@@ -1193,17 +1215,19 @@ export default function ConfigDetailScreen() {
       {/* Graph view */}
       {activeTab === 'graph' && (
         <View style={{ flex: 1, position: 'relative' }}>
-          <NetworkGraph
-            departments={departments}
-            onPathFound={handlePathFound}
-            onVisualize={() => setShowVizSelector(true)}
-            validationWarnings={
-              [validation.cycleCheck, validation.allocationCheck,
-               validation.connectivityCheck, validation.vlanCheck
-              ].filter(c => !c.passed).length
-            }
-            validationPassed={allPass}
-          />
+          <ErrorBoundary inline inlineLabel="Network Graph">
+            <NetworkGraph
+              departments={departments}
+              onPathFound={handlePathFound}
+              onVisualize={() => setShowVizSelector(true)}
+              validationWarnings={
+                [validation.cycleCheck, validation.allocationCheck,
+                 validation.connectivityCheck, validation.vlanCheck
+                ].filter(c => !c.passed).length
+              }
+              validationPassed={allPass}
+            />
+          </ErrorBoundary>
 
           {/* Floating Validation Warning Bar */}
           {!allPass && (
@@ -1360,6 +1384,8 @@ export default function ConfigDetailScreen() {
           </View>
         </View>
       </BottomSheet>
+      
+      <SyncConflictSheet />
     </SafeAreaView>
 
   )

@@ -152,6 +152,7 @@ export function buildAStarSteps(
   steps.push({
     stepIndex: 0,
     explanation: `Initializing A* from ${lbl(sourceId)} to ${lbl(targetId)}. g(start)=0, h(start)=${h0.toFixed(2)} (Euclidean estimate to target). f=g+h=${h0.toFixed(2)}.`,
+    hint: `We initialize A* with g(start)=0 and estimate the remaining distance to target (h) using geometric coordinates.`,
     nodeStates: snapshotStates(),
     priorityQueue: openSet.contents.map((n) => ({ id: n.id, dist: n.g, f: n.f, h: euclideanH(n.id, targetId, nodePositions) })),
     distances: Object.fromEntries(gScore),
@@ -172,6 +173,7 @@ export function buildAStarSteps(
       steps.push({
         stepIndex: steps.length,
         explanation: `Reached ${lbl(targetId)}! g=${distStr(current.g)} hops. A* is done — the heuristic guided us there efficiently.`,
+        hint: `The target node was dequeued from the priority queue, showing that the shortest path has been calculated.`,
         nodeStates: snapshotStates(),
         priorityQueue: openSet.contents.map((n) => ({ id: n.id, dist: n.g, f: n.f, h: euclideanH(n.id, targetId, nodePositions) })),
         distances: Object.fromEntries(gScore),
@@ -206,6 +208,7 @@ export function buildAStarSteps(
     steps.push({
       stepIndex: steps.length,
       explanation,
+      hint: `We compute the estimated total cost f(n) = g(n) + h(n) for all neighbors, sorting the priority queue so we search towards the target first.`,
       nodeStates: snapshotStates(),
       priorityQueue: openSet.contents.map((n) => ({ id: n.id, dist: n.g, f: n.f, h: euclideanH(n.id, targetId, nodePositions) })),
       distances: Object.fromEntries(gScore),
@@ -218,6 +221,7 @@ export function buildAStarSteps(
     steps.push({
       stepIndex: steps.length,
       explanation: `No path found from ${lbl(sourceId)} to ${lbl(targetId)}.`,
+      hint: `All possible directions have been evaluated, but no linked connection links the source and destination.`,
       nodeStates: snapshotStates(),
       distances: Object.fromEntries(gScore),
     })
@@ -241,6 +245,7 @@ export function buildAStarSteps(
   steps.push({
     stepIndex: steps.length,
     explanation: `A* path: ${path.map((id) => `"${names.get(id) ?? id}"`).join(' → ')} — ${path.length - 1} hop${path.length - 1 !== 1 ? 's' : ''}. A* explored only ${visitedNodeIds.size} node${visitedNodeIds.size !== 1 ? 's' : ''} — compare with Dijkstra to see the heuristic's efficiency.`,
+    hint: `By backtracking through the previous parent node pointers, we trace the final path.`,
     nodeStates: snapshotStates(pathSet),
     distances: Object.fromEntries(gScore),
   })

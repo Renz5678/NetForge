@@ -150,6 +150,7 @@ export type PrimsResult = {
 export type VisualizationStep = {
   stepIndex: number
   explanation: string                          // Plain-English description of this step
+  hint?: string                                // Conceptual hint for "Why this step?"
   nodeStates: Record<string, NodeVizState>     // Visual state per node ID
   edgeStates?: Record<string, EdgeVizState>    // Visual state per "srcId→targetId" edge key
 

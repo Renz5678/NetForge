@@ -8,6 +8,7 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import Toast from 'react-native-toast-message'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { Colors } from '@/constants/colors'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 function RootLayoutNav() {
   const session = useAuthStore((s) => s.session)
@@ -17,11 +18,27 @@ function RootLayoutNav() {
   const router = useRouter()
 
   useEffect(() => {
+    let isCancelled = false
     let unsubscribe: (() => void) | undefined
-    restoreSession().then((unsub) => {
-      unsubscribe = unsub
-    })
+    restoreSession()
+      .then((unsub) => {
+        if (isCancelled) {
+          unsub()
+        } else {
+          unsubscribe = unsub
+        }
+      })
+      .catch((err) => {
+        if (!isCancelled) {
+          Toast.show({
+            type: 'error',
+            text1: 'Authentication Error',
+            text2: err instanceof Error ? err.message : 'Failed to restore session',
+          })
+        }
+      })
     return () => {
+      isCancelled = true
       unsubscribe?.()
     }
   }, [])
@@ -73,13 +90,15 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <RootLayoutNav />
-        <StatusBar style="dark" />
-        <Toast />
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={styles.root}>
+        <SafeAreaProvider>
+          <RootLayoutNav />
+          <StatusBar style="dark" />
+          <Toast />
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   )
 }
 

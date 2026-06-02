@@ -9,5 +9,5 @@
     },
     "baseUrl": "."
   },
-  "include": ["__tests__/**/*.ts", "lib/**/*.ts", "types/**/*.ts"]
+  "include": ["__tests__/**/*.ts", "lib/**/*.ts", "types/**/*.ts", "stores/**/*.ts", "expo-env.d.ts"]
 }

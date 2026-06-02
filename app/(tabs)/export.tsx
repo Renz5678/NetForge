@@ -18,6 +18,7 @@ import { useConfigStore } from '@/stores/useConfigStore'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { generateFullTopologyConfig } from '@/lib/configGenerator'
 import { Colors } from '@/constants/colors'
+import { useRouter } from 'expo-router'
 
 function highlightCiscoIOS(text: string): React.ReactNode {
   const lines = text.split('\n')
@@ -61,6 +62,7 @@ function highlightCiscoIOS(text: string): React.ReactNode {
 }
 
 export default function ExportScreen() {
+  const router = useRouter()
   const activeConfig = useConfigStore((s) => s.activeConfig)
   const configs = useConfigStore((s) => s.configs)
   const setActiveConfig = useConfigStore((s) => s.setActiveConfig)
@@ -86,12 +88,12 @@ export default function ExportScreen() {
       return
     }
     setSharing(true)
+    let file: File | null = null
     try {
       const filename = `${activeConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_cisco_ios.txt`
-      const file = new File(Paths.cache, filename)
+      file = new File(Paths.cache, filename)
       file.write(configText)
       await Sharing.shareAsync(file.uri, {
-
         mimeType: 'text/plain',
         dialogTitle: `Export ${activeConfig.name} — Cisco IOS Config`,
         UTI: 'public.plain-text',
@@ -100,6 +102,13 @@ export default function ExportScreen() {
       Alert.alert('Export Failed', 'Could not write or share the configuration file.')
       console.error('Export error:', err)
     } finally {
+      if (file && file.exists) {
+        try {
+          file.delete()
+        } catch (delErr) {
+          console.warn('Failed to delete temp export file:', delErr)
+        }
+      }
       setSharing(false)
     }
   }, [activeConfig, configText])
@@ -118,15 +127,20 @@ export default function ExportScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      {/* Consistent Fixed Header */}
+      <View style={styles.fixedHeader}>
+        <Text style={styles.fixedHeaderTitle}>Config Export</Text>
+      </View>
+
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
-        {/* Header */}
+        {/* Intro Header */}
         <View style={styles.header}>
           <View style={styles.headerIconWrap}>
             <Export size={28} color={Colors.primary} weight="duotone" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>Config Export</Text>
+            <Text style={styles.headerTitle}>Cisco Export</Text>
             <Text style={styles.headerSub}>Generate Cisco IOS CLI scripts from your topology</Text>
           </View>
         </View>
@@ -171,7 +185,15 @@ export default function ExportScreen() {
           <View style={styles.emptyCard}>
             <Export size={48} color={Colors.pale} weight="duotone" />
             <Text style={styles.emptyTitle}>No Active Config Selected</Text>
-            <Text style={styles.emptyBody}>Go to the Configs tab and open a topology to enable export.</Text>
+            <Text style={styles.emptyBody}>Open a configuration to export its Cisco CLI script.</Text>
+            <View style={{ marginTop: 12, width: 180 }}>
+              <Pressable
+                style={[styles.actionBtn, styles.actionBtnOutline, { paddingVertical: 10 }]}
+                onPress={() => router.push('/(tabs)/configs')}
+              >
+                <Text style={styles.actionBtnOutlineText}>Go to Configs</Text>
+              </Pressable>
+            </View>
           </View>
         )}
 
@@ -247,6 +269,20 @@ export default function ExportScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
+  fixedHeader: {
+    height: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: Colors.white,
+  },
+  fixedHeaderTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 18,
+    color: Colors.primary,
+  },
   container: { padding: 20, paddingBottom: 40 },
 
   header: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 24 },

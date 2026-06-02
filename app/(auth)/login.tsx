@@ -10,12 +10,13 @@ import {
   SafeAreaView,
 } from 'react-native'
 import { useRouter } from 'expo-router'
-import { Eye, EyeSlash } from 'phosphor-react-native'
+import { Eye, EyeSlash, Lightning } from 'phosphor-react-native'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { Colors } from '@/constants/colors'
+import { NetForgeLogo } from '@/components/ui/NetForgeLogo'
 
 export default function LoginScreen() {
   const router = useRouter()
@@ -78,7 +79,7 @@ export default function LoginScreen() {
           {/* App icon */}
           <View style={styles.iconContainer}>
             <View style={styles.appIcon}>
-              <Text style={styles.appIconText}>✳</Text>
+              <NetForgeLogo size={42} color={Colors.white} />
             </View>
           </View>
 
@@ -153,15 +154,20 @@ export default function LoginScreen() {
             </View>
 
             {/* Guest Sandbox Mode Option */}
-            <Pressable
-              style={styles.guestButton}
-              onPress={async () => {
-                await useAuthStore.getState().signInAsGuest()
-                router.replace('/(tabs)')
-              }}
-            >
-              <Text style={styles.guestButtonText}>⚡ Continue as Guest (Offline Mode)</Text>
-            </Pressable>
+            {__DEV__ && (
+              <Pressable
+                style={styles.guestButton}
+                onPress={async () => {
+                  await useAuthStore.getState().signInAsGuest()
+                  router.replace('/(tabs)')
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Lightning size={16} color={Colors.primary} weight="fill" />
+                  <Text style={styles.guestButtonText}>Continue as Guest (Offline Mode)</Text>
+                </View>
+              </Pressable>
+            )}
           </Card>
 
           {/* Sign up link */}

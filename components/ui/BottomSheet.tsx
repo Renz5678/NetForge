@@ -8,6 +8,7 @@ import {
   Dimensions,
   Platform,
   KeyboardAvoidingView,
+  PanResponder,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors } from '@/constants/colors'
@@ -57,6 +58,43 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
     }
   }, [visible, translateY, opacity])
 
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          translateY.setValue(gestureState.dy)
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 80 || gestureState.vy > 0.5) {
+          Animated.parallel([
+            Animated.timing(translateY, {
+              toValue: SCREEN_HEIGHT,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacity, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            onClose()
+          })
+        } else {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 100,
+            friction: 12,
+          }).start()
+        }
+      },
+    })
+  ).current
+
   const sheetHeight =
     snapHeight === 'auto' ? undefined : snapHeight
 
@@ -73,7 +111,7 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
         style={styles.overlay}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-        <Animated.View style={[styles.backdrop, { opacity }]}>
+        <Animated.View style={[styles.backdrop, { opacity }]} accessibilityViewIsModal={true}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
         <Animated.View
@@ -84,8 +122,8 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
             { paddingBottom: insets.bottom + 16 },
           ]}
         >
-          {/* Handle bar */}
-          <View style={styles.handleContainer}>
+          {/* Handle bar with PanResponder */}
+          <View style={styles.handleContainer} {...panResponder.panHandlers}>
             <View style={styles.handle} />
           </View>
           {children}

@@ -2,6 +2,8 @@ import React from 'react'
 import { Pressable, Text, StyleSheet } from 'react-native'
 import { Colors } from '@/constants/colors'
 
+import { Check } from 'phosphor-react-native'
+
 type PeerChipProps = {
   label: string
   selected: boolean
@@ -14,7 +16,7 @@ export function PeerChip({ label, selected, onPress }: PeerChipProps) {
       onPress={onPress}
       style={[styles.chip, selected ? styles.selected : styles.unselected]}
     >
-      {selected && <Text style={styles.checkmark}>✓ </Text>}
+      {selected && <Check size={14} color={Colors.white} style={{ marginRight: 4 }} />}
       <Text style={[styles.label, selected ? styles.selectedLabel : styles.unselectedLabel]}>
         {label}
       </Text>

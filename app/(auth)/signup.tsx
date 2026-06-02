@@ -10,7 +10,7 @@ import {
   SafeAreaView,
 } from 'react-native'
 import { useRouter } from 'expo-router'
-import { Eye, EyeSlash, ArrowLeft } from 'phosphor-react-native'
+import { Eye, EyeSlash, ArrowLeft, Lightning } from 'phosphor-react-native'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -178,15 +178,20 @@ export default function SignupScreen() {
             />
 
             {/* Guest Sandbox Mode Option */}
-            <Pressable
-              style={styles.guestButton}
-              onPress={async () => {
-                await useAuthStore.getState().signInAsGuest()
-                router.replace('/(tabs)')
-              }}
-            >
-              <Text style={styles.guestButtonText}>⚡ Continue as Guest (Offline Mode)</Text>
-            </Pressable>
+            {__DEV__ && (
+              <Pressable
+                style={styles.guestButton}
+                onPress={async () => {
+                  await useAuthStore.getState().signInAsGuest()
+                  router.replace('/(tabs)')
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Lightning size={16} color={Colors.primary} weight="fill" />
+                  <Text style={styles.guestButtonText}>Continue as Guest (Offline Mode)</Text>
+                </View>
+              </Pressable>
+            )}
           </View>
 
           {/* Login link */}

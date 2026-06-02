@@ -2,6 +2,7 @@ import React from 'react'
 import { Path, Text as SkiaText, RoundedRect, matchFont } from '@shopify/react-native-skia'
 import { Colors } from '@/constants/colors'
 import type { GraphNode, GraphEdge, Department, EdgeVizState } from '@/types'
+import { useVisualizationStore } from '@/stores/useVisualizationStore'
 
 const ARROW_SIZE = 8
 
@@ -17,6 +18,12 @@ const VIZ_EDGE_COLORS: Partial<Record<EdgeVizState, string>> = {
 const portFont = matchFont({
   fontFamily: 'monospace',
   fontSize: 8,
+  fontWeight: 'normal',
+})
+
+const weightFont = matchFont({
+  fontFamily: 'monospace',
+  fontSize: 9,
   fontWeight: 'normal',
 })
 
@@ -139,6 +146,10 @@ export function GraphEdgeComponent({
     strokeWidth = vizEdgeState === 'back-edge' ? 4.0 : 3.0
   }
 
+  const vizActive = useVisualizationStore((s) => s.isActive)
+  const vizAlgorithm = useVisualizationStore((s) => s.algorithm)
+  const isWeightedAlgo = vizActive && (vizAlgorithm === 'dijkstra' || vizAlgorithm === 'aStar' || vizAlgorithm === 'prims')
+
   // Port label positions: 1/3 and 2/3 along the edge
   const t1 = 0.28  // source-side label
   const t2 = 0.72  // target-side label
@@ -147,12 +158,18 @@ export function GraphEdgeComponent({
   const tgtLabelX = source.x + (target.x - source.x) * t2
   const tgtLabelY = source.y + (target.y - source.y) * t2
 
+  // Center position for edge weight
+  const midX = source.x + (target.x - source.x) * 0.5
+  const midY = source.y + (target.y - source.y) * 0.5
+
   const PILL_PADDING_X = 5
   const PILL_PADDING_Y = 3
   const PILL_H = 14
 
   const srcW = portFont.measureText(sourcePortName).width
   const tgtW = portFont.measureText(targetPortName).width
+  const weightText = "1"
+  const weightW = weightFont.measureText(weightText).width
 
   return (
     <>
@@ -169,6 +186,26 @@ export function GraphEdgeComponent({
         color={edgeColor}
         style="fill"
       />
+
+      {isWeightedAlgo && (
+        <>
+          <RoundedRect
+            x={midX - weightW / 2 - PILL_PADDING_X}
+            y={midY - PILL_H / 2 - PILL_PADDING_Y / 2}
+            width={weightW + PILL_PADDING_X * 2}
+            height={PILL_H + PILL_PADDING_Y}
+            r={4}
+            color="rgba(30,42,60,0.72)"
+          />
+          <SkiaText
+            x={midX - weightW / 2}
+            y={midY + PILL_H / 2 - 2}
+            text={weightText}
+            font={weightFont}
+            color="#C8D8EE"
+          />
+        </>
+      )}
 
       {showPorts && (
         <>

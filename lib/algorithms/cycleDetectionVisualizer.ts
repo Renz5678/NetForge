@@ -74,6 +74,7 @@ export function buildCycleDetectionSteps(
   steps.push({
     stepIndex: 0,
     explanation: `Starting cycle detection. All ${departments.length} node${departments.length !== 1 ? 's' : ''} begin unvisited (white). We will run DFS from each unvisited node to find any back-edges.`,
+    hint: `Initialize Depth-First Search. DFS color-codes nodes (white=unvisited, gray=exploring/in-stack, black=fully-explored) to trace paths.`,
     nodeStates: snapshotStates(),
     dfsStack: [],
   })
@@ -85,6 +86,7 @@ export function buildCycleDetectionSteps(
     steps.push({
       stepIndex: steps.length,
       explanation: `Visiting ${lbl(nodeId)} — marking it gray (in DFS stack). Stack depth: ${dfsStack.length}. Now exploring its ${adj.get(nodeId)?.length ?? 0} neighbor${(adj.get(nodeId)?.length ?? 0) !== 1 ? 's' : ''}.`,
+      hint: `Mark the current node as 'exploring' (gray) and push it to the active stack. A cycle exists if we run into a gray node again.`,
       nodeStates: snapshotStates(),
       dfsStack: [...dfsStack],
     })
@@ -102,6 +104,7 @@ export function buildCycleDetectionSteps(
         steps.push({
           stepIndex: steps.length,
           explanation: `Back-edge detected! ${lbl(nodeId)} → ${lbl(neighborId)}, but ${lbl(neighborId)} is already in the current DFS stack (gray). This means there is a cycle!`,
+          hint: `A back-edge represents a dependency/link pointing back to an active ancestor, which forms a closed loop.`,
           nodeStates: snapshotStates(),
           dfsStack: [...dfsStack],
           backEdge: { from: nodeId, to: neighborId },
@@ -115,6 +118,7 @@ export function buildCycleDetectionSteps(
         steps.push({
           stepIndex: steps.length,
           explanation: `${lbl(nodeId)} has an unvisited neighbor ${lbl(neighborId)}. Recursing into it.`,
+          hint: `Explore deeper by recursively visiting the unvisited neighbor node.`,
           nodeStates: snapshotStates(),
           dfsStack: [...dfsStack],
         })
@@ -124,6 +128,7 @@ export function buildCycleDetectionSteps(
         steps.push({
           stepIndex: steps.length,
           explanation: `${lbl(neighborId)} is already fully processed (black) — skipping.`,
+          hint: `We ignore this neighbor because it has already been completely explored without forming any cycle.`,
           nodeStates: snapshotStates(),
           dfsStack: [...dfsStack],
         })
@@ -136,6 +141,7 @@ export function buildCycleDetectionSteps(
     steps.push({
       stepIndex: steps.length,
       explanation: `Finished exploring ${lbl(nodeId)} — all its neighbors processed. Marking it black and popping from stack.`,
+      hint: `Since all outgoing paths from this node are exhausted, we mark it fully processed (black) and pop it from the stack.`,
       nodeStates: snapshotStates(),
       dfsStack: [...dfsStack],
     })
@@ -148,6 +154,7 @@ export function buildCycleDetectionSteps(
       steps.push({
         stepIndex: steps.length,
         explanation: `Starting new DFS tree from ${lbl(dept.id)} (it hasn't been visited yet).`,
+        hint: `In a disconnected graph, we must start a new search from any remaining unvisited node to check all components.`,
         nodeStates: snapshotStates(),
         dfsStack: [],
       })
@@ -160,6 +167,7 @@ export function buildCycleDetectionSteps(
     steps.push({
       stepIndex: steps.length,
       explanation: `DFS complete. All nodes processed with no back-edges found. This graph is acyclic — no routing loops exist!`,
+      hint: `All nodes have been successfully explored, and no closed path loops were found.`,
       nodeStates: snapshotStates(),
       dfsStack: [],
     })
@@ -189,6 +197,7 @@ export function buildCycleDetectionSteps(
   steps.push({
     stepIndex: steps.length,
     explanation: `Cycle traced: ${cycleNodeIds.map((id) => `"${names.get(id) ?? id}"`).join(' → ')}. These nodes form a routing loop. Remove one of the highlighted edges to fix it.`,
+    hint: `The cycle path is traced by backtracking through the DFS parent pointers from the end node to the start node.`,
     nodeStates: snapshotStates(cycleSet),
     dfsStack: [],
     backEdge: { from: cycleEnd, to: cycleStart },

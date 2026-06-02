@@ -143,6 +143,7 @@ export function buildDijkstraSteps(
   steps.push({
     stepIndex: 0,
     explanation: `Initializing Dijkstra from "${label(sourceId, names)}". Setting its distance to 0; all other nodes start at ∞. Adding "${label(sourceId, names)}" to the priority queue.`,
+    hint: `Initialize the search from the starting segment by setting its cumulative path cost to 0.`,
     nodeStates: snapshotNodeStates(settled, inQueue),
     priorityQueue: heap.contents.map((n) => ({ id: n.id, dist: n.dist })),
     distances: Object.fromEntries(dist),
@@ -163,6 +164,7 @@ export function buildDijkstraSteps(
       steps.push({
         stepIndex: steps.length,
         explanation: `Reached target "${label(targetId, names)}" with distance ${distStr(dist.get(targetId) ?? Infinity)}! Dijkstra is done.`,
+        hint: `We have reached the destination. Since we process nodes in order of minimum path cost, this path is guaranteed to be the shortest.`,
         nodeStates: snapshotNodeStates(settled, inQueue),
         priorityQueue: heap.contents.map((n) => ({ id: n.id, dist: n.dist })),
         distances: Object.fromEntries(dist),
@@ -192,6 +194,7 @@ export function buildDijkstraSteps(
     steps.push({
       stepIndex: steps.length,
       explanation,
+      hint: `We expand the current node and update the distance to all its connected neighbors if the new path through this node is shorter.`,
       nodeStates: snapshotNodeStates(settled, inQueue),
       priorityQueue: heap.contents.map((n) => ({ id: n.id, dist: n.dist })),
       distances: Object.fromEntries(dist),
@@ -205,6 +208,7 @@ export function buildDijkstraSteps(
     steps.push({
       stepIndex: steps.length,
       explanation: `No path exists from "${label(sourceId, names)}" to "${label(targetId, names)}". The queue is empty and the target was never reached.`,
+      hint: `All reachable node options have been exhausted. There are no links connecting the start and target segments.`,
       nodeStates: snapshotNodeStates(settled, inQueue),
       distances: Object.fromEntries(dist),
     })
@@ -229,6 +233,7 @@ export function buildDijkstraSteps(
   steps.push({
     stepIndex: steps.length,
     explanation: `Shortest path found: ${path.map((id) => `"${label(id, names)}"`).join(' → ')} — ${path.length - 1} hop${path.length - 1 !== 1 ? 's' : ''}. Highlighted in blue on the graph.`,
+    hint: `We reconstruct the shortest path by backtracking from the destination back to the source.`,
     nodeStates: snapshotNodeStates(settled, new Set(), pathSet),
     distances: Object.fromEntries(dist),
   })

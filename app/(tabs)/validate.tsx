@@ -8,7 +8,7 @@ import {
   Pressable,
 } from 'react-native'
 import { useRouter } from 'expo-router'
-import { ShieldCheck, ArrowsClockwise } from 'phosphor-react-native'
+import { ShieldCheck, ArrowsClockwise, CheckCircle } from 'phosphor-react-native'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { useValidation } from '@/hooks/useValidation'
 import { ValidationCard } from '@/components/ui/ValidationCard'
@@ -19,6 +19,7 @@ export default function ValidateScreen() {
   const router = useRouter()
   const { activeConfig } = useConfigStore()
   const [key, setKey] = useState(0) // increment to re-trigger animations
+  const [hasRun, setHasRun] = useState(false)
 
   const departments = activeConfig?.departments ?? []
   const validation = useValidation(departments)
@@ -32,6 +33,11 @@ export default function ValidateScreen() {
   const handleRerun = () => {
     setKey((k) => k + 1)
   }
+
+  // Reset hasRun when activeConfig changes
+  useEffect(() => {
+    setHasRun(false)
+  }, [activeConfig?.id])
 
   if (!activeConfig) {
     return (
@@ -47,6 +53,33 @@ export default function ValidateScreen() {
             label="Go to Configs"
             variant="primary"
             onPress={() => router.push('/(tabs)/configs')}
+          />
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  if (!hasRun) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerTitle}>Validation</Text>
+            <Pressable onPress={() => router.push('/(tabs)/configs')}>
+              <Text style={styles.configName}>
+                Config: <Text style={styles.configNameLink}>{activeConfig.name}</Text>
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+        <View style={styles.emptyState}>
+          <CheckCircle size={48} color={Colors.pale} />
+          <Text style={styles.emptyTitle}>Validate Network Topology</Text>
+          <Text style={styles.emptySubtitle}>Run validation to check your topology for issues.</Text>
+          <Button
+            label="Run Validation"
+            variant="primary"
+            onPress={() => setHasRun(true)}
           />
         </View>
       </SafeAreaView>

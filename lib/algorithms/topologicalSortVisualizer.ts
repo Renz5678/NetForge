@@ -74,6 +74,7 @@ export function buildTopologicalSortSteps(
   steps.push({
     stepIndex: 0,
     explanation: `Initializing Kahn's algorithm. Computed in-degrees for all nodes. ${queue.length} node${queue.length !== 1 ? 's' : ''} start with in-degree 0: ${queue.map(lbl).join(', ')}. These go into the queue first — they have no dependencies.`,
+    hint: `We count incoming links (in-degree) for each node. Nodes with in-degree 0 have no dependencies and can be processed immediately.`,
     nodeStates: snapshotStates(),
     inDegreeMap: Object.fromEntries(inDegree),
     topoQueue: [...queue],
@@ -91,6 +92,7 @@ export function buildTopologicalSortSteps(
     steps.push({
       stepIndex: steps.length,
       explanation: `Dequeuing ${lbl(nodeId)} — it has in-degree 0, so all its dependencies are resolved. Adding it to position ${sortedResult.length} in the sorted order. Now decrementing in-degree of its ${neighbors.length} downstream neighbor${neighbors.length !== 1 ? 's' : ''}.`,
+      hint: `Pop a node from the queue, append it to the sorted list, and check all its outgoing connections to update their remaining dependencies.`,
       nodeStates: snapshotStates(),
       inDegreeMap: Object.fromEntries(inDegree),
       topoQueue: [...queue],
@@ -109,6 +111,7 @@ export function buildTopologicalSortSteps(
         steps.push({
           stepIndex: steps.length,
           explanation: `${lbl(neighbor)}'s in-degree dropped to 0 — all its prerequisites are now sorted. Enqueuing it.`,
+          hint: `Since this node's last dependency is resolved, its in-degree becomes 0 and it is ready to be queued for sorting.`,
           nodeStates: snapshotStates(),
           inDegreeMap: Object.fromEntries(inDegree),
           topoQueue: [...queue],
@@ -119,6 +122,7 @@ export function buildTopologicalSortSteps(
         steps.push({
           stepIndex: steps.length,
           explanation: `Decrementing ${lbl(neighbor)}'s in-degree: ${newDeg + 1} → ${newDeg}. Still waiting on ${newDeg} more predecessor${newDeg !== 1 ? 's' : ''}.`,
+          hint: `We remove the connection from the resolved node by decrementing the target's in-degree count by 1.`,
           nodeStates: snapshotStates(),
           inDegreeMap: Object.fromEntries(inDegree),
           topoQueue: [...queue],
@@ -136,6 +140,7 @@ export function buildTopologicalSortSteps(
       sortedResult.length === departments.length
         ? `Topological sort complete! Sorted order: ${sortedResult.map(lbl).join(' → ')}. This order guarantees all dependencies are configured before the nodes that depend on them.`
         : `Sort terminated early — only ${sortedResult.length} of ${departments.length} nodes processed. A cycle likely exists in the remaining nodes.`,
+    hint: `Kahn's algorithm finishes successfully when all nodes are sorted. If any remain unsorted, a circular dependency exists.`,
     nodeStates: snapshotStates(),
     inDegreeMap: Object.fromEntries(inDegree),
     topoQueue: [],

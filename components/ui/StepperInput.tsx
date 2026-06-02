@@ -2,6 +2,8 @@ import React from 'react'
 import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native'
 import { Colors } from '@/constants/colors'
 
+import { Minus, Plus } from 'phosphor-react-native'
+
 type StepperInputProps = {
   value: number
   onChange: (n: number) => void
@@ -35,7 +37,7 @@ export function StepperInput({ value, onChange, min = 0, max = 16_777_214 }: Ste
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
         disabled={value <= min}
       >
-        <Text style={[styles.buttonText, value <= min && styles.disabledText]}>−</Text>
+        <Minus size={18} color={value <= min ? Colors.pale : Colors.primary} />
       </Pressable>
       <TextInput
         style={styles.input}
@@ -50,7 +52,7 @@ export function StepperInput({ value, onChange, min = 0, max = 16_777_214 }: Ste
         style={({ pressed }) => [styles.button, pressed && styles.pressed]}
         disabled={value >= max}
       >
-        <Text style={[styles.buttonText, value >= max && styles.disabledText]}>+</Text>
+        <Plus size={18} color={value >= max ? Colors.pale : Colors.primary} />
       </Pressable>
     </View>
   )

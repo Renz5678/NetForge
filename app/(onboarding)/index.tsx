@@ -11,6 +11,8 @@ import { useRouter } from 'expo-router'
 import { Button } from '@/components/ui/Button'
 import { Colors } from '@/constants/colors'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { NetForgeLogo } from '@/components/ui/NetForgeLogo'
+import { ShieldCheck, Check } from 'phosphor-react-native'
 
 const { width } = Dimensions.get('window')
 
@@ -185,13 +187,13 @@ function ComplianceIllustration() {
   return (
     <View style={[illustration.svgWrapper, { justifyContent: 'center', gap: 10 }]}>
       <View style={illustration.shield}>
-        <Text style={{ fontSize: 24 }}>🛡️</Text>
+        <ShieldCheck size={20} color={Colors.success} weight="fill" />
         <Text style={{ fontSize: 13, fontWeight: 'bold', color: Colors.success }}>COMPLIANT</Text>
       </View>
       <View style={{ gap: 6, width: '100%', paddingHorizontal: 20 }}>
         {checks.map((c, i) => (
           <View key={i} style={illustration.checkRow}>
-            <Text style={{ fontSize: 14, color: Colors.success }}>✓</Text>
+            <Check size={14} color={Colors.success} weight="bold" style={{ marginTop: 2 }} />
             <View style={{ flex: 1 }}>
               <Text style={illustration.checkTitle}>{c.title}</Text>
               <Text style={illustration.checkDesc}>{c.desc}</Text>
@@ -241,7 +243,10 @@ export default function OnboardingScreen() {
     <SafeAreaView style={styles.container}>
       {/* Top Header / Skip Button */}
       <View style={styles.headerRow}>
-        <Text style={styles.wordmark}>NetForge</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <NetForgeLogo size={28} />
+          <Text style={styles.wordmark}>NetForge</Text>
+        </View>
         {activeSlide < slides.length - 1 && (
           <Pressable onPress={handleSkip} style={styles.skipButton}>
             <Text style={styles.skipText}>Skip</Text>
@@ -297,15 +302,17 @@ export default function OnboardingScreen() {
               fullWidth
               onPress={() => router.push('/(auth)/login')}
             />
-            <Button
-              label="Continue in Offline Mode (Bypass)"
-              variant="ghost"
-              fullWidth
-              onPress={async () => {
-                await useAuthStore.getState().signInAsGuest()
-                router.replace('/(tabs)')
-              }}
-            />
+            {__DEV__ && (
+              <Button
+                label="Continue in Offline Mode (Bypass)"
+                variant="ghost"
+                fullWidth
+                onPress={async () => {
+                  await useAuthStore.getState().signInAsGuest()
+                  router.replace('/(tabs)')
+                }}
+              />
+            )}
           </>
         )}
       </View>

@@ -8,6 +8,13 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 jest.mock('@/lib/supabase', () => ({
   supabase: {},
 }))
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    addEventListener: jest.fn(),
+    fetch: jest.fn().mockResolvedValue({ isConnected: true, isInternetReachable: true }),
+  },
+}))
 
 import { ipToUint32, uint32ToIp, ipInSubnet } from '../lib/ipUtils'
 import {

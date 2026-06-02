@@ -18,10 +18,13 @@ import {
   Rect,
   Text as SkiaText,
   matchFont,
+  Circle,
 } from '@shopify/react-native-skia'
 import { Platform } from 'react-native'
 import { Colors } from '@/constants/colors'
 import type { GraphNode, NodeVizState } from '@/types'
+import { useVisualizationStore } from '@/stores/useVisualizationStore'
+import { useSharedValue, useDerivedValue, withRepeat, withTiming } from 'react-native-reanimated'
 
 // ── Node dimensions ────────────────────────────────────────────────────────
 export const NODE_WIDTH  = 164
@@ -44,6 +47,12 @@ const subFont = matchFont({
 const badgeFont = matchFont({
   fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
   fontSize:   11,
+  fontWeight: 'bold',
+})
+
+const stateFont = matchFont({
+  fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
+  fontSize:   9,
   fontWeight: 'bold',
 })
 
@@ -109,6 +118,26 @@ function truncate(s: string, max: number) {
   return s.length > max ? s.slice(0, max - 1) + '…' : s
 }
 
+function getFriendlyVizState(state?: NodeVizState): string {
+  switch (state) {
+    case 'settled':
+    case 'mstIncluded':
+      return 'Settled'
+    case 'inQueue':
+    case 'mstFrontier':
+      return 'In Queue'
+    case 'inStack':
+      return 'In Stack'
+    case 'cycle':
+      return 'Cycle'
+    case 'path':
+      return 'On Path'
+    case 'unvisited':
+    default:
+      return 'Unvisited'
+  }
+}
+
 type Props = {
   node: GraphNode
   selected?: boolean
@@ -121,6 +150,35 @@ export function GraphNodeComponent({ node, selected, vizState }: Props) {
   const ny = node.y - NODE_HEIGHT / 2
 
   const typeKey = node.type ?? 'department'
+
+  const vizActive = useVisualizationStore((s) => s.isActive)
+  const showSteps = useVisualizationStore((s) => s.showSteps)
+  const currentStep = useVisualizationStore((s) => s.currentStep)
+  const isCurrentNode = vizActive && currentStep?.currentNode === node.id
+
+  const pulse = useSharedValue(0)
+
+  React.useEffect(() => {
+    if (isCurrentNode) {
+      pulse.value = withRepeat(
+        withTiming(1, { duration: 1000 }),
+        -1,
+        false
+      )
+    } else {
+      pulse.value = 0
+    }
+  }, [isCurrentNode])
+
+  const animRadius = useDerivedValue(() => {
+    const startR = 13 + 8 // 21
+    const endR = 13 + 16 // 29
+    return startR + (endR - startR) * pulse.value
+  })
+
+  const animOpacity = useDerivedValue(() => {
+    return 0.4 * (1 - pulse.value)
+  })
 
   // Card fill
   const fill = vizState
@@ -145,8 +203,25 @@ export function GraphNodeComponent({ node, selected, vizState }: Props) {
   const abbrX   = nx + BADGE_LEFT + (BADGE_W - abbrW) / 2
   const abbrY   = ny + BADGE_TOP + (BADGE_H + 10) / 2  // vertically center baseline
 
+  const friendlyStateText = getFriendlyVizState(vizState)
+  const stateTextW = stateFont.measureText(friendlyStateText).width
+
   return (
     <Group>
+      {/* Animated pulse ring */}
+      {isCurrentNode && (
+        <Group opacity={animOpacity}>
+          <Circle
+            cx={node.x}
+            cy={node.y}
+            r={animRadius}
+            color={fill}
+            style="stroke"
+            strokeWidth={2}
+          />
+        </Group>
+      )}
+
       {/* Glow halo */}
       {showGlow && (
         <RoundedRect
@@ -223,6 +298,27 @@ export function GraphNodeComponent({ node, selected, vizState }: Props) {
           font={subFont}
           color="rgba(210,228,255,0.85)"
         />
+      )}
+
+      {/* Friendly vizState text centered below card */}
+      {vizActive && showSteps && vizState && (
+        <>
+          <RoundedRect
+            x={node.x - stateTextW / 2 - 6}
+            y={ny + NODE_HEIGHT + 3}
+            width={stateTextW + 12}
+            height={13}
+            r={4}
+            color="rgba(30, 42, 60, 0.72)"
+          />
+          <SkiaText
+            x={node.x - stateTextW / 2}
+            y={ny + NODE_HEIGHT + 4 + 8}
+            text={friendlyStateText}
+            font={stateFont}
+            color="rgba(255, 255, 255, 0.85)"
+          />
+        </>
       )}
     </Group>
   )

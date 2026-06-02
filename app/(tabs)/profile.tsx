@@ -127,6 +127,11 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      {/* Consistent Fixed Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Profile Settings</Text>
+      </View>
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Header with avatar */}
         <View style={styles.profileSection}>
@@ -236,6 +241,20 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.surfaceAlt },
+  header: {
+    height: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: Colors.white,
+  },
+  headerTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 18,
+    color: Colors.primary,
+  },
   content: { padding: 16, paddingBottom: 40, gap: 8 },
   profileSection: {
     alignItems: 'center',

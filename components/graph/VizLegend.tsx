@@ -7,6 +7,7 @@ import React, { useState } from 'react'
 import { View, Text, StyleSheet, Pressable } from 'react-native'
 import { Colors } from '@/constants/colors'
 import type { AlgorithmType } from '@/types'
+import { X } from 'phosphor-react-native'
 
 type LegendItem = {
   color: string
@@ -64,18 +65,21 @@ function getAlgorithmLabel(algorithm: AlgorithmType): string {
 type VizLegendProps = {
   algorithm: AlgorithmType
   onDismiss: () => void
+  hideClose?: boolean
 }
 
-export function VizLegend({ algorithm, onDismiss }: VizLegendProps) {
+export function VizLegend({ algorithm, onDismiss, hideClose }: VizLegendProps) {
   const items = getLegendItems(algorithm)
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>{getAlgorithmLabel(algorithm)}</Text>
-        <Pressable onPress={onDismiss} style={styles.closeBtn} hitSlop={8}>
-          <Text style={styles.closeText}>×</Text>
-        </Pressable>
+        {!hideClose && (
+          <Pressable onPress={onDismiss} style={styles.closeBtn} hitSlop={8}>
+            <X size={12} color={Colors.textMuted} />
+          </Pressable>
+        )}
       </View>
       {items.map((item, i) => (
         <View key={i} style={styles.row}>

@@ -12,7 +12,7 @@
 // After it completes, an AlgorithmToast badge appears: "Shortest path · Dijkstra · N hops"
 // with a "Step-by-step ›" link that opens the full visualizer panel.
 
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
 import {
   View,
   StyleSheet,
@@ -55,7 +55,10 @@ import {
   ArrowCounterClockwise,
   BookOpen,
   Lightning,
+  Play,
 } from 'phosphor-react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { CoachMark } from '@/components/ui/CoachMark'
 import type { Department, PathResult } from '@/types'
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
@@ -92,6 +95,34 @@ export function NetworkGraph({
   const [showLegend, setShowLegend] = useState(true)
   const [toast, setToast] = useState<ToastData | null>(null)
 
+  const [showCoachMark, setShowCoachMark] = useState(false)
+  const dismissAlgoHintRef = useRef(false)
+  const [sessionHasSelectedTwoNodes, setSessionHasSelectedTwoNodes] = useState(false)
+
+  // One-time coach mark check on mount
+  useEffect(() => {
+    const checkHint = async () => {
+      try {
+        const hasSeen = await AsyncStorage.getItem('hasSeenAlgorithmHint')
+        if (!hasSeen) {
+          setShowCoachMark(true)
+        }
+      } catch (err) {
+        console.warn('AsyncStorage error checking coach mark hint:', err)
+      }
+    }
+    checkHint()
+  }, [])
+
+  const handleDismissCoachMark = async () => {
+    setShowCoachMark(false)
+    try {
+      await AsyncStorage.setItem('hasSeenAlgorithmHint', 'true')
+    } catch (err) {
+      console.warn('AsyncStorage error saving coach mark hint:', err)
+    }
+  }
+
   // Mirror of selectedNodes in a ref so handleTap can read the current
   // value without a functional updater — critical to avoid calling setState
   // (setPathResult, onPathFound) inside another setState's updater function.
@@ -110,13 +141,17 @@ export function NetworkGraph({
   // Visualization store — read current step state
   const vizActive = useVisualizationStore((s) => s.isActive)
   const vizAlgorithm = useVisualizationStore((s) => s.algorithm)
-  const vizSteps = useVisualizationStore((s) => s.steps)
-  const vizStepIndex = useVisualizationStore((s) => s.currentStepIndex)
-  const currentStep = vizSteps[vizStepIndex] ?? null
+  const currentStep = useVisualizationStore((s) => s.currentStep)
   const isExpanded = useVisualizationStore((s) => s.isExpanded)
   const isPlaying = useVisualizationStore((s) => s.isPlaying)
   const { startVisualization, stopVisualization, setShowSteps, setIsExpanded } =
     useVisualizationStore()
+
+  useEffect(() => {
+    if (vizActive) {
+      dismissAlgoHintRef.current = true
+    }
+  }, [vizActive])
 
   // Track if the current viz is an auto-triggered Dijkstra (not user-selected)
   // so we can show the toast and "Step-by-step" CTA instead of the full panel
@@ -206,6 +241,8 @@ export function NetworkGraph({
         const newSelected = [srcId, tgtId]
         selectedNodesRef.current = newSelected
         setSelectedNodes(newSelected)
+        dismissAlgoHintRef.current = true
+        setSessionHasSelectedTwoNodes(true)
 
         // Compute path — all state updates are at handler top level, never inside
         // a setState updater, so React won't complain about setState-during-render
@@ -385,6 +422,15 @@ export function NetworkGraph({
         </View>
       )}
 
+      {/* Shortest path / Algorithm Hint Banner */}
+      {!vizActive && departments.length >= 2 && !sessionHasSelectedTwoNodes && !dismissAlgoHintRef.current && (
+        <View style={styles.hintBanner}>
+          <Text style={styles.hintBannerText}>
+            Tap two nodes to find the shortest path, or run a full algorithm.
+          </Text>
+        </View>
+      )}
+
       <GestureDetector gesture={composedGesture}>
         <Canvas style={styles.canvas}>
           {/* Dot-grid background — rendered outside the zoom group so it stays fixed */}
@@ -439,9 +485,9 @@ export function NetworkGraph({
         </Canvas>
       </GestureDetector>
 
-      {/* Viz legend overlay */}
-      {vizActive && vizAlgorithm && showLegend && (
-        <VizLegend algorithm={vizAlgorithm} onDismiss={() => setShowLegend(false)} />
+      {/* Viz legend overlay - forced visible in vizActive mode, close button hidden */}
+      {vizActive && vizAlgorithm && (
+        <VizLegend algorithm={vizAlgorithm} onDismiss={() => {}} hideClose={true} />
       )}
 
       {/* Zoom controls */}
@@ -470,16 +516,29 @@ export function NetworkGraph({
         </Pressable>
       </View>
 
-      {/* "Explore Algorithms" — demoted to a text link, not a primary FAB */}
+      {/* "Run Algorithm" — primary action at bottom-left */}
       {!vizActive && departments.length >= 2 && onVisualize && (
-        <Pressable style={styles.exploreLink} onPress={() => {
-          setShowLegend(true)
-          onVisualize()
-        }}>
-          <BookOpen size={13} color={Colors.medium} weight="fill" />
-          <Text style={styles.exploreLinkText}>Explore Algorithms</Text>
+        <Pressable
+          style={({ pressed }) => [styles.exploreLink, pressed && { opacity: 0.85 }]}
+          onPress={() => {
+            setShowLegend(true)
+            dismissAlgoHintRef.current = true
+            setSessionHasSelectedTwoNodes(true)
+            onVisualize()
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Run Algorithm"
+        >
+          <Play size={18} color={Colors.white} weight="fill" />
+          <Text style={styles.exploreLinkText}>Run Algorithm</Text>
         </Pressable>
       )}
+
+      <CoachMark
+        visible={showCoachMark}
+        text="Tap to explore Dijkstra, A*, Prim's, and more on this topology."
+        onDismiss={handleDismissCoachMark}
+      />
     </View>
   )
 }
@@ -569,7 +628,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // "Explore Algorithms" demoted to a subtle text link at bottom-left
   exploreLink: {
     position: 'absolute',
     bottom: 28,
@@ -577,17 +635,43 @@ const styles = StyleSheet.create({
     zIndex: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: Colors.white,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    gap: 8,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 44,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
   },
   exploreLinkText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: Colors.white,
+  },
+  hintBanner: {
+    position: 'absolute',
+    top: 52,
+    alignSelf: 'center',
+    zIndex: 10,
+    backgroundColor: 'rgba(30, 42, 60, 0.85)',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  hintBannerText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
-    color: Colors.medium,
+    color: '#E0EBFF',
   },
 })

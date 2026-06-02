@@ -9,8 +9,14 @@ import {
   SafeAreaView,
   StatusBar,
   Animated,
+  Dimensions,
 } from 'react-native'
 import { useRouter } from 'expo-router'
+import { PanGestureHandler } from 'react-native-gesture-handler'
+import AnimatedReanimated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS } from 'react-native-reanimated'
+
+const AnimatedPressable = AnimatedReanimated.createAnimatedComponent(Pressable)
+
 import {
   Plus,
   MagnifyingGlass,
@@ -29,6 +35,8 @@ import { Input } from '@/components/ui/Input'
 import { Colors } from '@/constants/colors'
 import { pluralize, formatRelativeTime } from '@/lib/formatters'
 import type { NetworkConfig } from '@/types'
+import { SyncStatusBanner } from '@/components/ui/SyncStatusBanner'
+import { SyncConflictSheet } from '@/components/ui/SyncConflictSheet'
 
 function getStatusBadge(config: NetworkConfig): { label: string; variant: BadgeVariant } {
   if (config.isValid === undefined || config.departments.length === 0) {
@@ -90,10 +98,86 @@ function ConfigSkeleton() {
   )
 }
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window')
+
+function SwipeableConfigCard({
+  children,
+  onDelete,
+}: {
+  children: React.ReactNode
+  onDelete: () => void
+}) {
+  const translateX = useSharedValue(0)
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }))
+
+  const onGestureEvent = (event: any) => {
+    if (event.nativeEvent.translationX < 0) {
+      translateX.value = event.nativeEvent.translationX
+    }
+  }
+
+  const onHandlerStateChange = (event: any) => {
+    if (event.nativeEvent.state === 5) {
+      if (event.nativeEvent.translationX < -80) {
+        translateX.value = withSpring(0)
+        runOnJS(onDelete)()
+      } else {
+        translateX.value = withSpring(0)
+      }
+    }
+  }
+
+  return (
+    <View style={swipeCard.container}>
+      <View style={swipeCard.deleteZone}>
+        <Trash size={20} color={Colors.white} />
+      </View>
+      <PanGestureHandler
+        onGestureEvent={onGestureEvent}
+        onHandlerStateChange={onHandlerStateChange}
+        activeOffsetX={[-10, 10]}
+      >
+        <AnimatedReanimated.View style={animatedStyle}>
+          {children}
+        </AnimatedReanimated.View>
+      </PanGestureHandler>
+    </View>
+  )
+}
+
+const swipeCard = StyleSheet.create({
+  container: {
+    position: 'relative',
+    backgroundColor: Colors.error,
+    borderRadius: 14,
+    marginBottom: 0,
+    overflow: 'hidden',
+  },
+  deleteZone: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 80,
+    backgroundColor: Colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+})
+
 export default function ConfigsScreen() {
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
   const { configs, loadConfigs, createConfig, deleteConfig, duplicateConfig, loading } = useConfigStore()
+
+  const fabScale = useSharedValue(1)
+  const animatedFabStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: fabScale.value }],
+  }))
 
   const [search, setSearch] = useState('')
   const [showNewSheet, setShowNewSheet] = useState(false)
@@ -177,46 +261,48 @@ export default function ConfigsScreen() {
     const vlanCount = item.departments.filter((d) => d.vlanId !== undefined).length
 
     return (
-      <View style={styles.configCard}>
-        <Pressable
-          style={styles.cardContent}
-          onPress={() => router.push(`/config/${item.id}`)}
-        >
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={styles.iconContainer}>
-                <ShareNetwork size={20} color={Colors.primary} />
+      <SwipeableConfigCard onDelete={() => setDeleteConfirmId(item.id)}>
+        <View style={[styles.configCard, { borderColor: '#AABFEF' }]}>
+          <Pressable
+            style={styles.cardContent}
+            onPress={() => router.push(`/config/${item.id}`)}
+          >
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderLeft}>
+                <View style={styles.iconContainer}>
+                  <ShareNetwork size={20} color={Colors.primary} />
+                </View>
+                <View style={styles.textContainer}>
+                  <Text style={styles.configName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.configMeta}>
+                    {pluralize(deptCount, 'Department')} • {pluralize(vlanCount, 'VLAN')}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.textContainer}>
-                <Text style={styles.configName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.configMeta}>
-                  {pluralize(deptCount, 'Department')} • {pluralize(vlanCount, 'VLAN')}
-                </Text>
+              <View style={styles.cardHeaderRight}>
+                <Badge label={badge.label} variant={badge.variant} />
+                <CaretRight size={18} color={Colors.pale} style={styles.caret} />
               </View>
             </View>
-            <View style={styles.cardHeaderRight}>
-              <Badge label={badge.label} variant={badge.variant} />
-              <CaretRight size={18} color={Colors.pale} style={styles.caret} />
+          </Pressable>
+
+          <View style={styles.cardDivider} />
+
+          <View style={styles.cardActions}>
+            <Text style={styles.dateText}>Edited {formatRelativeTime(item.updatedAt)}</Text>
+            <View style={styles.actionButtons}>
+              <Pressable style={styles.actionBtn} onPress={() => handleDuplicate(item.id)}>
+                <Copy size={14} color={Colors.medium} />
+                <Text style={styles.actionBtnText}>Duplicate</Text>
+              </Pressable>
+              <Pressable style={[styles.actionBtn, styles.deleteBtn]} onPress={() => setDeleteConfirmId(item.id)}>
+                <Trash size={14} color={Colors.error} />
+                <Text style={[styles.actionBtnText, styles.deleteBtnText]}>Delete</Text>
+              </Pressable>
             </View>
-          </View>
-        </Pressable>
-
-        <View style={styles.cardDivider} />
-
-        <View style={styles.cardActions}>
-          <Text style={styles.dateText}>Edited {formatRelativeTime(item.updatedAt)}</Text>
-          <View style={styles.actionButtons}>
-            <Pressable style={styles.actionBtn} onPress={() => handleDuplicate(item.id)}>
-              <Copy size={14} color={Colors.medium} />
-              <Text style={styles.actionBtnText}>Duplicate</Text>
-            </Pressable>
-            <Pressable style={[styles.actionBtn, styles.deleteBtn]} onPress={() => setDeleteConfirmId(item.id)}>
-              <Trash size={14} color={Colors.error} />
-              <Text style={[styles.actionBtnText, styles.deleteBtnText]}>Delete</Text>
-            </Pressable>
           </View>
         </View>
-      </View>
+      </SwipeableConfigCard>
     )
   }
 
@@ -245,6 +331,8 @@ export default function ConfigsScreen() {
           <Plus size={24} color={Colors.primary} />
         </Pressable>
       </View>
+
+      <SyncStatusBanner />
 
       {/* Sleek Search Bar */}
       <View style={styles.searchContainer}>
@@ -298,8 +386,14 @@ export default function ConfigsScreen() {
       )}
 
       {/* Floating Action Button (FAB) */}
-      <Pressable
-        style={styles.fab}
+      <AnimatedPressable
+        style={[styles.fab, animatedFabStyle]}
+        onPressIn={() => {
+          fabScale.value = withSpring(0.85)
+        }}
+        onPressOut={() => {
+          fabScale.value = withSpring(1)
+        }}
         onPress={() => {
           setNewName('')
           setBaseIp('10.0.0.0')
@@ -311,7 +405,7 @@ export default function ConfigsScreen() {
         }}
       >
         <Plus size={28} color={Colors.white} />
-      </Pressable>
+      </AnimatedPressable>
 
       {/* New Config Bottom Sheet */}
       <BottomSheet
@@ -394,6 +488,8 @@ export default function ConfigsScreen() {
           </View>
         </View>
       </BottomSheet>
+      
+      <SyncConflictSheet />
     </SafeAreaView>
   )
 }

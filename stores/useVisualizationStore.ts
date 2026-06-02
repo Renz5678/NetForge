@@ -1,11 +1,5 @@
-// useVisualizationStore.ts
-// Zustand store for algorithm visualization playback state.
-// Completely separate from useConfigStore — no cross-contamination.
-// The store holds the pre-computed step snapshot array and manages
-// playback cursor, speed, and auto-play timing.
-
 import { create } from 'zustand'
-import type { VisualizationStep, AlgorithmType, MSTEdge } from '@/types'
+import type { VisualizationStep, AlgorithmType } from '@/types'
 
 type Speed = 'slow' | 'normal' | 'fast'
 
@@ -20,8 +14,9 @@ type VisualizationStore = {
   // ── State ──────────────────────────────────────────────────────────────────
   isActive: boolean
   algorithm: AlgorithmType | null
-  steps: VisualizationStep[]
   currentStepIndex: number
+  totalSteps: number
+  currentStep: VisualizationStep | null
   isPlaying: boolean
   speed: Speed
   isExpanded: boolean
@@ -39,18 +34,9 @@ type VisualizationStore = {
 
   showSteps: boolean
 
-  // ── Derived ────────────────────────────────────────────────────────────────
-  currentStep: VisualizationStep | null
-
   // ── Actions ────────────────────────────────────────────────────────────────
-
-  /** Toggle the detailed data structure view. */
   setIsExpanded: (expanded: boolean) => void
-
-  /** Toggle the detailed step display mode. */
   setShowSteps: (show: boolean) => void
-
-  /** Start a new visualization with a pre-computed step array. */
   startVisualization: (
     algorithm: AlgorithmType,
     steps: VisualizationStep[],
@@ -63,38 +49,26 @@ type VisualizationStore = {
       showSteps?: boolean
     }
   ) => void
-
-  /** Dismiss the visualizer and reset all state. */
   stopVisualization: () => void
-
-  /** Begin auto-playing from the current step. */
   play: () => void
-
-  /** Pause auto-play. */
   pause: () => void
-
-  /** Advance one step forward. Pauses if playing. */
   stepForward: () => void
-
-  /** Go back one step. Pauses if playing. */
   stepBack: () => void
-
-  /** Jump to an arbitrary step index. */
   setStep: (index: number) => void
-
-  /** Change playback speed. */
   setSpeed: (speed: Speed) => void
-
-  // Internal: called by the auto-play timer
   _advanceStep: () => void
 }
+
+// Module-level non-reactive cache for large steps array to optimize performance
+let visualizerSteps: VisualizationStep[] = []
 
 export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
   // Initial state
   isActive: false,
   algorithm: null,
-  steps: [],
   currentStepIndex: 0,
+  totalSteps: 0,
+  currentStep: null,
   isPlaying: false,
   speed: 'normal',
   isExpanded: true,
@@ -104,11 +78,6 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
   rootId: null,
   dijkstraVisited: new Set(),
   astarVisited: new Set(),
-
-  get currentStep() {
-    const { steps, currentStepIndex } = get()
-    return steps[currentStepIndex] ?? null
-  },
 
   setIsExpanded: (isExpanded) => {
     set({ isExpanded })
@@ -120,11 +89,13 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
 
   startVisualization: (algorithm, steps, options = {}) => {
     const showSteps = options.showSteps ?? false
+    visualizerSteps = steps
     set({
       isActive: true,
       algorithm,
-      steps,
       currentStepIndex: 0,
+      totalSteps: steps.length,
+      currentStep: steps[0] ?? null,
       isPlaying: !showSteps, // Autoplay if steps are not shown
       isExpanded: showSteps,
       showSteps,
@@ -137,11 +108,13 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
   },
 
   stopVisualization: () => {
+    visualizerSteps = []
     set({
       isActive: false,
       algorithm: null,
-      steps: [],
       currentStepIndex: 0,
+      totalSteps: 0,
+      currentStep: null,
       isPlaying: false,
       isExpanded: true,
       showSteps: false,
@@ -154,10 +127,14 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
   },
 
   play: () => {
-    const { steps, currentStepIndex } = get()
-    if (currentStepIndex >= steps.length - 1) {
+    const { totalSteps, currentStepIndex } = get()
+    if (currentStepIndex >= totalSteps - 1) {
       // Already at end — restart from beginning
-      set({ currentStepIndex: 0, isPlaying: true })
+      set({
+        currentStepIndex: 0,
+        currentStep: visualizerSteps[0] ?? null,
+        isPlaying: true,
+      })
     } else {
       set({ isPlaying: true })
     }
@@ -168,23 +145,37 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
   },
 
   stepForward: () => {
-    const { steps, currentStepIndex } = get()
-    if (currentStepIndex < steps.length - 1) {
-      set({ currentStepIndex: currentStepIndex + 1, isPlaying: false })
+    const { currentStepIndex, totalSteps } = get()
+    if (currentStepIndex < totalSteps - 1) {
+      const nextIndex = currentStepIndex + 1
+      set({
+        currentStepIndex: nextIndex,
+        currentStep: visualizerSteps[nextIndex] ?? null,
+        isPlaying: false,
+      })
     }
   },
 
   stepBack: () => {
     const { currentStepIndex } = get()
     if (currentStepIndex > 0) {
-      set({ currentStepIndex: currentStepIndex - 1, isPlaying: false })
+      const prevIndex = currentStepIndex - 1
+      set({
+        currentStepIndex: prevIndex,
+        currentStep: visualizerSteps[prevIndex] ?? null,
+        isPlaying: false,
+      })
     }
   },
 
   setStep: (index) => {
-    const { steps } = get()
-    const clamped = Math.max(0, Math.min(index, steps.length - 1))
-    set({ currentStepIndex: clamped, isPlaying: false })
+    const { totalSteps } = get()
+    const clamped = Math.max(0, Math.min(index, totalSteps - 1))
+    set({
+      currentStepIndex: clamped,
+      currentStep: visualizerSteps[clamped] ?? null,
+      isPlaying: false,
+    })
   },
 
   setSpeed: (speed) => {
@@ -192,13 +183,17 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
   },
 
   _advanceStep: () => {
-    const { steps, currentStepIndex, isPlaying } = get()
+    const { currentStepIndex, totalSteps, isPlaying } = get()
     if (!isPlaying) return
-    if (currentStepIndex >= steps.length - 1) {
+    if (currentStepIndex >= totalSteps - 1) {
       // Reached end — stop auto-play
       set({ isPlaying: false })
       return
     }
-    set({ currentStepIndex: currentStepIndex + 1 })
+    const nextIndex = currentStepIndex + 1
+    set({
+      currentStepIndex: nextIndex,
+      currentStep: visualizerSteps[nextIndex] ?? null,
+    })
   },
 }))

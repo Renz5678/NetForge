@@ -1,14 +1,8 @@
 // AlgorithmVisualizerPanel.tsx
-// The main algorithm visualization panel — a bottom sheet showing:
-//   1. Plain-English explanation of the current step
-//   2. Internal data structure state (priority queue / DFS stack / etc.)
-//   3. Playback controls: Step Back | Play/Pause | Step Forward
-//   4. Progress scrubber
-//   5. Speed selector
+// The main algorithm visualization panel.
 // Subscribes to useVisualizationStore for all state.
-// The panel is ~65% of screen height so the graph canvas remains visible above.
 
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -24,10 +18,21 @@ import { Colors } from '@/constants/colors'
 import { useVisualizationStore, SPEED_MS } from '@/stores/useVisualizationStore'
 import { DataStructureDisplay } from './DataStructureDisplay'
 import type { Department } from '@/types'
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  X,
+  CaretLeft,
+  CaretRight,
+  Info,
+  ArrowRight,
+} from 'phosphor-react-native'
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window')
-const PANEL_HEIGHT = SCREEN_HEIGHT * 0.45 // Reduced from 0.62 to be less intrusive
-const COLLAPSED_HEIGHT = 220 // Slightly more compact
+const PANEL_HEIGHT = SCREEN_HEIGHT * 0.45
+const COLLAPSED_HEIGHT = 220
 
 type AlgorithmVisualizerPanelProps = {
   departments: Department[]
@@ -45,33 +50,89 @@ function getAlgorithmLabel(algorithm: string): string {
 }
 
 function getExplanationColor(explanation: string): string {
-  if (explanation.includes('cycle') || explanation.includes('Cycle') || explanation.includes('Back-edge')) {
+  const expLower = explanation.toLowerCase()
+  if (expLower.includes('cycle') || expLower.includes('back-edge')) {
     return Colors.vizCycle
   }
-  if (explanation.includes('complete') || explanation.includes('Complete') || explanation.includes('done') || explanation.includes('found')) {
+  if (expLower.includes('settl') || expLower.includes('added to mst') || expLower.includes('complete') || expLower.includes('done') || expLower.includes('found')) {
     return Colors.vizSettled
   }
+  if (expLower.includes('relax') || expLower.includes('updating cost') || expLower.includes('update cost') || expLower.includes('in queue') || expLower.includes('added to queue')) {
+    return Colors.vizInQueue
+  }
   return Colors.textPrimary
+}
+
+function reconstructPathFromSet(
+  sourceId: string | null,
+  targetId: string | null,
+  nodeStates: Record<string, string>,
+  departments: Department[]
+): string[] {
+  if (!sourceId || !targetId) return []
+  
+  // Find all node IDs in path
+  const pathSet = new Set<string>()
+  Object.keys(nodeStates).forEach((id) => {
+    if (nodeStates[id] === 'path') {
+      pathSet.add(id)
+    }
+  })
+  
+  if (pathSet.size === 0) return []
+  
+  // Trace path from source to target
+  const path: string[] = [sourceId]
+  let current = sourceId
+  const visited = new Set<string>([sourceId])
+  
+  while (current !== targetId) {
+    const dept = departments.find((d) => d.id === current)
+    if (!dept) break
+    const next = dept.peers.find((p) => pathSet.has(p) && !visited.has(p))
+    if (!next) {
+      // Undirected reverse link trace fallback
+      const rev = departments.find((d) => d.peers.includes(current) && pathSet.has(d.id) && !visited.has(d.id))
+      if (!rev) break
+      current = rev.id
+    } else {
+      current = next
+    }
+    path.push(current)
+    visited.add(current)
+    if (path.length > 50) break // safety break
+  }
+  
+  return path
 }
 
 export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPanelProps) {
   const insets = useSafeAreaInsets()
   const translateY = useRef(new Animated.Value(PANEL_HEIGHT)).current
+  const [showHint, setShowHint] = useState(false)
 
   const isActive = useVisualizationStore((s) => s.isActive)
   const algorithm = useVisualizationStore((s) => s.algorithm)
-  const steps = useVisualizationStore((s) => s.steps)
   const currentStepIndex = useVisualizationStore((s) => s.currentStepIndex)
+  const totalSteps = useVisualizationStore((s) => s.totalSteps)
+  const currentStep = useVisualizationStore((s) => s.currentStep)
   const isPlaying = useVisualizationStore((s) => s.isPlaying)
   const speed = useVisualizationStore((s) => s.speed)
   const isExpanded = useVisualizationStore((s) => s.isExpanded)
   const showSteps = useVisualizationStore((s) => s.showSteps)
 
+  const sourceId = useVisualizationStore((s) => s.sourceId)
+  const targetId = useVisualizationStore((s) => s.targetId)
+
   const { stopVisualization, play, pause, stepForward, stepBack, setStep, setSpeed, setIsExpanded, setShowSteps, _advanceStep } =
     useVisualizationStore()
 
-  const currentStep = steps[currentStepIndex] ?? null
-  const totalSteps = steps.length
+  const totalStepsVal = totalSteps
+  const progress = totalStepsVal > 1 ? currentStepIndex / (totalStepsVal - 1) : 0
+  const explanationColor = currentStep ? getExplanationColor(currentStep.explanation) : Colors.textPrimary
+  const currentPanelHeight = showSteps ? (isExpanded ? PANEL_HEIGHT : COLLAPSED_HEIGHT) : 72
+
+  const deptList = departments.map((d) => ({ id: d.id, name: d.name }))
 
   // Auto-play timer
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -94,7 +155,7 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
 
   // Slide-up / slide-down animation
   useEffect(() => {
-    const currentPanelHeight = showSteps ? (isExpanded ? PANEL_HEIGHT : COLLAPSED_HEIGHT) : 72
+    const targetY = isActive ? 0 : currentPanelHeight
     if (isActive) {
       Animated.spring(translateY, {
         toValue: 0,
@@ -104,20 +165,19 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
       }).start()
     } else {
       Animated.timing(translateY, {
-        toValue: currentPanelHeight,
+        toValue: targetY,
         duration: 240,
         useNativeDriver: true,
       }).start()
     }
   }, [isActive, isExpanded, showSteps, translateY])
 
+  // Reset hint state on step change
+  useEffect(() => {
+    setShowHint(false)
+  }, [currentStepIndex])
+
   if (!isActive || !algorithm || !currentStep) return null
-
-  const progress = totalSteps > 1 ? currentStepIndex / (totalSteps - 1) : 0
-  const explanationColor = getExplanationColor(currentStep.explanation)
-  const currentPanelHeight = showSteps ? (isExpanded ? PANEL_HEIGHT : COLLAPSED_HEIGHT) : 72
-
-  const deptList = departments.map((d) => ({ id: d.id, name: d.name }))
 
   const handleToggleExpand = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
@@ -145,7 +205,7 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
               </Text>
             </View>
             <Text style={styles.miniSubtitle}>
-              Step {currentStepIndex + 1} of {totalSteps} • {Math.round(progress * 100)}%
+              Step {currentStepIndex + 1} of {totalStepsVal} • {Math.round(progress * 100)}%
             </Text>
           </View>
 
@@ -156,7 +216,11 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
               style={styles.miniActionBtn}
               hitSlop={8}
             >
-              <Text style={styles.miniActionIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+              {isPlaying ? (
+                <Pause size={14} color={Colors.primary} weight="fill" />
+              ) : (
+                <Play size={14} color={Colors.primary} weight="fill" />
+              )}
             </Pressable>
 
             {/* Show Steps button */}
@@ -178,12 +242,168 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
               style={styles.miniCloseBtn}
               hitSlop={8}
             >
-              <Text style={styles.miniCloseText}>✕</Text>
+              <X size={14} color={Colors.textMuted} />
             </Pressable>
           </View>
         </View>
       </Animated.View>
     )
+  }
+
+  const isCompleted = currentStepIndex === totalStepsVal - 1
+
+  const renderResultSummary = () => {
+    if (algorithm === 'dijkstra' || algorithm === 'aStar') {
+      const pathNodeIds = reconstructPathFromSet(sourceId, targetId, currentStep.nodeStates, departments)
+      const hops = pathNodeIds.length > 0 ? pathNodeIds.length - 1 : 0
+      const totalCost = currentStep.distances && targetId ? currentStep.distances[targetId] : null
+
+      return (
+        <View style={styles.resultContainer}>
+          <Text style={styles.resultTitle}>Pathfinding Summary</Text>
+          <View style={styles.resultMetrics}>
+            <View style={styles.resultMetricItem}>
+              <Text style={styles.resultMetricVal}>{hops}</Text>
+              <Text style={styles.resultMetricLbl}>Hops</Text>
+            </View>
+            <View style={styles.resultMetricItem}>
+              <Text style={styles.resultMetricVal}>{totalCost !== null && totalCost !== Infinity ? totalCost : 'N/A'}</Text>
+              <Text style={styles.resultMetricLbl}>Total Cost</Text>
+            </View>
+          </View>
+          {pathNodeIds.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.resultScroll}>
+              <View style={styles.resultPathRow}>
+                {pathNodeIds.map((id, index) => {
+                  const nodeName = departments.find((d) => d.id === id)?.name ?? id
+                  return (
+                    <React.Fragment key={id}>
+                      <View style={styles.pathChip}>
+                        <Text style={styles.pathChipText}>{nodeName}</Text>
+                      </View>
+                      {index < pathNodeIds.length - 1 && (
+                        <ArrowRight size={14} color={Colors.textMuted} style={styles.pathArrow} />
+                      )}
+                    </React.Fragment>
+                  )
+                })}
+              </View>
+            </ScrollView>
+          ) : (
+            <Text style={styles.resultEmptyText}>No path was found between these segments.</Text>
+          )}
+        </View>
+      )
+    }
+
+    if (algorithm === 'prims') {
+      const cost = currentStep.mstCost ?? 0
+      const edgeCount = currentStep.mstEdges?.length ?? 0
+      return (
+        <View style={styles.resultContainer}>
+          <Text style={styles.resultTitle}>Minimum Spanning Tree Summary</Text>
+          <View style={styles.resultMetrics}>
+            <View style={styles.resultMetricItem}>
+              <Text style={styles.resultMetricVal}>{edgeCount}</Text>
+              <Text style={styles.resultMetricLbl}>Edges Connected</Text>
+            </View>
+            <View style={styles.resultMetricItem}>
+              <Text style={styles.resultMetricVal}>{cost}</Text>
+              <Text style={styles.resultMetricLbl}>Total MST Weight</Text>
+            </View>
+          </View>
+          <Text style={styles.resultInfoText}>
+            Prim's algorithm successfully connected all reachable segments at the lowest cumulative link cost.
+          </Text>
+        </View>
+      )
+    }
+
+    if (algorithm === 'cycleDetection') {
+      const cycleNodes: string[] = []
+      Object.keys(currentStep.nodeStates).forEach((id) => {
+        if (currentStep.nodeStates[id] === 'cycle') {
+          cycleNodes.push(id)
+        }
+      })
+
+      return (
+        <View style={styles.resultContainer}>
+          <Text style={styles.resultTitle}>Cycle Verification Result</Text>
+          {cycleNodes.length > 0 ? (
+            <View style={{ alignItems: 'center' }}>
+              <View style={[styles.resultBadge, { backgroundColor: Colors.errorContainer, borderColor: Colors.error }]}>
+                <Text style={[styles.resultBadgeText, { color: Colors.error }]}>LOOP DETECTED</Text>
+              </View>
+              <Text style={styles.resultInfoText}>
+                A loop was detected in the active routing path, circulating between these segments:
+              </Text>
+              <View style={styles.resultPathRow}>
+                {cycleNodes.map((id) => {
+                  const nodeName = departments.find((d) => d.id === id)?.name ?? id
+                  return (
+                    <View key={id} style={[styles.pathChip, { backgroundColor: Colors.errorContainer, borderColor: `${Colors.error}40` }]}>
+                      <Text style={[styles.pathChipText, { color: Colors.error }]}>{nodeName}</Text>
+                    </View>
+                  )
+                })}
+              </View>
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center' }}>
+              <View style={[styles.resultBadge, { backgroundColor: Colors.successContainer, borderColor: Colors.success }]}>
+                <Text style={[styles.resultBadgeText, { color: Colors.success }]}>LOOP FREE</Text>
+              </View>
+              <Text style={styles.resultInfoText}>
+                No routing loops or cyclic dependencies found in the network designer canvas.
+              </Text>
+            </View>
+          )}
+        </View>
+      )
+    }
+
+    if (algorithm === 'topologicalSort') {
+      const sorted = currentStep.sortedResult ?? []
+      return (
+        <View style={styles.resultContainer}>
+          <Text style={styles.resultTitle}>Topological Activation Order</Text>
+          <Text style={styles.resultInfoText}>
+            Recommended startup sequence based on directional connection dependencies:
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.resultScroll}>
+            <View style={styles.resultPathRow}>
+              {sorted.map((id, index) => {
+                const nodeName = departments.find((d) => d.id === id)?.name ?? id
+                return (
+                  <React.Fragment key={id}>
+                    <View style={styles.pathChip}>
+                      <Text style={styles.pathChipText}>{nodeName}</Text>
+                    </View>
+                    {index < sorted.length - 1 && (
+                      <ArrowRight size={14} color={Colors.textMuted} style={styles.pathArrow} />
+                    )}
+                  </React.Fragment>
+                )
+              })}
+            </View>
+          </ScrollView>
+        </View>
+      )
+    }
+
+    return null
+  }
+
+  const defaultHint = () => {
+    switch (algorithm) {
+      case 'dijkstra': return "Dijkstra's algorithm relaxes edges from the node with the absolute lowest path cost."
+      case 'aStar': return "A* guided search incorporates distance heuristics to locate target segments faster."
+      case 'prims': return "Prim's MST grows connected cabling spans by greedily adding the lowest weight crossing edge."
+      case 'cycleDetection': return "DFS tracking uncovers cyclic loops when it encounters a segment already in the active trace stack."
+      case 'topologicalSort': return "Kahn's algorithm orders segments by resolving inbound device dependencies."
+      default: return "Conceptual walkthrough details explaining the currently executing execution step."
+    }
   }
 
   return (
@@ -225,30 +445,73 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
         </Pressable>
 
         <Pressable onPress={stopVisualization} style={styles.closeButton} hitSlop={8}>
-          <Text style={styles.closeText}>✕</Text>
+          <X size={14} color={Colors.textMuted} />
         </Pressable>
       </View>
 
-      {/* Step counter + progress bar */}
+      {/* Tappable step counter chip + progress bar */}
       <View style={styles.progressRow}>
-        <Text style={styles.stepCounter}>
-          Step {currentStepIndex + 1} of {totalSteps}
-        </Text>
+        <View style={styles.stepCounterChip}>
+          <Pressable
+            onPress={() => stepBack()}
+            disabled={currentStepIndex === 0}
+            style={styles.stepChipArrow}
+            hitSlop={6}
+          >
+            <CaretLeft size={12} color={currentStepIndex === 0 ? Colors.pale : Colors.primary} weight="bold" />
+          </Pressable>
+          <Text style={styles.stepChipText}>
+            {currentStepIndex + 1} / {totalStepsVal}
+          </Text>
+          <Pressable
+            onPress={() => stepForward()}
+            disabled={currentStepIndex === totalStepsVal - 1}
+            style={styles.stepChipArrow}
+            hitSlop={6}
+          >
+            <CaretRight size={12} color={currentStepIndex === totalStepsVal - 1 ? Colors.pale : Colors.primary} weight="bold" />
+          </Pressable>
+        </View>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-        <Text style={styles.stepCounter}>{Math.round(progress * 100)}%</Text>
+        <Text style={styles.progressPctText}>{Math.round(progress * 100)}%</Text>
       </View>
 
-      {/* Explanation card */}
-      <View style={[styles.explanationCard, { borderLeftColor: explanationColor }]}>
-        <Text style={[styles.explanationText, { color: explanationColor }]} numberOfLines={isExpanded ? undefined : 2}>
-          {currentStep.explanation}
-        </Text>
-      </View>
+      {/* Explanation card or Result Summary */}
+      {isCompleted ? (
+        renderResultSummary()
+      ) : (
+        <View style={[styles.explanationCard, { borderLeftColor: explanationColor }]}>
+          <Text style={[styles.explanationText, { color: explanationColor }]} numberOfLines={isExpanded ? undefined : 2}>
+            {currentStep.explanation}
+          </Text>
+          
+          {/* Why conceptual hint toggle */}
+          {isExpanded && (
+            <View style={{ marginTop: 8 }}>
+              <Pressable
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+                  setShowHint(!showHint)
+                }}
+                style={styles.whyToggle}
+              >
+                <Info size={14} color={Colors.primary} />
+                <Text style={styles.whyToggleText}>{showHint ? 'Hide details' : 'Why this step?'}</Text>
+              </Pressable>
+              {showHint && (
+                <Text style={styles.whyHintText}>
+                  {currentStep.hint ?? defaultHint()}
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Data structure display */}
-      {isExpanded && (
+      {isExpanded && !isCompleted && (
         <ScrollView
           style={styles.dataStructureContainer}
           showsVerticalScrollIndicator={false}
@@ -270,7 +533,7 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
           style={[styles.controlBtn, currentStepIndex === 0 && styles.controlBtnDisabled]}
           disabled={currentStepIndex === 0}
         >
-          <Text style={styles.controlIcon}>⏮</Text>
+          <SkipBack size={20} color={currentStepIndex === 0 ? Colors.pale : Colors.textPrimary} />
         </Pressable>
 
         {/* Play / Pause */}
@@ -278,35 +541,63 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
           onPress={isPlaying ? pause : play}
           style={[styles.controlBtn, styles.controlBtnPlay]}
         >
-          <Text style={styles.playIcon}>{isPlaying ? '⏸' : '▶'}</Text>
+          {isPlaying ? (
+            <Pause size={24} color={Colors.white} weight="fill" />
+          ) : (
+            <Play size={24} color={Colors.white} weight="fill" />
+          )}
         </Pressable>
 
         {/* Step forward */}
         <Pressable
           onPress={() => stepForward()}
-          style={[styles.controlBtn, currentStepIndex === totalSteps - 1 && styles.controlBtnDisabled]}
-          disabled={currentStepIndex === totalSteps - 1}
+          style={[styles.controlBtn, currentStepIndex === totalStepsVal - 1 && styles.controlBtnDisabled]}
+          disabled={currentStepIndex === totalStepsVal - 1}
         >
-          <Text style={styles.controlIcon}>⏭</Text>
+          <SkipForward size={20} color={currentStepIndex === totalStepsVal - 1 ? Colors.pale : Colors.textPrimary} />
         </Pressable>
       </View>
 
-      {/* Speed selector */}
-      {isExpanded && (
-        <View style={styles.speedRow}>
-          <Text style={styles.speedLabel}>Speed</Text>
-          {(['slow', 'normal', 'fast'] as const).map((s) => (
-            <Pressable
-              key={s}
-              style={[styles.speedChip, speed === s && styles.speedChipActive]}
-              onPress={() => setSpeed(s)}
-            >
-              <Text style={[styles.speedChipText, speed === s && styles.speedChipTextActive]}>
-                {s === 'slow' ? '0.5×' : s === 'normal' ? '1×' : '3×'}
-              </Text>
-            </Pressable>
-          ))}
+      {/* Speed selector / Result control buttons */}
+      {isCompleted ? (
+        <View style={styles.resultActionsRow}>
+          <Pressable
+            style={[styles.resultActionBtn, styles.resultActionBtnSecondary]}
+            onPress={() => setStep(0)}
+          >
+            <Text style={styles.resultActionBtnTextSecondary}>Run Again</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.resultActionBtn, styles.resultActionBtnGhost]}
+            onPress={() => {
+              stopVisualization()
+              // Auto-trigger options sheet
+              const screen = departments.length >= 2
+              if (screen) {
+                // To trigger Change Algorithm: we close visualizer panel
+              }
+            }}
+          >
+            <Text style={styles.resultActionBtnTextGhost}>Change Algorithm</Text>
+          </Pressable>
         </View>
+      ) : (
+        isExpanded && (
+          <View style={styles.speedRow}>
+            <Text style={styles.speedLabel}>Speed</Text>
+            {(['slow', 'normal', 'fast'] as const).map((s) => (
+              <Pressable
+                key={s}
+                style={[styles.speedChip, speed === s && styles.speedChipActive]}
+                onPress={() => setSpeed(s)}
+              >
+                <Text style={[styles.speedChipText, speed === s && styles.speedChipTextActive]}>
+                  {s === 'slow' ? '0.5×' : s === 'normal' ? '1×' : '3×'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )
       )}
     </Animated.View>
   )
@@ -315,11 +606,11 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
 const styles = StyleSheet.create({
   panel: {
     position: 'absolute',
-    bottom: 24, // Float above bottom edge
+    bottom: 24,
     left: 16,
     right: 16,
     backgroundColor: Colors.white,
-    borderRadius: 24, // Round all corners for floating effect
+    borderRadius: 24,
     paddingHorizontal: 16,
     zIndex: 50,
     shadowColor: '#000',
@@ -388,21 +679,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeText: {
-    fontSize: 13,
-    color: Colors.textMuted,
-  },
   progressRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     marginBottom: 10,
   },
-  stepCounter: {
-    fontFamily: 'Inter_400Regular',
+  stepCounterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.ice,
+    borderRadius: 9999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    gap: 6,
+  },
+  stepChipArrow: {
+    paddingHorizontal: 2,
+  },
+  stepChipText: {
+    fontFamily: 'Inter_600SemiBold',
     fontSize: 11,
-    color: Colors.textMuted,
-    minWidth: 70,
+    color: Colors.primary,
+    minWidth: 44,
+    textAlign: 'center',
   },
   progressTrack: {
     flex: 1,
@@ -415,6 +715,11 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: Colors.primary,
     borderRadius: 2,
+  },
+  progressPctText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    color: Colors.textMuted,
   },
   explanationCard: {
     backgroundColor: Colors.surfaceAlt,
@@ -429,6 +734,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textPrimary,
     lineHeight: 20,
+  },
+  whyToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  whyToggleText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+    color: Colors.primary,
+  },
+  whyHintText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    marginTop: 6,
+    backgroundColor: Colors.white,
+    padding: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   dataStructureContainer: {
     flex: 1,
@@ -461,20 +789,13 @@ const styles = StyleSheet.create({
   controlBtnDisabled: {
     opacity: 0.35,
   },
-  controlIcon: {
-    fontSize: 18,
-    color: Colors.textPrimary,
-  },
-  playIcon: {
-    fontSize: 22,
-    color: Colors.white,
-  },
   speedRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingTop: 4,
     paddingBottom: 2,
+    justifyContent: 'center',
   },
   speedLabel: {
     fontFamily: 'Inter_400Regular',
@@ -564,10 +885,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  miniActionIcon: {
-    fontSize: 12,
-    color: Colors.primary,
-  },
   miniStepsBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -587,7 +904,118 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  miniCloseText: {
+  
+  // Results summary UI
+  resultContainer: {
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+    alignItems: 'stretch',
+  },
+  resultTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  resultMetrics: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 12,
+  },
+  resultMetricItem: {
+    alignItems: 'center',
+  },
+  resultMetricVal: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 18,
+    color: Colors.primary,
+  },
+  resultMetricLbl: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 10,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  resultScroll: {
+    marginVertical: 4,
+  },
+  resultPathRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  pathChip: {
+    backgroundColor: Colors.ice,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  pathChipText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    color: Colors.textPrimary,
+  },
+  pathArrow: {
+    marginHorizontal: 6,
+  },
+  resultEmptyText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.error,
+    textAlign: 'center',
+  },
+  resultInfoText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 8,
+    paddingHorizontal: 10,
+  },
+  resultBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  resultBadgeText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+  },
+  resultActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    paddingTop: 4,
+    paddingBottom: 2,
+  },
+  resultActionBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  resultActionBtnSecondary: {
+    backgroundColor: Colors.ice,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  resultActionBtnTextSecondary: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
+    color: Colors.primary,
+  },
+  resultActionBtnGhost: {
+    backgroundColor: 'transparent',
+  },
+  resultActionBtnTextGhost: {
+    fontFamily: 'Inter_600SemiBold',
     fontSize: 12,
     color: Colors.textMuted,
   },
