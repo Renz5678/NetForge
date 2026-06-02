@@ -278,10 +278,10 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+      {/* Top bar: logo + skip */}
       <View style={styles.headerRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <NetForgeLogo size={28} />
+          <NetForgeLogo size={26} />
           <Text style={styles.wordmark}>NetForge</Text>
         </View>
         {!isLast && (
@@ -291,24 +291,31 @@ export default function OnboardingScreen() {
         )}
       </View>
 
-      {/* Progress dots */}
+      {/* Step progress dots */}
       <View style={styles.dotsRow}>
         {slides.map((_, i) => (
           <View
             key={i}
             style={[
               styles.dot,
-              activeSlide === i ? styles.dotActive : activeSlide > i ? styles.dotDone : styles.dotInactive,
+              activeSlide === i
+                ? styles.dotActive
+                : activeSlide > i
+                ? styles.dotDone
+                : styles.dotInactive,
             ]}
           />
         ))}
       </View>
 
+      {/* Slide content (fades on transition) */}
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-        {/* Step badge */}
+        {/* Step indicator badge */}
         <View style={styles.stepBadge}>
           {current.icon}
-          <Text style={styles.stepBadgeText}>Step {activeSlide + 1} of {slides.length}</Text>
+          <Text style={styles.stepBadgeText}>
+            Step {activeSlide + 1} of {slides.length}
+          </Text>
         </View>
 
         {/* Illustration */}
@@ -316,13 +323,13 @@ export default function OnboardingScreen() {
           {current.illustration}
         </View>
 
-        {/* Text */}
+        {/* Title + subtitle */}
         <View style={styles.textContainer}>
           <Text style={styles.slideTitle}>{current.title}</Text>
           <Text style={styles.slideSubtitle}>{current.subtitle}</Text>
         </View>
 
-        {/* Tip / Educational reveal */}
+        {/* Optional contextual tip */}
         {current.tip && (
           <View style={styles.tipCard}>
             <View style={styles.tipHeader}>
@@ -334,7 +341,7 @@ export default function OnboardingScreen() {
         )}
       </Animated.View>
 
-      {/* Action buttons */}
+      {/* CTA buttons */}
       <View style={styles.buttons}>
         {isLast ? (
           <>
@@ -350,17 +357,16 @@ export default function OnboardingScreen() {
               fullWidth
               onPress={() => router.push('/(auth)/login')}
             />
-            {__DEV__ && (
-              <Button
-                label="Continue in Offline Mode"
-                variant="ghost"
-                fullWidth
-                onPress={async () => {
-                  await useAuthStore.getState().signInAsGuest()
-                  router.replace('/(tabs)')
-                }}
-              />
-            )}
+            {/* Offline/guest mode is available in all builds as a legitimate use-case */}
+            <Button
+              label="Continue as Guest"
+              variant="ghost"
+              fullWidth
+              onPress={async () => {
+                await useAuthStore.getState().signInAsGuest()
+                router.replace('/(tabs)')
+              }}
+            />
           </>
         ) : (
           <Button
@@ -381,20 +387,22 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     paddingHorizontal: 24,
   },
+
+  // ── Top bar ────────────────────────────────────────────────────────────────
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 16,
+    paddingVertical: 14,
   },
   wordmark: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 22,
+    fontFamily: 'Inter_700Bold',
+    fontSize: 20,
     color: Colors.primary,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
   skipButton: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
   },
   skipText: {
@@ -402,19 +410,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textMuted,
   },
+
+  // ── Progress dots ─────────────────────────────────────────────────────────
   dotsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   dot: {
     height: 6,
     borderRadius: 3,
   },
   dotActive: {
-    width: 20,
+    width: 22,
     backgroundColor: Colors.primary,
   },
   dotDone: {
@@ -425,10 +435,16 @@ const styles = StyleSheet.create({
     width: 6,
     backgroundColor: Colors.ice,
   },
+
+  // ── Slide content area ────────────────────────────────────────────────────
+  // flex: 1 lets this section expand and push the buttons to the bottom
   content: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'flex-start',
   },
+
+  // Step indicator pill
   stepBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -438,46 +454,60 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: `${Colors.primary}20`,
-    marginBottom: 20,
+    borderColor: `${Colors.primary}25`,
+    marginBottom: 24,
   },
   stepBadgeText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 13,
     color: Colors.primary,
   },
+
+  // Illustration container
   illustrationWrapper: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
   },
+
+  // Title + subtitle block
   textContainer: {
     alignItems: 'center',
     gap: 10,
-    marginBottom: 16,
-    paddingHorizontal: 8,
+    marginBottom: 20,
+    paddingHorizontal: 4,
   },
   slideTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 22,
+    fontFamily: 'Inter_700Bold',
+    fontSize: 24,
     color: Colors.textPrimary,
     textAlign: 'center',
+    lineHeight: 32,
   },
   slideSubtitle: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 14,
+    fontSize: 15,
     color: Colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 23,
   },
+
+  // Contextual tip card
   tipCard: {
     width: '100%',
-    backgroundColor: `${Colors.primary}08`,
+    backgroundColor: `${Colors.primary}07`,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: `${Colors.primary}20`,
-    padding: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     gap: 8,
+    // subtle elevation to separate from the background
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 1,
   },
   tipHeader: {
     flexDirection: 'row',

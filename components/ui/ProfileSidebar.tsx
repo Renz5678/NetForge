@@ -1,3 +1,16 @@
+/**
+ * ProfileSidebar.tsx
+ *
+ * Slide-in panel from the right, triggered by the avatar in TopHeader.
+ *
+ * Guest users (email ends in .local or .guest) see a reduced view:
+ *  - "Guest Mode" badge displayed
+ *  - "Change password" and "Edit profile" are hidden
+ *  - A "Sign in" CTA replaces account-destructive actions
+ *
+ * Authenticated users have full access to all settings and actions.
+ */
+
 import React, { useState } from 'react'
 import {
   Modal,
@@ -12,12 +25,22 @@ import {
   Platform,
   KeyboardAvoidingView,
   PanResponder,
+  Alert,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as DocumentPicker from 'expo-document-picker'
 import * as Sharing from 'expo-sharing'
 import { useRouter } from 'expo-router'
-import { DownloadSimple, UploadSimple, Trash, Key, SignOut } from 'phosphor-react-native'
+import {
+  DownloadSimple,
+  UploadSimple,
+  Trash,
+  Key,
+  SignOut,
+  UserCircle,
+  Warning,
+  CaretRight,
+} from 'phosphor-react-native'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { usePreferencesStore } from '@/stores/usePreferencesStore'
@@ -30,6 +53,12 @@ import { getInitials } from '@/lib/formatters'
 import type { NetworkConfig } from '@/types'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
+
+/** Returns true when the current session is a local/offline guest account. */
+function isGuestUser(email: string | undefined): boolean {
+  if (!email) return false
+  return email.endsWith('.local') || email.endsWith('.guest') || email === 'guest@netforge.com'
+}
 
 type ProfileSidebarProps = {
   visible: boolean
@@ -46,7 +75,8 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
   const [showClearSheet, setShowClearSheet] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
-  
+  const [showDefaultsSheet, setShowDefaultsSheet] = useState(false)
+
   const {
     notifications,
     defaultBaseIp,
@@ -56,7 +86,6 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
     setDefaultVlanStart,
   } = usePreferencesStore()
 
-  const [showDefaultsSheet, setShowDefaultsSheet] = useState(false)
   const [tempBaseIp, setTempBaseIp] = useState(defaultBaseIp)
   const [tempVlanStart, setTempVlanStart] = useState(defaultVlanStart)
 
@@ -106,26 +135,11 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
       onPanResponderRelease: (_, gestureState) => {
         if (gestureState.dx > 80 || gestureState.vx > 0.5) {
           Animated.parallel([
-            Animated.timing(translateX, {
-              toValue: SCREEN_WIDTH,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-            Animated.timing(opacity, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            onClose()
-          })
+            Animated.timing(translateX, { toValue: SCREEN_WIDTH, duration: 200, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+          ]).start(() => onClose())
         } else {
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 100,
-            friction: 12,
-          }).start()
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, tension: 100, friction: 12 }).start()
         }
       },
     })
@@ -134,6 +148,9 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
   const fullName = user?.user_metadata?.full_name ?? 'User'
   const email = user?.email ?? ''
   const initials = getInitials(fullName)
+  const isGuest = isGuestUser(email)
+
+  // ─── Handlers ────────────────────────────────────────────────────────────────
 
   const handleSignOut = async () => {
     setSigningOut(true)
@@ -143,15 +160,28 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
   }
 
   const handleExportJson = async () => {
-    if (!activeConfig) return
+    if (!activeConfig) {
+      Alert.alert(
+        'No Active Config',
+        'Open a configuration from the Configs tab first, then return here to export it.'
+      )
+      return
+    }
     const json = JSON.stringify(activeConfig, null, 2)
     const available = await Sharing.isAvailableAsync()
     if (available) {
-      const { Share: RNShare } = require('react-native')
-      await RNShare.share({
-        title: `${activeConfig.name}.json`,
-        message: json,
-      })
+      try {
+        await Sharing.shareAsync(
+          `data:application/json;base64,${btoa(unescape(encodeURIComponent(json)))}`,
+          { mimeType: 'application/json', dialogTitle: `${activeConfig.name}.json` }
+        )
+      } catch {
+        // Fallback: share as plain text message
+        const { Share } = require('react-native')
+        await Share.share({ title: `${activeConfig.name}.json`, message: json })
+      }
+    } else {
+      Alert.alert('Sharing Not Available', 'Your device does not support file sharing.')
     }
   }
 
@@ -169,7 +199,11 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
       const text = await response.text()
       const parsed = JSON.parse(text) as Partial<NetworkConfig>
 
-      if (!parsed.name || !parsed.departments) return
+      if (!parsed.name || !parsed.departments) {
+        Alert.alert('Invalid File', 'The selected file does not appear to be a valid NetForge configuration.')
+        return
+      }
+
       if (!user?.id) return
 
       const newConfig = await createConfig(parsed.name, user.id, parsed.baseIp, parsed.vlanStart)
@@ -181,8 +215,10 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
           vlanStart: parsed.vlanStart ?? newConfig.vlanStart,
         })
       }
+      Alert.alert('Import Successful', `"${parsed.name}" has been added to your configurations.`)
     } catch (err) {
       console.error('Import error:', err)
+      Alert.alert('Import Failed', 'Could not read the selected file. Make sure it is a valid NetForge JSON export.')
     }
   }
 
@@ -194,6 +230,7 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
       await loadConfigs(user.id)
     } catch (err) {
       console.error('Clear error:', err)
+      Alert.alert('Error', 'Could not clear configurations. Please try again.')
     }
     setClearing(false)
     setShowClearSheet(false)
@@ -204,22 +241,33 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
     if (!email) return
     const { error } = await supabase.auth.resetPasswordForEmail(email)
     if (error) {
-      alert('Error sending password reset: ' + error.message)
+      Alert.alert('Error', 'Could not send password reset email: ' + error.message)
     } else {
-      alert('Password reset email sent to ' + email)
+      Alert.alert(
+        'Email Sent',
+        `A password reset link has been sent to ${email}. Check your inbox.`
+      )
     }
   }
 
   const handleSaveDefaults = () => {
-    if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(tempBaseIp)) {
-      setDefaultBaseIp(tempBaseIp)
+    const ipValid = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(tempBaseIp)
+    if (!ipValid) {
+      Alert.alert('Invalid IP', 'Please enter a valid IPv4 address (e.g. 10.0.0.0).')
+      return
     }
-    const num = parseInt(tempVlanStart, 10)
-    if (!isNaN(num) && num > 0 && num < 4095) {
-      setDefaultVlanStart(tempVlanStart)
+    const vlanNum = parseInt(tempVlanStart, 10)
+    if (isNaN(vlanNum) || vlanNum < 1 || vlanNum > 4094) {
+      Alert.alert('Invalid VLAN', 'VLAN ID must be a number between 1 and 4094.')
+      return
     }
+    setDefaultBaseIp(tempBaseIp)
+    setDefaultVlanStart(tempVlanStart)
     setShowDefaultsSheet(false)
+    Alert.alert('Saved', 'Default network settings have been updated.')
   }
+
+  // ─── Reusable row component ──────────────────────────────────────────────────
 
   const SettingRow = ({
     label,
@@ -232,17 +280,22 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
     rightElement?: React.ReactNode
     labelColor?: string
   }) => (
-    <Pressable style={styles.settingRow} onPress={onPress}>
+    <Pressable
+      style={({ pressed }) => [styles.settingRow, pressed && { backgroundColor: Colors.surfaceAlt }]}
+      onPress={onPress}
+    >
       <Text style={[styles.settingLabel, labelColor ? { color: labelColor } : null]}>
         {label}
       </Text>
-      {rightElement ?? null}
+      {rightElement ?? <CaretRight size={16} color={Colors.pale} />}
     </Pressable>
   )
 
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
   return (
     <Modal
-      visible={visible || opacity !== null} // To allow animation to finish
+      visible={visible}
       transparent
       animationType="none"
       onRequestClose={onClose}
@@ -252,9 +305,12 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.overlay}
       >
-        <Animated.View style={[styles.backdrop, { opacity }]} accessibilityViewIsModal={true}>
+        {/* Dimmed backdrop — tap to close */}
+        <Animated.View style={[styles.backdrop, { opacity }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
+
+        {/* Slide-in panel */}
         <Animated.View
           style={[
             styles.sidebar,
@@ -265,21 +321,60 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
         >
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Profile</Text>
+            <Text style={styles.headerTitle}>Account</Text>
+            {/* Drag handle */}
             <View style={styles.handleBar} />
           </View>
 
           <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-            {/* Profile Info */}
+
+            {/* ── Profile card ─────────────────────────────────────── */}
             <View style={styles.profileSection}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>{initials}</Text>
               </View>
               <Text style={styles.name}>{fullName}</Text>
               <Text style={styles.email}>{email}</Text>
+
+              {/* Guest badge */}
+              {isGuest && (
+                <View style={styles.guestBadge}>
+                  <Warning size={13} color={Colors.warning} weight="fill" />
+                  <Text style={styles.guestBadgeText}>Guest Mode — data is local only</Text>
+                </View>
+              )}
+
+              {/* Edit profile — only for authenticated users */}
+              {!isGuest && (
+                <Pressable
+                  style={styles.editProfileBtn}
+                  onPress={() =>
+                    Alert.alert(
+                      'Edit Profile',
+                      'Profile editing is coming in a future update. You can change your password from the Account section below.'
+                    )
+                  }
+                >
+                  <Text style={styles.editProfileText}>Edit profile</Text>
+                </Pressable>
+              )}
+
+              {/* Sign-in CTA for guests */}
+              {isGuest && (
+                <Pressable
+                  style={styles.signInCta}
+                  onPress={() => {
+                    onClose()
+                    router.replace('/(auth)/signup')
+                  }}
+                >
+                  <UserCircle size={16} color={Colors.white} weight="fill" />
+                  <Text style={styles.signInCtaText}>Create account to sync data</Text>
+                </Pressable>
+              )}
             </View>
 
-            {/* GENERAL section */}
+            {/* ── GENERAL ──────────────────────────────────────────── */}
             <Text style={styles.sectionLabel}>GENERAL</Text>
             <View style={styles.settingGroup}>
               <View style={styles.settingRow}>
@@ -313,17 +408,17 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
               />
             </View>
 
-            {/* DATA section */}
+            {/* ── DATA ─────────────────────────────────────────────── */}
             <Text style={styles.sectionLabel}>DATA</Text>
             <View style={styles.settingGroup}>
               <SettingRow
-                label="Export JSON"
+                label="Export active config"
                 onPress={handleExportJson}
                 rightElement={<DownloadSimple size={20} color={Colors.textSecondary} />}
               />
               <View style={styles.divider} />
               <SettingRow
-                label="Import config"
+                label="Import config from file"
                 onPress={handleImportJson}
                 rightElement={<UploadSimple size={20} color={Colors.textSecondary} />}
               />
@@ -336,35 +431,41 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
               />
             </View>
 
-            {/* ACCOUNT section */}
+            {/* ── ACCOUNT ──────────────────────────────────────────── */}
             <Text style={styles.sectionLabel}>ACCOUNT</Text>
             <View style={styles.settingGroup}>
+              {/* Change password — hidden for guests (they have no password) */}
+              {!isGuest && (
+                <>
+                  <SettingRow
+                    label="Change password"
+                    onPress={handlePasswordReset}
+                    rightElement={<Key size={20} color={Colors.textSecondary} />}
+                  />
+                  <View style={styles.divider} />
+                </>
+              )}
               <SettingRow
-                label="Change password"
-                onPress={handlePasswordReset}
-                rightElement={<Key size={20} color={Colors.textSecondary} />}
-              />
-              <View style={styles.divider} />
-              <SettingRow
-                label={signingOut ? 'Signing out…' : 'Log out'}
+                label={signingOut ? 'Signing out…' : isGuest ? 'Exit guest mode' : 'Log out'}
                 onPress={handleSignOut}
                 labelColor={Colors.error}
                 rightElement={<SignOut size={20} color={Colors.error} />}
               />
             </View>
+
           </ScrollView>
         </Animated.View>
       </KeyboardAvoidingView>
 
-      {/* Clear all sheet */}
+      {/* ── Clear all confirmation sheet ─────────────────────────────── */}
       <BottomSheet
         visible={showClearSheet}
         onClose={() => setShowClearSheet(false)}
-        snapHeight={220}
+        snapHeight={240}
       >
         <Text style={styles.sheetTitle}>Clear all configurations?</Text>
         <Text style={styles.sheetSubtitle}>
-          This will permanently delete all your saved configurations. This action cannot be undone.
+          This will permanently delete all your saved configurations. This cannot be undone.
         </Text>
         <View style={styles.sheetButtons}>
           <Button
@@ -383,17 +484,17 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
         </View>
       </BottomSheet>
 
-      {/* Defaults Sheet */}
+      {/* ── Default network settings sheet ───────────────────────────── */}
       <BottomSheet
         visible={showDefaultsSheet}
         onClose={() => setShowDefaultsSheet(false)}
         snapHeight={340}
       >
-        <Text style={styles.sheetTitle}>Default Configurations</Text>
+        <Text style={styles.sheetTitle}>Default Network Settings</Text>
         <Text style={[styles.sheetSubtitle, { marginBottom: 16 }]}>
-          These will be used when creating a new config.
+          Applied automatically when creating a new configuration.
         </Text>
-        
+
         <Text style={styles.inputLabel}>Base IP Address</Text>
         <Input
           placeholder="e.g. 10.0.0.0"
@@ -402,7 +503,7 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
           autoCapitalize="none"
           keyboardType="numbers-and-punctuation"
         />
-        
+
         <View style={{ height: 16 }} />
 
         <Text style={styles.inputLabel}>Starting VLAN ID</Text>
@@ -416,12 +517,8 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
         <View style={{ height: 24 }} />
 
         <View style={styles.sheetButtons}>
-          <Button
-            label="Save Defaults"
-            variant="primary"
-            fullWidth
-            onPress={handleSaveDefaults}
-          />
+          <Button label="Save Defaults" variant="primary" fullWidth onPress={handleSaveDefaults} />
+          <Button label="Cancel" variant="ghost" fullWidth onPress={() => setShowDefaultsSheet(false)} />
         </View>
       </BottomSheet>
     </Modal>
@@ -440,7 +537,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 26, 65, 0.4)',
+    backgroundColor: 'rgba(0, 26, 65, 0.45)',
   },
   sidebar: {
     width: SCREEN_WIDTH * 0.85,
@@ -452,12 +549,10 @@ const styles = StyleSheet.create({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: -4, height: 0 },
-        shadowOpacity: 0.1,
-        shadowRadius: 16,
+        shadowOpacity: 0.12,
+        shadowRadius: 20,
       },
-      android: {
-        elevation: 16,
-      },
+      android: { elevation: 20 },
     }),
   },
   header: {
@@ -470,7 +565,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   headerTitle: {
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Inter_700Bold',
     fontSize: 20,
     color: Colors.textPrimary,
   },
@@ -485,19 +580,24 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     gap: 8,
   },
+
+  // ── Profile section ──────────────────────────────────────────────────────
   profileSection: {
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 20,
     gap: 4,
+    marginBottom: 4,
   },
   avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+    borderWidth: 3,
+    borderColor: Colors.ice,
   },
   avatarText: {
     fontFamily: 'Inter_700Bold',
@@ -513,15 +613,62 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
     color: Colors.textMuted,
+    marginTop: 2,
   },
+  guestBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    backgroundColor: Colors.warningContainer,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.warning + '40',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  guestBadgeText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.warning,
+  },
+  editProfileBtn: {
+    marginTop: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  editProfileText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
+    color: Colors.primary,
+  },
+  signInCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 12,
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  signInCtaText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: Colors.white,
+  },
+
+  // ── Section labels ───────────────────────────────────────────────────────
   sectionLabel: {
     fontFamily: 'Inter_500Medium',
     fontSize: 11,
     color: Colors.textMuted,
     letterSpacing: 0.8,
     marginTop: 16,
-    marginBottom: 8,
+    marginBottom: 6,
   },
+
+  // ── Setting groups ───────────────────────────────────────────────────────
   settingGroup: {
     backgroundColor: Colors.white,
     borderRadius: 14,
@@ -552,8 +699,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
     marginHorizontal: 16,
   },
+
+  // ── Bottom sheet content ─────────────────────────────────────────────────
   sheetTitle: {
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Inter_700Bold',
     fontSize: 18,
     color: Colors.textPrimary,
     marginBottom: 8,

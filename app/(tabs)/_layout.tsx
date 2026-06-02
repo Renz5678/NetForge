@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
-import { House, Folders, ShieldCheck, UserCircle, Export, ChartPieSlice } from 'phosphor-react-native'
+import { House, Folders, ShieldCheck, Export, ChartPieSlice } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
 import { useConfigStore } from '@/stores/useConfigStore'
 
@@ -13,7 +13,7 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarStyle: styles.tabBar,
         tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.pale,
+        tabBarInactiveTintColor: Colors.textMuted,
         tabBarLabelStyle: styles.label,
         tabBarShowLabel: true,
       }}
@@ -23,9 +23,9 @@ export default function TabsLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color, focused }) => (
-            <View>
+            <View style={styles.iconWrap}>
               {focused && <View style={styles.indicator} />}
-              <House size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
+              <House size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
             </View>
           ),
         }}
@@ -42,9 +42,9 @@ export default function TabsLayout() {
             lineHeight: 14,
           },
           tabBarIcon: ({ color, focused }) => (
-            <View>
+            <View style={styles.iconWrap}>
               {focused && <View style={styles.indicator} />}
-              <Folders size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
+              <Folders size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
             </View>
           ),
         }}
@@ -54,9 +54,9 @@ export default function TabsLayout() {
         options={{
           title: 'Validate',
           tabBarIcon: ({ color, focused }) => (
-            <View>
+            <View style={styles.iconWrap}>
               {focused && <View style={styles.indicator} />}
-              <ShieldCheck size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
+              <ShieldCheck size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
             </View>
           ),
         }}
@@ -66,9 +66,9 @@ export default function TabsLayout() {
         options={{
           title: 'Subnet',
           tabBarIcon: ({ color, focused }) => (
-            <View>
+            <View style={styles.iconWrap}>
               {focused && <View style={styles.indicator} />}
-              <ChartPieSlice size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
+              <ChartPieSlice size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
             </View>
           ),
         }}
@@ -78,24 +78,21 @@ export default function TabsLayout() {
         options={{
           title: 'Export',
           tabBarIcon: ({ color, focused }) => (
-            <View>
+            <View style={styles.iconWrap}>
               {focused && <View style={styles.indicator} />}
-              <Export size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
+              <Export size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
             </View>
           ),
         }}
       />
+      {/*
+       * The "profile" route is hidden from the tab bar.
+       * Profile settings are accessed via the avatar icon in TopHeader → ProfileSidebar.
+       * We keep href: null so Expo Router doesn't render it as a tab.
+       */}
       <Tabs.Screen
         name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, focused }) => (
-            <View>
-              {focused && <View style={styles.indicator} />}
-              <UserCircle size={24} color={color as string} weight={focused ? 'fill' : 'regular'} />
-            </View>
-          ),
-        }}
+        options={{ href: null }}
       />
     </Tabs>
   )
@@ -107,17 +104,23 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     paddingTop: 4,
-    height: 60,
+    height: 62,
   },
   label: {
     fontFamily: 'Inter_500Medium',
     fontSize: 11,
+    marginBottom: 2,
+  },
+  // Wrapper around each tab icon so the active indicator is positioned relative to it
+  iconWrap: {
+    alignItems: 'center',
+    position: 'relative',
   },
   indicator: {
     position: 'absolute',
     top: -8,
-    left: 0,
-    right: 0,
+    left: -6,
+    right: -6,
     height: 2,
     backgroundColor: Colors.primary,
     borderRadius: 1,

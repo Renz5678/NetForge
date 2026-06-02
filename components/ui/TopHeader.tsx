@@ -1,3 +1,12 @@
+/**
+ * TopHeader.tsx
+ *
+ * Shared header used across all main tabs.
+ * The avatar in the top-right opens the ProfileSidebar.
+ * Guest users get a visually distinct muted avatar so they can tell
+ * at a glance that they are in offline mode.
+ */
+
 import React, { useState } from 'react'
 import { View, Text, StyleSheet, Pressable } from 'react-native'
 import { NetForgeLogo } from '@/components/ui/NetForgeLogo'
@@ -6,42 +15,72 @@ import { useAuthStore } from '@/stores/useAuthStore'
 import { getInitials } from '@/lib/formatters'
 import { ProfileSidebar } from '@/components/ui/ProfileSidebar'
 
-type TopHeaderProps = {
+export type TopHeaderProps = {
   title?: string
   subtitle?: React.ReactNode
   leftIcon?: React.ReactNode
   rightActions?: React.ReactNode
 }
 
+/** Returns true when the current session is a local/offline guest account. */
+function isGuestUser(email: string | undefined): boolean {
+  if (!email) return false
+  return (
+    email.endsWith('.local') ||
+    email.endsWith('.guest') ||
+    email === 'guest@netforge.com'
+  )
+}
+
 export function TopHeader({ title, subtitle, leftIcon, rightActions }: TopHeaderProps) {
   const user = useAuthStore((s) => s.user)
   const [isSidebarOpen, setSidebarOpen] = useState(false)
-  
+
   const fullName = user?.user_metadata?.full_name ?? 'User'
   const initials = getInitials(fullName)
-  
+  const isGuest = isGuestUser(user?.email)
+
   return (
     <>
       <View style={styles.header}>
+        {/* Left: logo/icon + title */}
         <View style={styles.left}>
           {leftIcon ? (
             <View style={styles.iconContainer}>{leftIcon}</View>
           ) : (
             <NetForgeLogo size={22} />
           )}
-          <View>
-            <Text style={styles.title}>{title || 'NetForge'}</Text>
-            {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+          <View style={styles.titleGroup}>
+            <Text style={styles.title} numberOfLines={1}>
+              {title || 'NetForge'}
+            </Text>
+            {subtitle ? (
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            ) : null}
           </View>
         </View>
+
+        {/* Right: optional actions + avatar */}
         <View style={styles.right}>
           {rightActions}
-          <Pressable onPress={() => setSidebarOpen(true)} style={styles.avatarCircle}>
+          <Pressable
+            onPress={() => setSidebarOpen(true)}
+            style={({ pressed }) => [
+              styles.avatarCircle,
+              isGuest && styles.avatarCircleGuest,
+              pressed && { opacity: 0.75 },
+            ]}
+            hitSlop={8}
+            accessibilityLabel={isGuest ? 'Guest account — tap to open settings' : 'Open profile settings'}
+            accessibilityRole="button"
+          >
             <Text style={styles.avatarText}>{initials}</Text>
           </Pressable>
         </View>
       </View>
-      
+
       <ProfileSidebar visible={isSidebarOpen} onClose={() => setSidebarOpen(false)} />
     </>
   )
@@ -62,10 +101,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    flex: 1,
+    minWidth: 0, // allows text to truncate properly
   },
   iconContainer: {
-    width: 24,
+    width: 28,
     alignItems: 'center',
+  },
+  titleGroup: {
+    flexShrink: 1,
   },
   title: {
     fontFamily: 'Inter_600SemiBold',
@@ -82,6 +126,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    marginLeft: 8,
   },
   avatarCircle: {
     width: 36,
@@ -92,6 +137,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: Colors.ice,
+  },
+  // Guests get a muted tone — distinct from the primary blue — so users
+  // immediately know they are in local/offline mode.
+  avatarCircleGuest: {
+    backgroundColor: Colors.textMuted,
+    borderColor: Colors.border,
   },
   avatarText: {
     fontFamily: 'Inter_600SemiBold',

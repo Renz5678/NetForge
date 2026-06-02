@@ -139,14 +139,14 @@ export const useAuthStore = create<AuthStore>((set) => ({
   },
 
   signInAsGuest: async () => {
-    if (!__DEV__) {
-      throw new Error('Guest mode is only available in development builds')
-    }
+    // Creates a stable guest session backed by a locally persisted UUID.
+    // Data is stored on-device only and never synced to Supabase.
+    // This is intentionally available in all builds.
     const guestId = await getOrCreateGuestId()
     const mockUser = {
       id: guestId,
       email: 'guest@netforge.local',
-      user_metadata: { full_name: 'Guest Administrator' },
+      user_metadata: { full_name: 'Guest' },
     } as any
     const mockSession = { access_token: 'offline_token', user: mockUser } as any
     set({ user: mockUser, session: mockSession, loading: false })
