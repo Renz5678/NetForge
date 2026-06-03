@@ -10,8 +10,24 @@ export const SPEED_MS: Record<Speed, number> = {
   fast: 200,
 }
 
+// Result shape for failure simulation
+export type FailureSimResult = {
+  /** Node IDs that become unreachable after the failed node is removed. */
+  isolatedNodes: string[]
+  /** Pairs of [srcId, dstId] whose Dijkstra path is broken (Infinity cost). */
+  brokenPaths: [string, string][]
+}
+
+// Result shape for pathfinding comparison (Dijkstra vs A*)
+export type ComparisonResult = {
+  sourceId: string
+  targetId: string
+  dijkstra: { path: string[]; hops: number; nodesVisited: number } | null
+  aStar:    { path: string[]; hops: number; nodesVisited: number } | null
+}
+
 type VisualizationStore = {
-  // ── State ──────────────────────────────────────────────────────────────────
+  // ── Visualization playback ─────────────────────────────────────────────────
   isActive: boolean
   algorithm: AlgorithmType | null
   currentStepIndex: number
@@ -28,11 +44,26 @@ type VisualizationStore = {
   // Root node for Prim's MST
   rootId: string | null
 
-  // For A* comparison panel: Dijkstra visited set
+  // For A* comparison panel: visited node sets for both algorithms
   dijkstraVisited: Set<string>
   astarVisited: Set<string>
 
   showSteps: boolean
+
+  // ── Articulation Point / Single Point of Failure ───────────────────────────
+  /** Department IDs identified as articulation points by Tarjan's algorithm.
+   *  Populated when the validate tab runs the SPF check. Cleared on config change. */
+  criticalNodeIds: string[]
+
+  // ── Failure Simulation ─────────────────────────────────────────────────────
+  /** ID of the node currently being simulated as failed. null = no active sim. */
+  failedNodeId: string | null
+  /** Impact analysis result for the active failure simulation. */
+  failureSimResult: FailureSimResult | null
+
+  // ── Pathfinding Comparison ─────────────────────────────────────────────────
+  /** Side-by-side result for Dijkstra vs A* on the same src/dst pair. */
+  comparisonResult: ComparisonResult | null
 
   // ── Actions ────────────────────────────────────────────────────────────────
   setIsExpanded: (expanded: boolean) => void
@@ -47,6 +78,7 @@ type VisualizationStore = {
       dijkstraVisited?: Set<string>
       astarVisited?: Set<string>
       showSteps?: boolean
+      comparisonResult?: ComparisonResult | null
     }
   ) => void
   stopVisualization: () => void
@@ -57,13 +89,24 @@ type VisualizationStore = {
   setStep: (index: number) => void
   setSpeed: (speed: Speed) => void
   _advanceStep: () => void
+
+  // Articulation point actions
+  setCriticalNodeIds: (ids: string[]) => void
+
+  // Failure simulation actions
+  setFailedNodeId: (id: string | null) => void
+  setFailureSimResult: (result: FailureSimResult | null) => void
+  clearFailureSim: () => void
+
+  // Pathfinding comparison action
+  setComparisonResult: (result: ComparisonResult | null) => void
 }
 
 // Module-level non-reactive cache for large steps array to optimize performance
 let visualizerSteps: VisualizationStep[] = []
 
 export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
-  // Initial state
+  // ── Initial state ──────────────────────────────────────────────────────────
   isActive: false,
   algorithm: null,
   currentStepIndex: 0,
@@ -79,6 +122,17 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
   dijkstraVisited: new Set(),
   astarVisited: new Set(),
 
+  // Articulation points — empty until validate tab runs
+  criticalNodeIds: [],
+
+  // Failure simulation — null until long-press triggers a simulation
+  failedNodeId: null,
+  failureSimResult: null,
+
+  // Pathfinding comparison — null until comparison mode is triggered
+  comparisonResult: null,
+
+  // ── Visualization playback actions ─────────────────────────────────────────
   setIsExpanded: (isExpanded) => {
     set({ isExpanded })
   },
@@ -104,6 +158,7 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
       rootId: options.rootId ?? null,
       dijkstraVisited: options.dijkstraVisited ?? new Set(),
       astarVisited: options.astarVisited ?? new Set(),
+      comparisonResult: options.comparisonResult ?? null,
     })
   },
 
@@ -123,6 +178,7 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
       rootId: null,
       dijkstraVisited: new Set(),
       astarVisited: new Set(),
+      comparisonResult: null,
     })
   },
 
@@ -195,5 +251,28 @@ export const useVisualizationStore = create<VisualizationStore>((set, get) => ({
       currentStepIndex: nextIndex,
       currentStep: visualizerSteps[nextIndex] ?? null,
     })
+  },
+
+  // ── Articulation point actions ─────────────────────────────────────────────
+  setCriticalNodeIds: (ids) => {
+    set({ criticalNodeIds: ids })
+  },
+
+  // ── Failure simulation actions ─────────────────────────────────────────────
+  setFailedNodeId: (id) => {
+    set({ failedNodeId: id })
+  },
+
+  setFailureSimResult: (result) => {
+    set({ failureSimResult: result })
+  },
+
+  clearFailureSim: () => {
+    set({ failedNodeId: null, failureSimResult: null })
+  },
+
+  // ── Pathfinding comparison action ──────────────────────────────────────────
+  setComparisonResult: (result) => {
+    set({ comparisonResult: result })
   },
 }))

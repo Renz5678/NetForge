@@ -314,7 +314,6 @@ export default function SubnetScreen() {
       {/* Header */}
       <TopHeader
         title="Subnet Calculator"
-        subtitle="VLSM · Variable-length subnet masking"
         leftIcon={
           <View style={s.iconWrap}>
             <ChartPieSlice size={20} color={Colors.white} weight="fill" />

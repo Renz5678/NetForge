@@ -8,6 +8,7 @@ import { allocateSubnets } from '@/lib/algorithms/subnetAllocator'
 import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
 import { DepartmentSchema } from '@/lib/validators'
 import type { Department, NetworkConfig, NetworkInsight } from '@/types'
+import { useAuthStore } from '@/stores/useAuthStore'
 
 const LOCAL_CONFIGS_KEY = '@netforge_configs'
 
@@ -293,7 +294,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       { destination: '0.0.0.0/0', nextHop: fwIp },
       // Internal subnets pointing downstream to Switch-HQ
       ...allocated
-        .filter((d) => !['demo_core_router', 'demo_firewall', 'demo_wan_cloud'].includes(d.id))
+        .filter((d) => !['demo_core_router', 'demo_firewall', 'demo_wan_cloud'].includes(d.id) && d.subnet != null)
         .map((d) => ({
           destination: d.subnet!,
           nextHop: nextHopIp
@@ -306,7 +307,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       { destination: '0.0.0.0/0', nextHop: wanIp },
       // Internal subnets pointing downstream to Core-Router
       ...allocated
-        .filter((d) => !['demo_firewall', 'demo_wan_cloud'].includes(d.id))
+        .filter((d) => !['demo_firewall', 'demo_wan_cloud'].includes(d.id) && d.subnet != null)
         .map((d) => ({
           destination: d.subnet!,
           nextHop: routerFwIp
@@ -385,11 +386,16 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     }
 
     // 2. Setup NetInfo Sync Listener once
+    // We read userId from the auth store at event time to avoid stale closure bugs
+    // (e.g., guest → real login would leave the listener pointing at the old userId).
     if (!isSubscribedToNetInfo) {
       isSubscribedToNetInfo = true
       NetInfo.addEventListener((state) => {
         if (state.isConnected && state.isInternetReachable !== false) {
-          get().flushPendingOps(userId)
+          const currentUserId = useAuthStore.getState().user?.id
+          if (currentUserId) {
+            get().flushPendingOps(currentUserId)
+          }
         }
       })
     }
@@ -592,7 +598,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
   addDepartment: async (dept) => {
     // Validate Department model via Zod prior to saving
-    DepartmentSchema.parse(dept)
+    try {
+      DepartmentSchema.parse(dept)
+    } catch (validationErr) {
+      console.warn('addDepartment: invalid department data', validationErr)
+      throw validationErr
+    }
 
     const { activeConfig } = get()
     if (!activeConfig) return
@@ -608,7 +619,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
   updateDepartment: async (dept) => {
     // Validate Department model via Zod prior to saving
-    DepartmentSchema.parse(dept)
+    try {
+      DepartmentSchema.parse(dept)
+    } catch (validationErr) {
+      console.warn('updateDepartment: invalid department data', validationErr)
+      throw validationErr
+    }
 
     const { activeConfig } = get()
     if (!activeConfig) return
@@ -809,8 +825,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
             // Conflict if remote updatedAt is newer than local config's internal updatedAt timestamp
             if (remoteTime > localTime) {
-              set({ conflictConfig: { local: localConfig, remote: remoteConfig } })
-              set({ syncing: false })
+              set({ conflictConfig: { local: localConfig, remote: remoteConfig }, syncing: false })
               return
             }
           }

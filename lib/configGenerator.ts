@@ -84,7 +84,7 @@ function generateRouterConfig(node: Department, allNodes: Department[]): string 
   if (node.staticRoutes && node.staticRoutes.length > 0) {
     for (const route of node.staticRoutes) {
       const [net, prefix] = route.destination.split('/')
-      const mask = prefixToMask(parseInt(prefix, 10))
+      const mask = prefixToMask(parseInt(prefix ?? '32', 10))
       lines.push(`ip route ${net} ${mask} ${route.nextHop}`)
     }
     lines.push('!')
@@ -186,7 +186,7 @@ function generateFirewallConfig(node: Department, allNodes: Department[]): strin
   if (node.staticRoutes && node.staticRoutes.length > 0) {
     for (const route of node.staticRoutes) {
       const [net, prefix] = route.destination.split('/')
-      const mask = prefixToMask(parseInt(prefix, 10))
+      const mask = prefixToMask(parseInt(prefix ?? '32', 10))
       lines.push(`ip route ${net} ${mask} ${route.nextHop}`)
     }
     lines.push('!')

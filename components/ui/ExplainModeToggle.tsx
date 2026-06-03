@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Animated,
   View,
+  Alert,
 } from 'react-native'
 import { GraduationCap, EyeSlash } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
@@ -86,21 +87,28 @@ export function ExplainModeToggle({ style }: ExplainModeToggleProps) {
 
       <Pressable
         onPress={handlePress}
+        onLongPress={() =>
+          Alert.alert(
+            'Learn Mode',
+            'When Learn Mode is on, the app shows you why the algorithm made each decision — hop-by-hop routing logic, subnet selection, and validation reasoning. Great for understanding how networks actually work.',
+            [{ text: 'Got it' }]
+          )
+        }
         style={[
           styles.toggle,
           explainMode ? styles.toggleActive : styles.toggleInactive,
         ]}
         accessibilityRole="button"
-        accessibilityLabel={explainMode ? 'Disable Explain Mode' : 'Enable Explain Mode'}
+        accessibilityLabel={explainMode ? 'Disable Learn Mode' : 'Enable Learn Mode'}
         accessibilityState={{ selected: explainMode }}
       >
-        {explainMode ? (
-          <GraduationCap size={16} color={Colors.white} weight="fill" />
-        ) : (
-          <EyeSlash size={16} color={Colors.textSecondary} weight="regular" />
-        )}
+        <GraduationCap
+          size={16}
+          color={explainMode ? Colors.white : Colors.textSecondary}
+          weight={explainMode ? 'fill' : 'regular'}
+        />
         <Text style={[styles.label, explainMode ? styles.labelActive : styles.labelInactive]}>
-          {explainMode ? 'Explain On' : 'Explain'}
+          {explainMode ? 'Learn On' : 'Learn'}
         </Text>
       </Pressable>
     </Animated.View>

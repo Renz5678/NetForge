@@ -1,454 +1,234 @@
-// NetworkInsightsPanel.tsx
-// A persistent slide-up panel that surfaces auto-detected network findings.
-// Each insight shows severity, explanation, suggested action, and an optional
-// "Learn More" button that reveals the algorithm behind the finding.
+// NetworkInsightsPanel.tsx  (Topology Performance Dashboard)
 //
-// Philosophy: Insights are presented as networking problems first.
-// The algorithm is revealed only when the user taps "Learn More".
+// Replaces the original insight-feed panel with a horizontally-scrollable
+// metrics dashboard for the active network configuration.
+//
+// Metrics displayed (all derived from the active config's departments array):
+//   • Nodes          — total department count
+//   • Links          — unique undirected edge count
+//   • Avg Degree     — (2 × edges) / nodes
+//   • Density        — (2 × edges) / (nodes × (nodes - 1))  [0..100%]
+//   • Subnets        — count of departments with an allocated subnet
+//   • ACL Rules      — total aclRules across all firewall-type nodes
+//   • Redundancy     — (non-AP nodes / total nodes) × 100  [requires AP data from store]
+//   • Topology Health — composite derived from validation results
+//
+// The panel is scroll-only (no collapse). It renders as a horizontal FlatList
+// of MetricTile cards, each optionally showing an icon, progress bar, or
+// custom value color.
 
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useMemo } from 'react'
+import { View, Text, StyleSheet, ScrollView } from 'react-native'
 import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  ScrollView,
-  Animated,
-  LayoutAnimation,
-} from 'react-native'
-import {
-  Warning,
-  Info,
-  XCircle,
-  CheckCircle,
-  CaretDown,
-  CaretUp,
-  X,
-  Lightbulb,
-  ArrowRight,
+  Graph,
+  Link,
+  CircleHalf,
+  Shield,
+  WifiHigh,
+  ListNumbers,
+  Pulse,
+  ArrowsOut,
 } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
 import { useConfigStore } from '@/stores/useConfigStore'
-import type { NetworkInsight, InsightSeverity } from '@/types'
+import { useVisualizationStore } from '@/stores/useVisualizationStore'
+import { MetricTile } from '@/components/ui/MetricTile'
 
 type NetworkInsightsPanelProps = {
+  /** Legacy prop — kept for backward compat with any existing callers. No-op in this implementation. */
   onRunAlgorithm?: (algorithmKey: string) => void
 }
 
-function getSeverityConfig(severity: InsightSeverity) {
-  switch (severity) {
-    case 'error':
-      return {
-        icon: <XCircle size={16} color={Colors.error} weight="fill" />,
-        color: Colors.error,
-        bg: Colors.errorContainer,
-        border: `${Colors.error}30`,
-        label: 'CRITICAL',
+export function NetworkInsightsPanel({ onRunAlgorithm: _onRunAlgorithm }: NetworkInsightsPanelProps) {
+  const activeConfig = useConfigStore((s) => s.activeConfig)
+  const criticalNodeIds = useVisualizationStore((s) => s.criticalNodeIds)
+
+  const metrics = useMemo(() => {
+    const depts = activeConfig?.departments ?? []
+    const nodeCount = depts.length
+
+    if (nodeCount === 0) {
+      return null
+    }
+
+    // Edge count: sum all dept.peers / 2 (each edge appears in both endpoints)
+    // We deduplicate to handle the case where peers[] might not be perfectly symmetric
+    const edgeSet = new Set<string>()
+    for (const dept of depts) {
+      for (const peerId of dept.peers) {
+        const key = [dept.id, peerId].sort().join('→')
+        edgeSet.add(key)
       }
-    case 'warning':
-      return {
-        icon: <Warning size={16} color={Colors.warning} weight="fill" />,
-        color: Colors.warning,
-        bg: Colors.warningContainer,
-        border: `${Colors.warning}30`,
-        label: 'WARNING',
-      }
-    case 'info':
-    default:
-      return {
-        icon: <Info size={16} color={Colors.primary} weight="fill" />,
-        color: Colors.primary,
-        bg: Colors.ice,
-        border: `${Colors.primary}30`,
-        label: 'INFO',
-      }
+    }
+    const edgeCount = edgeSet.size
+
+    // Average degree = 2E / V  (sum of all degrees / nodeCount)
+    const avgDegree = nodeCount > 0 ? (2 * edgeCount) / nodeCount : 0
+
+    // Network density = 2E / (V × (V-1))  — percentage of possible edges that exist
+    const maxPossibleEdges = nodeCount > 1 ? (nodeCount * (nodeCount - 1)) / 2 : 0
+    const density = maxPossibleEdges > 0 ? (edgeCount / maxPossibleEdges) * 100 : 0
+
+    // Subnets allocated
+    const subnetCount = depts.filter((d) => d.subnet !== undefined).length
+
+    // ACL rules on firewall nodes
+    const aclRuleCount = depts
+      .filter((d) => d.type === 'firewall')
+      .reduce((sum, d) => sum + (d.aclRules?.length ?? 0), 0)
+
+    // Redundancy score:
+    //   If AP detection has run (criticalNodeIds has data), use real AP count.
+    //   Otherwise, approximate: a fully-connected mesh has no single points of failure.
+    //   Formula: ((nodeCount - apCount) / nodeCount) × 100
+    const apCount = criticalNodeIds.length
+    const redundancyScore = nodeCount > 0
+      ? Math.round(((nodeCount - apCount) / nodeCount) * 100)
+      : 100
+
+    // Topology health composite:
+    //   - Good (success): density > 0.3 AND no APs
+    //   - Fair (warning): density > 0.1 OR apCount === 0
+    //   - Poor (error):   density <= 0.1 AND apCount > 0
+    const densityRatio = density / 100
+    let healthLabel = 'Good'
+    let healthColor: string = Colors.success
+    if (densityRatio <= 0.1 && apCount > 0) {
+      healthLabel = 'Poor'
+      healthColor = Colors.error
+    } else if (densityRatio <= 0.3 || apCount > 0) {
+      healthLabel = 'Fair'
+      healthColor = Colors.warning
+    }
+
+    return {
+      nodeCount,
+      edgeCount,
+      avgDegree: avgDegree.toFixed(1),
+      density: Math.round(density),
+      subnetCount,
+      aclRuleCount,
+      redundancyScore,
+      healthLabel,
+      healthColor,
+    }
+  }, [activeConfig?.departments, criticalNodeIds])
+
+  if (!activeConfig || !metrics) {
+    return null
   }
-}
 
-type InsightCardProps = {
-  insight: NetworkInsight
-  onDismiss: (id: string) => void
-  onRunAlgorithm?: (algorithmKey: string) => void
-}
-
-function InsightCard({ insight, onDismiss, onRunAlgorithm }: InsightCardProps) {
-  const [expanded, setExpanded] = useState(false)
-  const [showAlgo, setShowAlgo] = useState(false)
-  const sev = getSeverityConfig(insight.severity)
-
-  const handleExpand = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-    setExpanded(!expanded)
-  }
-
-  return (
-    <View style={[styles.card, { borderLeftColor: sev.color, borderLeftWidth: 3 }]}>
-      <Pressable onPress={handleExpand} style={styles.cardHeader}>
-        <View style={[styles.severityBadge, { backgroundColor: sev.bg }]}>
-          {sev.icon}
-        </View>
-        <View style={styles.cardTitleArea}>
-          <Text style={[styles.cardTitle, { color: Colors.textPrimary }]} numberOfLines={2}>
-            {insight.title}
-          </Text>
-          <Text style={[styles.severityLabel, { color: sev.color }]}>{sev.label}</Text>
-        </View>
-        <View style={styles.cardActions}>
-          <Pressable
-            onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-              onDismiss(insight.id)
-            }}
-            hitSlop={8}
-          >
-            <X size={14} color={Colors.textMuted} />
-          </Pressable>
-          {expanded ? (
-            <CaretUp size={14} color={Colors.textMuted} />
-          ) : (
-            <CaretDown size={14} color={Colors.textMuted} />
-          )}
-        </View>
-      </Pressable>
-
-      {expanded && (
-        <View style={styles.cardBody}>
-          {/* Explanation */}
-          <Text style={styles.cardExplanation}>{insight.explanation}</Text>
-
-          {/* Suggested Action */}
-          <View style={styles.actionRow}>
-            <Lightbulb size={13} color={Colors.primary} weight="fill" />
-            <Text style={styles.actionText}>{insight.suggestedAction}</Text>
-          </View>
-
-          {/* Learn More / Algorithm reveal */}
-          {insight.algorithmRef && (
-            <View style={styles.algoSection}>
-              <Pressable
-                style={styles.learnMoreBtn}
-                onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-                  setShowAlgo(!showAlgo)
-                }}
-              >
-                <Info size={13} color={Colors.primary} />
-                <Text style={styles.learnMoreText}>
-                  {showAlgo ? 'Hide technical details' : 'Learn more'}
-                </Text>
-              </Pressable>
-
-              {showAlgo && (
-                <View style={styles.algoReveal}>
-                  <Text style={styles.algoRevealText}>
-                    This finding was calculated using{' '}
-                    <Text style={styles.algoName}>{insight.algorithmRef}</Text>.
-                  </Text>
-                  {insight.algorithmKey && onRunAlgorithm && (
-                    <Pressable
-                      style={styles.runAlgoBtn}
-                      onPress={() => onRunAlgorithm(insight.algorithmKey!)}
-                    >
-                      <Text style={styles.runAlgoBtnText}>Visualize this analysis</Text>
-                      <ArrowRight size={12} color={Colors.primary} />
-                    </Pressable>
-                  )}
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-      )}
-    </View>
-  )
-}
-
-export function NetworkInsightsPanel({ onRunAlgorithm }: NetworkInsightsPanelProps) {
-  const insights = useConfigStore((s) => s.insights)
-  const removeInsight = useConfigStore((s) => s.removeInsight)
-  const clearInsights = useConfigStore((s) => s.clearInsights)
-
-  const [collapsed, setCollapsed] = useState(false)
-  const slideAnim = useRef(new Animated.Value(0)).current
-
-  const hasInsights = insights.length > 0
-  const errorCount = insights.filter((i) => i.severity === 'error').length
-  const warningCount = insights.filter((i) => i.severity === 'warning').length
-
-  useEffect(() => {
-    Animated.timing(slideAnim, {
-      toValue: hasInsights ? 1 : 0,
-      duration: 280,
-      useNativeDriver: true,
-    }).start()
-  }, [hasInsights, slideAnim])
-
-  if (!hasInsights) return null
-
-  const handleToggle = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-    setCollapsed(!collapsed)
-  }
+  const tiles = [
+    {
+      id: 'nodes',
+      label: 'Nodes',
+      value: metrics.nodeCount,
+      icon: <Graph size={16} color={Colors.primary} weight="duotone" />,
+    },
+    {
+      id: 'links',
+      label: 'Links',
+      value: metrics.edgeCount,
+      icon: <Link size={16} color={Colors.medium} weight="duotone" />,
+      valueColor: Colors.medium,
+    },
+    {
+      id: 'density',
+      label: 'Density',
+      value: `${metrics.density}%`,
+      icon: <ArrowsOut size={16} color={Colors.primary} weight="duotone" />,
+      progressValue: metrics.density,
+    },
+    {
+      id: 'avgdeg',
+      label: 'Avg Degree',
+      value: metrics.avgDegree,
+      icon: <CircleHalf size={16} color={Colors.medium} weight="duotone" />,
+      valueColor: Colors.medium,
+    },
+    {
+      id: 'subnets',
+      label: 'Subnets',
+      value: metrics.subnetCount,
+      icon: <WifiHigh size={16} color={Colors.primary} weight="duotone" />,
+    },
+    {
+      id: 'acl',
+      label: 'ACL Rules',
+      value: metrics.aclRuleCount,
+      icon: <Shield size={16} color={Colors.warning} weight="duotone" />,
+      valueColor: metrics.aclRuleCount > 0 ? Colors.warning : Colors.textMuted,
+    },
+    {
+      id: 'redundancy',
+      label: 'Redundancy',
+      value: `${metrics.redundancyScore}%`,
+      icon: <ListNumbers size={16} color={metrics.redundancyScore >= 80 ? Colors.success : Colors.warning} weight="duotone" />,
+      valueColor: metrics.redundancyScore >= 80 ? Colors.success : Colors.warning,
+      progressValue: metrics.redundancyScore,
+    },
+    {
+      id: 'health',
+      label: 'Health',
+      value: metrics.healthLabel,
+      icon: <Pulse size={16} color={metrics.healthColor} weight="duotone" />,
+      valueColor: metrics.healthColor,
+    },
+  ]
 
   return (
     <View style={styles.container}>
-      {/* Panel Header */}
-      <Pressable onPress={handleToggle} style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.headerIconRow}>
-            {errorCount > 0 && (
-              <View style={[styles.countBadge, { backgroundColor: Colors.error }]}>
-                <Text style={styles.countBadgeText}>{errorCount}</Text>
-              </View>
-            )}
-            {warningCount > 0 && (
-              <View style={[styles.countBadge, { backgroundColor: Colors.warning }]}>
-                <Text style={styles.countBadgeText}>{warningCount}</Text>
-              </View>
-            )}
-            {errorCount === 0 && warningCount === 0 && (
-              <CheckCircle size={14} color={Colors.success} weight="fill" />
-            )}
-          </View>
-          <Text style={styles.headerTitle}>
-            Network Insights
-          </Text>
-          <Text style={styles.headerCount}>
-            {insights.length}
-          </Text>
-        </View>
-
-        <View style={styles.headerRight}>
-          {!collapsed && (
-            <Pressable
-              onPress={clearInsights}
-              style={styles.clearBtn}
-              hitSlop={8}
-            >
-              <Text style={styles.clearBtnText}>Clear all</Text>
-            </Pressable>
-          )}
-          {collapsed ? (
-            <CaretUp size={14} color={Colors.textMuted} />
-          ) : (
-            <CaretDown size={14} color={Colors.textMuted} />
-          )}
-        </View>
-      </Pressable>
-
-      {/* Insight Cards */}
-      {!collapsed && (
-        <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-          nestedScrollEnabled
-        >
-          {insights.map((insight) => (
-            <InsightCard
-              key={insight.id}
-              insight={insight}
-              onDismiss={removeInsight}
-              onRunAlgorithm={onRunAlgorithm}
-            />
-          ))}
-        </ScrollView>
-      )}
+      <View style={styles.headerRow}>
+        <Text style={styles.sectionLabel}>TOPOLOGY METRICS</Text>
+        <Text style={styles.configLabel} numberOfLines={1}>{activeConfig.name}</Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tilesRow}
+        decelerationRate="fast"
+        snapToInterval={106}  // tile width (90) + gap (16)
+      >
+        {tiles.map((tile) => (
+          <MetricTile
+            key={tile.id}
+            label={tile.label}
+            value={tile.value}
+            icon={tile.icon}
+            progressValue={tile.progressValue}
+            valueColor={tile.valueColor}
+          />
+        ))}
+      </ScrollView>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    gap: 10,
   },
-  header: {
+  headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  headerLeft: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    flex: 1,
+    paddingHorizontal: 16,
   },
-  headerIconRow: {
-    flexDirection: 'row',
-    gap: 4,
-    alignItems: 'center',
-  },
-  countBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countBadgeText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 10,
-    color: Colors.white,
-  },
-  headerTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 13,
-    color: Colors.textPrimary,
-  },
-  headerCount: {
+  sectionLabel: {
     fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    color: Colors.textMuted,
-    backgroundColor: Colors.ice,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 999,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  clearBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  clearBtnText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12,
+    fontSize: 11,
+    letterSpacing: 0.8,
     color: Colors.textMuted,
   },
-  list: {
-    maxHeight: 280,
-  },
-  listContent: {
-    padding: 10,
-    gap: 8,
-  },
-
-  // Card styles
-  card: {
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: 12,
-    gap: 10,
-  },
-  severityBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  cardTitleArea: {
-    flex: 1,
-    gap: 2,
-  },
-  cardTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 13,
-    color: Colors.textPrimary,
-    lineHeight: 18,
-  },
-  severityLabel: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 9,
-    letterSpacing: 0.5,
-  },
-  cardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flexShrink: 0,
-  },
-  cardBody: {
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-    gap: 10,
-  },
-  cardExplanation: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    color: Colors.textSecondary,
-    lineHeight: 19,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    backgroundColor: `${Colors.primary}08`,
-    borderRadius: 8,
-    padding: 10,
-  },
-  actionText: {
+  configLabel: {
     fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    color: Colors.primary,
-    flex: 1,
-    lineHeight: 17,
+    fontSize: 11,
+    color: Colors.textMuted,
+    maxWidth: 160,
   },
-  algoSection: {
-    gap: 6,
-  },
-  learnMoreBtn: {
+  tilesRow: {
+    paddingHorizontal: 16,
+    gap: 10,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  learnMoreText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    color: Colors.primary,
-  },
-  algoReveal: {
-    backgroundColor: Colors.white,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    padding: 10,
-    gap: 8,
-  },
-  algoRevealText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
-    color: Colors.textSecondary,
-    lineHeight: 18,
-  },
-  algoName: {
-    fontFamily: 'Inter_600SemiBold',
-    color: Colors.textPrimary,
-  },
-  runAlgoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    alignSelf: 'flex-start',
-  },
-  runAlgoBtnText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    color: Colors.primary,
   },
 })

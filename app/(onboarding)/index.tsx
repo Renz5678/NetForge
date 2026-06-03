@@ -8,6 +8,7 @@ import React, { useState, useRef } from 'react'
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   Pressable,
   Animated,
@@ -18,7 +19,6 @@ import { useRouter } from 'expo-router'
 import { Button } from '@/components/ui/Button'
 import { Colors } from '@/constants/colors'
 import { useAuthStore } from '@/stores/useAuthStore'
-import { NetForgeLogo } from '@/components/ui/NetForgeLogo'
 import {
   ArrowsLeftRight,
   CheckCircle,
@@ -278,10 +278,14 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top bar: logo + skip */}
+      {/* Top bar: icon + skip */}
       <View style={styles.headerRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <NetForgeLogo size={26} />
+          <Image
+            source={require('../../assets/images/icon.png')}
+            style={styles.headerIcon}
+            resizeMode="contain"
+          />
           <Text style={styles.wordmark}>NetForge</Text>
         </View>
         {!isLast && (
@@ -394,6 +398,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 14,
+  },
+  headerIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
   },
   wordmark: {
     fontFamily: 'Inter_700Bold',

@@ -1,18 +1,71 @@
 import React, { useRef, useEffect } from 'react'
-import { View, Text, StyleSheet, Animated, ScrollView } from 'react-native'
+import { View, Text, StyleSheet, Animated, ScrollView, Alert, Pressable } from 'react-native'
+import { Question, CheckCircle, WarningCircle, Warning } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
 import type { CheckResult } from '@/types'
+
+// 'warning' variant: amber colouring for issues that are notable but not failures
+// (e.g. articulation points — the topology is valid but redundancy is reduced).
+export type ValidationCardVariant = 'pass' | 'fail' | 'warning'
 
 type ValidationCardProps = {
   title: string
   description: string
   result: CheckResult
   index?: number
+  /** Override the auto-derived pass/fail/warning colouring. If omitted, inferred from result.passed. */
+  variant?: ValidationCardVariant
+  explanationTitle?: string
+  explanation?: string
 }
 
-export function ValidationCard({ title, description, result, index = 0 }: ValidationCardProps) {
+// Resolve the effective variant from props or result
+function resolveVariant(variant: ValidationCardVariant | undefined, passed: boolean): ValidationCardVariant {
+  if (variant !== undefined) return variant
+  return passed ? 'pass' : 'fail'
+}
+
+const VARIANT_COLORS: Record<ValidationCardVariant, { bar: string; badge: string; bg: string; text: string; border: string }> = {
+  pass: {
+    bar:    Colors.success,
+    badge:  Colors.success,
+    bg:     `${Colors.success}1A`,
+    text:   Colors.success,
+    border: Colors.border,
+  },
+  fail: {
+    bar:    Colors.error,
+    badge:  Colors.error,
+    bg:     `${Colors.error}1A`,
+    text:   Colors.error,
+    border: `${Colors.error}40`,
+  },
+  warning: {
+    bar:    Colors.warning,
+    badge:  Colors.warning,
+    bg:     `${Colors.warning}1A`,
+    text:   Colors.warning,
+    border: `${Colors.warning}40`,
+  },
+}
+
+const VARIANT_BADGE_LABELS: Record<ValidationCardVariant, string> = {
+  pass:    'PASS',
+  fail:    'FAIL',
+  warning: 'WARN',
+}
+
+export function ValidationCard({
+  title,
+  description,
+  result,
+  index = 0,
+  variant,
+  explanationTitle,
+  explanation,
+}: ValidationCardProps) {
   const slideAnim = useRef(new Animated.Value(8)).current
-  const fadeAnim = useRef(new Animated.Value(0)).current
+  const fadeAnim  = useRef(new Animated.Value(0)).current
   const scaleAnim = useRef(new Animated.Value(0.9)).current
 
   useEffect(() => {
@@ -40,61 +93,101 @@ export function ValidationCard({ title, description, result, index = 0 }: Valida
     ]).start()
   }, [slideAnim, fadeAnim, scaleAnim, index])
 
-  const barColor = result.passed ? Colors.primary : Colors.error
-  const badgeLabel = result.passed ? 'PASS' : 'FAIL'
-  const badgeBg = result.passed ? `${Colors.primary}1A` : `${Colors.error}1A`
-  const badgeText = result.passed ? Colors.primary : Colors.error
+  const effectiveVariant = resolveVariant(variant, result.passed)
+  const theme = VARIANT_COLORS[effectiveVariant]
+  const badgeLabel = VARIANT_BADGE_LABELS[effectiveVariant]
+
+  const StatusIcon =
+    effectiveVariant === 'pass'
+      ? <CheckCircle size={18} color={Colors.success} weight="fill" />
+      : effectiveVariant === 'warning'
+      ? <Warning size={18} color={Colors.warning} weight="fill" />
+      : <WarningCircle size={18} color={Colors.error} weight="fill" />
 
   return (
     <Animated.View
       style={[
         styles.card,
-        result.passed ? styles.cardPass : styles.cardFail,
+        { borderColor: theme.border },
         {
           transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
           opacity: fadeAnim,
         },
       ]}
     >
-      {/* Left color bar */}
-      <View style={[styles.colorBar, { backgroundColor: barColor }]} />
+      {/* Left colour bar — indicates severity at a glance */}
+      <View style={[styles.colorBar, { backgroundColor: theme.bar }]} />
 
       <View style={styles.body}>
         <View style={styles.header}>
-          <Text style={styles.title}>{title}</Text>
-          <View style={[styles.badge, { backgroundColor: badgeBg }]}>
-            <Text style={[styles.badgeText, { color: badgeText }]}>{badgeLabel}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, paddingRight: 8 }}>
+            <Text style={styles.title}>{title}</Text>
+            {explanation && (
+              <Pressable onPress={() => Alert.alert(explanationTitle || title, explanation)} hitSlop={8}>
+                <Question size={18} color={Colors.textMuted} weight="fill" />
+              </Pressable>
+            )}
+          </View>
+          <View style={styles.badgeRow}>
+            {StatusIcon}
+            <View style={[styles.badge, { backgroundColor: theme.bg }]}>
+              <Text style={[styles.badgeText, { color: theme.text }]}>{badgeLabel}</Text>
+            </View>
           </View>
         </View>
         <Text style={styles.description}>{description}</Text>
 
+        {/* Affected items — shown for fail/warning states when the `affected` array is present */}
         {!result.passed && result.affected && result.affected.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginTop: 8 }}
+          >
             <View style={{ flexDirection: 'row', gap: 6, paddingBottom: 4 }}>
               {result.affected.slice(0, 8).map((name, i) => (
-                <View key={i} style={{
-                  backgroundColor: Colors.errorContainer,
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 3,
-                  borderWidth: 1,
-                  borderColor: `${Colors.error}30`,
-                }}>
-                  <Text style={{
-                    fontFamily: 'Inter_500Medium',
-                    fontSize: 11,
-                    color: Colors.error,
-                  }}>{name}</Text>
+                <View
+                  key={i}
+                  style={{
+                    backgroundColor: effectiveVariant === 'warning'
+                      ? Colors.warningContainer
+                      : Colors.errorContainer,
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 3,
+                    borderWidth: 1,
+                    borderColor: `${theme.badge}30`,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: 'Inter_500Medium',
+                      fontSize: 11,
+                      color: theme.text,
+                    }}
+                  >
+                    {name}
+                  </Text>
                 </View>
               ))}
               {result.affected.length > 8 && (
-                <View style={{
-                  backgroundColor: Colors.errorContainer,
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 3,
-                }}>
-                  <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 11, color: Colors.error }}>
+                <View
+                  style={{
+                    backgroundColor: effectiveVariant === 'warning'
+                      ? Colors.warningContainer
+                      : Colors.errorContainer,
+                    borderRadius: 999,
+                    paddingHorizontal: 10,
+                    paddingVertical: 3,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: 'Inter_500Medium',
+                      fontSize: 11,
+                      color: theme.text,
+                    }}
+                  >
                     +{result.affected.length - 8} more
                   </Text>
                 </View>
@@ -114,12 +207,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     overflow: 'hidden',
-  },
-  cardPass: {
-    borderColor: Colors.border,
-  },
-  cardFail: {
-    borderColor: `${Colors.error}40`,
   },
   colorBar: {
     width: 4,
@@ -145,6 +232,11 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     lineHeight: 20,
   },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   badge: {
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -154,33 +246,5 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     fontSize: 11,
     letterSpacing: 0.5,
-  },
-  failDetail: {
-    marginTop: 8,
-    backgroundColor: Colors.errorContainer,
-    borderRadius: 10,
-    padding: 12,
-    gap: 8,
-  },
-  failDetailLabel: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    color: Colors.error,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  chip: {
-    backgroundColor: `${Colors.error}1A`,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 9999,
-  },
-  chipText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    color: Colors.error,
   },
 })

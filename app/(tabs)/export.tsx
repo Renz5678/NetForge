@@ -1,5 +1,5 @@
 import React from 'react'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   View,
   Text,
@@ -20,7 +20,9 @@ import { generateFullTopologyConfig } from '@/lib/configGenerator'
 import { Colors } from '@/constants/colors'
 import { useRouter } from 'expo-router'
 import { TopHeader } from '@/components/ui/TopHeader'
+import { ClipboardButton } from '@/components/ui/ClipboardButton'
 
+// ─── Syntax highlighter ────────────────────────────────────────────────────────
 function highlightCiscoIOS(text: string): React.ReactNode {
   const lines = text.split('\n')
   return lines.map((line, i) => {
@@ -62,6 +64,37 @@ function highlightCiscoIOS(text: string): React.ReactNode {
   })
 }
 
+// ─── Split config by device sections ──────────────────────────────────────────
+function splitByDevice(text: string): Array<{ deviceName: string; config: string }> {
+  const lines = text.split('\n')
+  const sections: Array<{ deviceName: string; config: string }> = []
+  let currentName: string | null = null
+  let currentLines: string[] = []
+
+  for (const line of lines) {
+    if (line.startsWith('!--- ')) {
+      // Save previous section
+      if (currentName !== null) {
+        sections.push({ deviceName: currentName, config: currentLines.join('\n').trim() })
+      }
+      currentName = line.slice(5).replace(/\s*---+$/, '').trim()
+      currentLines = []
+    } else {
+      currentLines.push(line)
+    }
+  }
+  // Push last section
+  if (currentName !== null) {
+    sections.push({ deviceName: currentName, config: currentLines.join('\n').trim() })
+  }
+
+  if (sections.length === 0) {
+    return [{ deviceName: 'Full Config', config: text }]
+  }
+  return sections
+}
+
+// ─── Main screen ───────────────────────────────────────────────────────────────
 export default function ExportScreen() {
   const router = useRouter()
   const activeConfig = useConfigStore((s) => s.activeConfig)
@@ -72,8 +105,27 @@ export default function ExportScreen() {
   const [previewVisible, setPreviewVisible] = useState(false)
   const [previewText, setPreviewText] = useState('')
   const [sharing, setSharing] = useState(false)
+  const [activeDeviceTab, setActiveDeviceTab] = useState(0)
 
   const configText = activeConfig ? generateFullTopologyConfig(activeConfig) : ''
+
+  // Reset device tab whenever the modal opens
+  useEffect(() => {
+    if (previewVisible) {
+      setActiveDeviceTab(0)
+    }
+  }, [previewVisible])
+
+  const deviceSections = splitByDevice(previewText)
+
+  // Clamp the active tab index if sections change (e.g. different config opened)
+  useEffect(() => {
+    if (activeDeviceTab >= deviceSections.length) {
+      setActiveDeviceTab(0)
+    }
+  }, [deviceSections.length, activeDeviceTab])
+
+  const activeSection = deviceSections[activeDeviceTab] ?? deviceSections[0]
 
   const handlePreview = useCallback(() => {
     if (!activeConfig) return
@@ -126,6 +178,14 @@ export default function ExportScreen() {
       .join(', ')
   }
 
+  // ─── Summary row values ────────────────────────────────────────────────────
+  const totalDevices = activeConfig?.departments?.length ?? 0
+  const totalVlans = activeConfig
+    ? new Set(activeConfig.departments.map((d: any) => d.vlanId).filter(Boolean)).size
+    : 0
+  const baseIp = activeConfig?.baseIp ?? '—'
+  const isValid = activeConfig?.isValid === true
+
   return (
     <SafeAreaView style={styles.safe}>
       {/* Consistent Fixed Header */}
@@ -158,6 +218,25 @@ export default function ExportScreen() {
             <View style={styles.vendorBadge}>
               <DeviceMobile size={14} color={Colors.primary} />
               <Text style={styles.vendorLabel}>Cisco IOS</Text>
+            </View>
+
+            {/* Export summary row */}
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryText}>
+                <Text style={styles.summaryLabel}>Devices: </Text>
+                <Text>{totalDevices}</Text>
+                {'  •  '}
+                <Text style={styles.summaryLabel}>VLANs: </Text>
+                <Text>{totalVlans}</Text>
+                {'  •  '}
+                <Text style={styles.summaryLabel}>Base: </Text>
+                <Text>{baseIp}</Text>
+                {'  •  '}
+                <Text style={styles.summaryLabel}>Validated: </Text>
+                <Text style={isValid ? styles.summaryValid : styles.summaryInvalid}>
+                  {isValid ? '✓' : '✗'}
+                </Text>
+              </Text>
             </View>
 
             {/* Actions */}
@@ -231,23 +310,60 @@ export default function ExportScreen() {
         onRequestClose={() => setPreviewVisible(false)}
       >
         <SafeAreaView style={styles.modalSafe}>
+          {/* Modal header */}
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle} numberOfLines={1}>
               {activeConfig?.name ?? 'Config'} — Cisco IOS
             </Text>
-            <Pressable onPress={() => setPreviewVisible(false)} hitSlop={12}>
+            <ClipboardButton
+              text={previewText}
+              label="Copy All"
+              style={styles.copyAllBtn}
+            />
+            <Pressable onPress={() => setPreviewVisible(false)} hitSlop={12} style={styles.modalCloseBtn}>
               <X size={22} color={Colors.textPrimary} />
             </Pressable>
           </View>
 
+          {/* Device tab bar (horizontal scroll) */}
+          {deviceSections.length > 1 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.tabBar}
+              contentContainerStyle={styles.tabBarContent}
+            >
+              {deviceSections.map((section, index) => (
+                <Pressable
+                  key={index}
+                  style={[styles.tabChip, activeDeviceTab === index && styles.tabChipActive]}
+                  onPress={() => setActiveDeviceTab(index)}
+                >
+                  <Text style={[styles.tabChipText, activeDeviceTab === index && styles.tabChipTextActive]}>
+                    {section.deviceName}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Code scroll */}
           <ScrollView
             style={styles.codeScroll}
             horizontal={false}
             showsVerticalScrollIndicator
             contentContainerStyle={{ paddingBottom: 40 }}
           >
+            {/* Per-device copy button */}
+            <View style={styles.deviceCopyRow}>
+              <ClipboardButton
+                text={activeSection?.config ?? previewText}
+                label={deviceSections.length > 1 ? `Copy ${activeSection?.deviceName}` : 'Copy'}
+                style={styles.deviceCopyBtn}
+              />
+            </View>
             <Text selectable style={styles.codeText}>
-              {highlightCiscoIOS(previewText)}
+              {highlightCiscoIOS(activeSection?.config ?? previewText)}
             </Text>
           </ScrollView>
 
@@ -309,9 +425,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: Colors.ice, borderRadius: 8,
     paddingHorizontal: 10, paddingVertical: 5,
-    alignSelf: 'flex-start', marginTop: 10, marginBottom: 16,
+    alignSelf: 'flex-start', marginTop: 10, marginBottom: 12,
   },
   vendorLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: Colors.primary },
+
+  // Summary row
+  summaryRow: {
+    marginBottom: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.ice,
+    borderRadius: 10,
+  },
+  summaryText: { fontFamily: 'Outfit_400Regular', fontSize: 12, color: Colors.textSecondary, lineHeight: 18 },
+  summaryLabel: { fontFamily: 'Outfit_600SemiBold', color: Colors.textPrimary },
+  summaryValid: { fontFamily: 'Outfit_600SemiBold', color: Colors.success },
+  summaryInvalid: { fontFamily: 'Outfit_600SemiBold', color: Colors.error },
 
   actions: { flexDirection: 'row', gap: 10 },
   actionBtn: { flex: 1, borderRadius: 12, paddingVertical: 13, alignItems: 'center', justifyContent: 'center' },
@@ -344,13 +473,68 @@ const styles = StyleSheet.create({
   // Modal
   modalSafe: { flex: 1, backgroundColor: Colors.white },
   modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 16,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    gap: 8,
   },
-  modalTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: Colors.textPrimary, flex: 1, marginRight: 12 },
+  modalTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: Colors.textPrimary, flex: 1 },
+  copyAllBtn: { flexShrink: 0 },
+  modalCloseBtn: { marginLeft: 4 },
+
+  // Device tab bar
+  tabBar: {
+    maxHeight: 48,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    backgroundColor: Colors.white,
+  },
+  tabBarContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tabChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.white,
+  },
+  tabChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.ice,
+  },
+  tabChipText: {
+    fontFamily: 'Outfit_500Medium',
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  tabChipTextActive: {
+    color: Colors.primary,
+    fontFamily: 'Outfit_600SemiBold',
+  },
+
+  // Code area
   codeScroll: { flex: 1, backgroundColor: '#0F1117', padding: 16 },
   codeText: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 18, color: '#cdd6f4' },
+
+  deviceCopyRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 12,
+  },
+  deviceCopyBtn: {
+    backgroundColor: '#1e2030',
+    borderColor: '#3e4460',
+  },
+
   modalFooter: {
     flexDirection: 'row', padding: 16,
     borderTopWidth: 1, borderTopColor: Colors.border,

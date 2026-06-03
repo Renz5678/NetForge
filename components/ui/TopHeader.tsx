@@ -8,8 +8,7 @@
  */
 
 import React, { useState } from 'react'
-import { View, Text, StyleSheet, Pressable } from 'react-native'
-import { NetForgeLogo } from '@/components/ui/NetForgeLogo'
+import { View, Text, Image, StyleSheet, Pressable } from 'react-native'
 import { Colors } from '@/constants/colors'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { getInitials } from '@/lib/formatters'
@@ -48,16 +47,26 @@ export function TopHeader({ title, subtitle, leftIcon, rightActions }: TopHeader
           {leftIcon ? (
             <View style={styles.iconContainer}>{leftIcon}</View>
           ) : (
-            <NetForgeLogo size={22} />
+            <Image
+              source={require('../../assets/images/icon.png')}
+              style={styles.iconImage}
+              resizeMode="contain"
+            />
           )}
           <View style={styles.titleGroup}>
             <Text style={styles.title} numberOfLines={1}>
               {title || 'NetForge'}
             </Text>
-            {subtitle ? (
-              <Text style={styles.subtitle} numberOfLines={1}>
-                {subtitle}
-              </Text>
+            {subtitle != null ? (
+              typeof subtitle === 'string' ? (
+                <Text style={styles.subtitle} numberOfLines={1}>
+                  {subtitle}
+                </Text>
+              ) : (
+                <View style={styles.subtitleWrapper}>
+                  {subtitle}
+                </View>
+              )
             ) : null}
           </View>
         </View>
@@ -93,9 +102,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    backgroundColor: 'transparent',
   },
   left: {
     flexDirection: 'row',
@@ -107,6 +114,11 @@ const styles = StyleSheet.create({
   iconContainer: {
     width: 28,
     alignItems: 'center',
+  },
+  iconImage: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
   },
   titleGroup: {
     flexShrink: 1,
@@ -120,6 +132,9 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontSize: 11,
     color: Colors.textMuted,
+    marginTop: 1,
+  },
+  subtitleWrapper: {
     marginTop: 1,
   },
   right: {

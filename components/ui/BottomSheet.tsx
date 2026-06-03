@@ -26,6 +26,10 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
   const insets = useSafeAreaInsets()
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current
   const opacity = useRef(new Animated.Value(0)).current
+  // Keep a ref to the latest onClose so the PanResponder (created once)
+  // always calls the current prop and never captures a stale closure.
+  const onCloseRef = useRef(onClose)
+  useEffect(() => { onCloseRef.current = onClose }, [onClose])
 
   useEffect(() => {
     if (visible) {
@@ -81,7 +85,7 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
               useNativeDriver: true,
             }),
           ]).start(() => {
-            onClose()
+            onCloseRef.current()
           })
         } else {
           Animated.spring(translateY, {

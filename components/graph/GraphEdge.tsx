@@ -4,15 +4,25 @@ import { Colors } from '@/constants/colors'
 import type { GraphNode, GraphEdge, Department, EdgeVizState } from '@/types'
 import { useVisualizationStore } from '@/stores/useVisualizationStore'
 
-const ARROW_SIZE = 8
+// ── Arrow constants ───────────────────────────────────────────────────────────
+const ARROW_SIZE = 10
 
-// Edge color mappings for visualization mode
+// Visualization edge color overrides
 const VIZ_EDGE_COLORS: Partial<Record<EdgeVizState, string>> = {
   'back-edge': Colors.vizCycle,
   'path':      Colors.vizPath,
   'active':    Colors.vizInQueue,
   'mst':       Colors.vizMstEdge,
   'candidate': Colors.vizCandidate,
+}
+
+// Per source-type edge tint (default state only)
+const TYPE_EDGE_COLOR: Record<string, string> = {
+  router:     '#2563EB',  // blue
+  switch:     '#059669',  // emerald
+  firewall:   '#D97706',  // amber
+  wan:        '#0D9488',  // teal
+  department: '#3B82F6',  // sky blue
 }
 
 const portFont = matchFont({
@@ -33,21 +43,23 @@ type GraphEdgeProps = {
   departments?: Department[]
   font?: ReturnType<typeof matchFont>
   highlighted?: boolean
-  vizEdgeState?: EdgeVizState  // when set, overrides highlighted/default coloring
+  vizEdgeState?: EdgeVizState
+  /** Index among parallel edges between same node pair (0 = straight, 1 = offset right, etc.) */
+  parallelIndex?: number
+  parallelTotal?: number
 }
 
 /**
- * Calculates the exact line and arrowhead geometry using ray-box intersection.
- * This guarantees the line starts exactly at the border of the source node (160x56)
- * and ends exactly at the border of the target node at any angle.
+ * Returns a quadratic bezier path string with a perpendicular control point offset.
+ * When parallelIndex = 0 and parallelTotal = 1, offset = 0 (straight line).
+ * For multiple parallel edges, each gets a different signed offset so they fan out.
  */
-function getEdgeGeometry(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  arrowSize = 8
-) {
+function buildCurvedEdgePath(
+  x1: number, y1: number,
+  x2: number, y2: number,
+  parallelIndex: number,
+  parallelTotal: number,
+): { linePath: string; arrowPath: string; midX: number; midY: number } | null {
   const dx = x2 - x1
   const dy = y2 - y1
   const length = Math.sqrt(dx * dx + dy * dy)
@@ -56,58 +68,84 @@ function getEdgeGeometry(
   const ux = dx / length
   const uy = dy / length
 
-  // Bounding box intersection for node (160 wide x 56 tall)
-  // We want to find the scale factor t such that (ux*t, uy*t) is on the boundary
-  const getT = (uX: number, uY: number) => {
-    const tX = uX !== 0 ? 80 / Math.abs(uX) : Infinity
-    const tY = uY !== 0 ? 28 / Math.abs(uY) : Infinity
-    return Math.min(tX, tY)
+  // Perpendicular direction
+  const px = -uy
+  const py =  ux
+
+  // Compute offset for this edge among parallel edges
+  // 0 → straight; 1 of 2 → +40; 2 of 2 → -40; etc.
+  let curveOffset = 0
+  if (parallelTotal > 1) {
+    const step = 38
+    const range = step * (parallelTotal - 1)
+    curveOffset = parallelIndex * step - range / 2
   }
 
+  // Quadratic bezier control point
+  const midX = (x1 + x2) / 2 + px * curveOffset
+  const midY = (y1 + y2) / 2 + py * curveOffset
+
+  // Compute border offsets: approximate start/end on node borders
+  const getT = (uX: number, uY: number) => {
+    const tX = uX !== 0 ? 86 / Math.abs(uX) : Infinity
+    const tY = uY !== 0 ? 29 / Math.abs(uY) : Infinity
+    return Math.min(tX, tY)
+  }
   const tStart = getT(ux, uy)
-  const tEnd = getT(-ux, -uy)
+  const tEnd   = getT(-ux, -uy)
 
   const startX = x1 + ux * tStart
   const startY = y1 + uy * tStart
+  const endX   = x2 - ux * tEnd
+  const endY   = y2 - uy * tEnd
 
-  const tipX = x2 - ux * tEnd
-  const tipY = y2 - uy * tEnd
+  // Direction at end of bezier curve (tangent toward end point from control point)
+  const tangentX = endX - midX
+  const tangentY = endY - midY
+  const tLen = Math.sqrt(tangentX * tangentX + tangentY * tangentY)
+  const tuX = tLen > 0 ? tangentX / tLen : ux
+  const tuY = tLen > 0 ? tangentY / tLen : uy
 
-  // Calculate base and corners of the solid-filled arrowhead
-  const baseX = tipX - ux * arrowSize
-  const baseY = tipY - uy * arrowSize
+  // Arrowhead at endX/endY
+  const baseX = endX - tuX * ARROW_SIZE
+  const baseY = endY - tuY * ARROW_SIZE
+  const perpX = -tuY * ARROW_SIZE * 0.38
+  const perpY =  tuX * ARROW_SIZE * 0.38
 
-  const perpX = -uy * arrowSize * 0.4
-  const perpY =  ux * arrowSize * 0.4
-
-  const leftX = baseX + perpX
-  const leftY = baseY + perpY
+  const leftX  = baseX + perpX
+  const leftY  = baseY + perpY
   const rightX = baseX - perpX
   const rightY = baseY - perpY
 
-  const linePath = `M ${startX} ${startY} L ${baseX} ${baseY}`
-  const arrowPath = `M ${tipX} ${tipY} L ${leftX} ${leftY} L ${rightX} ${rightY} Z`
+  const linePath  = `M ${startX} ${startY} Q ${midX} ${midY} ${baseX} ${baseY}`
+  const arrowPath = `M ${endX} ${endY} L ${leftX} ${leftY} L ${rightX} ${rightY} Z`
 
-  return { linePath, arrowPath }
+  return { linePath, arrowPath, midX, midY }
 }
 
 export function GraphEdgeComponent({
   edge,
   nodes,
   departments,
-  font,
   highlighted = false,
   vizEdgeState,
+  parallelIndex = 0,
+  parallelTotal = 1,
 }: GraphEdgeProps) {
   const source = nodes.find((n) => n.id === edge.source)
   const target = nodes.find((n) => n.id === edge.target)
 
   if (!source || !target) return null
 
-  const geom = getEdgeGeometry(source.x, source.y, target.x, target.y, ARROW_SIZE)
+  const geom = buildCurvedEdgePath(
+    source.x, source.y,
+    target.x, target.y,
+    parallelIndex,
+    parallelTotal
+  )
   if (!geom) return null
 
-  // Resolve port bindings if departments list is provided
+  // Port names
   const sourceDept = departments?.find((d) => d.id === edge.source)
   const targetDept = departments?.find((d) => d.id === edge.target)
 
@@ -119,87 +157,94 @@ export function GraphEdgeComponent({
     if (port) {
       const shorten = (name: string) =>
         name
-          .replace('GigabitEthernet', 'g')
-          .replace('FastEthernet', 'f')
-          .replace('Ethernet', 'e')
-          .replace('Port', 'p')
-      
+          .replace('GigabitEthernet', 'Gi')
+          .replace('FastEthernet', 'Fa')
+          .replace('Ethernet', 'Et')
+          .replace('Serial', 'Se')
       sourcePortName = shorten(port.name)
       if (port.connectedToPortId && targetDept.ports) {
         const tPort = targetDept.ports.find((p) => p.id === port.connectedToPortId)
-        if (tPort) {
-          targetPortName = shorten(tPort.name)
-        }
+        if (tPort) targetPortName = shorten(tPort.name)
       }
     }
   }
 
   const showPorts = (sourcePortName || targetPortName) && !vizEdgeState
 
-  // Determine edge color and width based on viz state or highlight
-  // Default color is high-contrast Slate-600 (#475569) instead of low-contrast light blue.
-  let edgeColor: string = highlighted ? Colors.primary : '#475569'
-  let strokeWidth = highlighted ? 3.5 : 2.0 // Increased thickness for sharper definition
+  // Edge color: default uses source type tint; viz overrides
+  const sourceType = sourceDept?.type ?? source.type ?? 'department'
+  const defaultColor = TYPE_EDGE_COLOR[sourceType] ?? '#475569'
+
+  let edgeColor: string = highlighted ? Colors.primary : defaultColor
+  let strokeWidth = highlighted ? 3.5 : 2.0
 
   if (vizEdgeState && vizEdgeState !== 'default') {
-    edgeColor = VIZ_EDGE_COLORS[vizEdgeState] ?? '#475569'
-    strokeWidth = vizEdgeState === 'back-edge' ? 4.0 : 3.0
+    edgeColor = VIZ_EDGE_COLORS[vizEdgeState] ?? defaultColor
+    strokeWidth = vizEdgeState === 'back-edge' ? 4.5 : 3.0
   }
+
+  // Glow beneath edge
+  const glowColor =
+    vizEdgeState && vizEdgeState !== 'default'
+      ? `${edgeColor}30`
+      : highlighted
+        ? `${Colors.primary}30`
+        : `${defaultColor}22`
 
   const vizActive = useVisualizationStore((s) => s.isActive)
   const vizAlgorithm = useVisualizationStore((s) => s.algorithm)
   const isWeightedAlgo = vizActive && (vizAlgorithm === 'dijkstra' || vizAlgorithm === 'aStar' || vizAlgorithm === 'prims')
 
-  // Port label positions: 1/3 and 2/3 along the edge
-  const t1 = 0.28  // source-side label
-  const t2 = 0.72  // target-side label
-  const srcLabelX = source.x + (target.x - source.x) * t1
-  const srcLabelY = source.y + (target.y - source.y) * t1
-  const tgtLabelX = source.x + (target.x - source.x) * t2
-  const tgtLabelY = source.y + (target.y - source.y) * t2
+  // Port label positions along the curve (~28% and ~72%)
+  const srcLabelX = source.x + (geom.midX - source.x) * 0.56
+  const srcLabelY = source.y + (geom.midY - source.y) * 0.56
+  const tgtLabelX = target.x + (geom.midX - target.x) * 0.56
+  const tgtLabelY = target.y + (geom.midY - target.y) * 0.56
 
-  // Center position for edge weight
-  const midX = source.x + (target.x - source.x) * 0.5
-  const midY = source.y + (target.y - source.y) * 0.5
-
-  const PILL_PADDING_X = 5
-  const PILL_PADDING_Y = 3
-  const PILL_H = 14
+  const PILL_PADDING_X = 4
+  const PILL_PADDING_Y = 2
+  const PILL_H = 13
 
   const srcW = portFont.measureText(sourcePortName).width
   const tgtW = portFont.measureText(targetPortName).width
-  const weightText = "1"
+  const weightText = '1'
   const weightW = weightFont.measureText(weightText).width
 
   return (
     <>
-      {/* The main connection line (stops exactly at the flat base of the arrowhead) */}
+      {/* Glow halo beneath edge */}
+      <Path
+        path={geom.linePath}
+        color={glowColor}
+        style="stroke"
+        strokeWidth={strokeWidth + 5}
+      />
+
+      {/* Main edge line */}
       <Path
         path={geom.linePath}
         color={edgeColor}
         style="stroke"
         strokeWidth={strokeWidth}
       />
-      {/* Solid filled arrowhead pointing precisely at the node card boundary */}
-      <Path
-        path={geom.arrowPath}
-        color={edgeColor}
-        style="fill"
-      />
 
+      {/* Arrowhead */}
+      <Path path={geom.arrowPath} color={edgeColor} style="fill" />
+
+      {/* Weight label (weighted algorithms only) */}
       {isWeightedAlgo && (
         <>
           <RoundedRect
-            x={midX - weightW / 2 - PILL_PADDING_X}
-            y={midY - PILL_H / 2 - PILL_PADDING_Y / 2}
+            x={geom.midX - weightW / 2 - PILL_PADDING_X}
+            y={geom.midY - PILL_H / 2 - PILL_PADDING_Y / 2}
             width={weightW + PILL_PADDING_X * 2}
             height={PILL_H + PILL_PADDING_Y}
             r={4}
-            color="rgba(30,42,60,0.72)"
+            color="rgba(20,30,50,0.78)"
           />
           <SkiaText
-            x={midX - weightW / 2}
-            y={midY + PILL_H / 2 - 2}
+            x={geom.midX - weightW / 2}
+            y={geom.midY + PILL_H / 2 - 2}
             text={weightText}
             font={weightFont}
             color="#C8D8EE"
@@ -207,6 +252,7 @@ export function GraphEdgeComponent({
         </>
       )}
 
+      {/* Port labels */}
       {showPorts && (
         <>
           {sourcePortName && (
@@ -217,7 +263,7 @@ export function GraphEdgeComponent({
                 width={srcW + PILL_PADDING_X * 2}
                 height={PILL_H + PILL_PADDING_Y}
                 r={4}
-                color="rgba(30,42,60,0.72)"
+                color="rgba(20,30,50,0.72)"
               />
               <SkiaText
                 x={srcLabelX - srcW / 2}
@@ -236,7 +282,7 @@ export function GraphEdgeComponent({
                 width={tgtW + PILL_PADDING_X * 2}
                 height={PILL_H + PILL_PADDING_Y}
                 r={4}
-                color="rgba(30,42,60,0.72)"
+                color="rgba(20,30,50,0.72)"
               />
               <SkiaText
                 x={tgtLabelX - tgtW / 2}

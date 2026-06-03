@@ -204,13 +204,15 @@ export type VisualizationStep = {
   currentEdge?: { source: string; target: string; weight: number } // edge being evaluated
 }
 
-// AlgorithmType: union of all 5 supported visualization algorithms.
+// AlgorithmType: union of all supported visualization algorithms.
+// 'pathfindingComparison' is a synthetic type for the side-by-side Dijkstra vs A* panel.
 export type AlgorithmType =
   | 'dijkstra'
   | 'aStar'
   | 'cycleDetection'
   | 'topologicalSort'
   | 'prims'
+  | 'pathfindingComparison'
 
 export type Profile = {
   id: string

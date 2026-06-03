@@ -55,6 +55,10 @@ export const Colors = {
   vizPath:       '#22D3EE',  // cyan
   vizMstEdge:    '#4ADE80',  // bright green for MST overlay edges
   vizCandidate:  '#FCD34D',  // yellow for candidate edges
+
+  // ── Graph Edge ─────────────────────────────────────────────────────────────
+  // Dark navy for default edges — high contrast on #F1F3FF canvas background
+  edgeDefault:   '#1E3A5F',
 } as const
 
 export type ColorKey = keyof typeof Colors

@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors } from '@/constants/colors'
 import { useVisualizationStore, SPEED_MS } from '@/stores/useVisualizationStore'
 import { DataStructureDisplay } from './DataStructureDisplay'
+import { useHaptics } from '@/hooks/useHaptics'
 import type { Department } from '@/types'
 import {
   Play,
@@ -28,7 +29,11 @@ import {
   CaretRight,
   Info,
   ArrowRight,
+  ArrowsLeftRight,
+  Compass,
+  Target,
 } from 'phosphor-react-native'
+import type { ComparisonResult } from '@/stores/useVisualizationStore'
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window')
 const PANEL_HEIGHT = SCREEN_HEIGHT * 0.45
@@ -45,6 +50,7 @@ function getAlgorithmLabel(algorithm: string): string {
     case 'cycleDetection': return 'Loop Detection'
     case 'topologicalSort': return 'Deployment Order Analysis'
     case 'prims': return 'Optimal Cabling Plan'
+    case 'pathfindingComparison': return 'Route Algorithm Comparison'
     default: return algorithm
   }
 }
@@ -56,6 +62,7 @@ function getAlgorithmTechnicalName(algorithm: string): string {
     case 'cycleDetection': return 'DFS Cycle Detection'
     case 'topologicalSort': return "Kahn's Topological Sort"
     case 'prims': return "Prim's Minimum Spanning Tree"
+    case 'pathfindingComparison': return 'Dijkstra vs A* Side-by-Side'
     default: return algorithm
   }
 }
@@ -119,9 +126,11 @@ function reconstructPathFromSet(
 
 export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPanelProps) {
   const insets = useSafeAreaInsets()
+  const haptics = useHaptics()
   const translateY = useRef(new Animated.Value(PANEL_HEIGHT)).current
   const [showHint, setShowHint] = useState(false)
   const [showTechDetails, setShowTechDetails] = useState(false)
+  const hasHapticsOnComplete = useRef(false)
 
   const isActive = useVisualizationStore((s) => s.isActive)
   const algorithm = useVisualizationStore((s) => s.algorithm)
@@ -138,6 +147,8 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
 
   const { stopVisualization, play, pause, stepForward, stepBack, setStep, setSpeed, setIsExpanded, setShowSteps, _advanceStep } =
     useVisualizationStore()
+
+  const comparisonResult = useVisualizationStore((s) => s.comparisonResult)
 
   const totalStepsVal = totalSteps
   const progress = totalStepsVal > 1 ? currentStepIndex / (totalStepsVal - 1) : 0
@@ -184,12 +195,161 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
     }
   }, [isActive, isExpanded, showSteps, translateY])
 
+  // Haptic feedback when algorithm completes
+  const isCompleted = totalStepsVal > 0 && currentStepIndex === totalStepsVal - 1
+  useEffect(() => {
+    if (!isActive || !isCompleted || !currentStep) return
+    if (hasHapticsOnComplete.current) return
+    hasHapticsOnComplete.current = true
+    // Detect cycle at completion
+    const hasCycle = Object.values(currentStep.nodeStates ?? {}).some((s) => s === 'cycle')
+    if (hasCycle) {
+      haptics.error()
+    } else {
+      haptics.success()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCompleted, isActive, currentStep])
+
+  // Reset completion haptic flag when algorithm resets
+  useEffect(() => {
+    hasHapticsOnComplete.current = false
+  }, [algorithm, isActive])
+
   // Reset hint state on step change
   useEffect(() => {
     setShowHint(false)
   }, [currentStepIndex])
 
-  if (!isActive || !algorithm || !currentStep) return null
+  if (!isActive || !algorithm) return null
+
+  // ── Pathfinding Comparison — static result card (no step animation) ──────────
+  if (algorithm === 'pathfindingComparison' && comparisonResult) {
+    const srcName = departments.find((d) => d.id === comparisonResult.sourceId)?.name ?? comparisonResult.sourceId
+    const dstName = departments.find((d) => d.id === comparisonResult.targetId)?.name ?? comparisonResult.targetId
+
+    const dj = comparisonResult.dijkstra
+    const as = comparisonResult.aStar
+
+    // Determine winner by nodes visited (fewer = more efficient)
+    const astarWins = dj && as && as.nodesVisited < dj.nodesVisited
+    const dijkstraWins = dj && as && dj.nodesVisited < as.nodesVisited
+    const tied = dj && as && dj.nodesVisited === as.nodesVisited
+
+    const getName = (id: string) => departments.find((d) => d.id === id)?.name ?? id
+
+    return (
+      <Animated.View
+        style={[
+          styles.comparisonPanel,
+          { transform: [{ translateY }], paddingBottom: insets.bottom + 8 },
+        ]}
+      >
+        {/* Header */}
+        <View style={styles.comparisonHeader}>
+          <ArrowsLeftRight size={18} color={Colors.primary} weight="duotone" />
+          <Text style={styles.comparisonTitle}>Route Algorithm Comparison</Text>
+          <Pressable onPress={stopVisualization} hitSlop={8}>
+            <X size={16} color={Colors.textMuted} />
+          </Pressable>
+        </View>
+        <Text style={styles.comparisonRoute}>
+          {srcName} → {dstName}
+        </Text>
+
+        {/* Winner banner */}
+        {(astarWins || dijkstraWins || tied) && (
+          <View style={[
+            styles.winnerBanner,
+            { backgroundColor: astarWins ? `${Colors.vizPath}15` : dijkstraWins ? `${Colors.primary}12` : `${Colors.success}12` },
+          ]}>
+            <Text style={[styles.winnerText, { color: astarWins ? Colors.vizPath : dijkstraWins ? Colors.primary : Colors.success }]}>
+              {tied
+                ? '⚖ Both algorithms visited the same number of nodes'
+                : astarWins
+                ? `⚡ A* explored ${dj!.nodesVisited - as!.nodesVisited} fewer nodes — spatial heuristic paid off`
+                : `🧭 Dijkstra matched A* efficiency on this topology`}
+            </Text>
+          </View>
+        )}
+
+        {/* Side-by-side columns */}
+        <View style={styles.comparisonColumns}>
+          {/* Dijkstra column */}
+          <View style={[styles.comparisonCol, { borderColor: `${Colors.primary}30` }]}>
+            <View style={styles.comparisonColHeader}>
+              <Compass size={14} color={Colors.primary} weight="duotone" />
+              <Text style={[styles.comparisonColTitle, { color: Colors.primary }]}>Dijkstra</Text>
+              {dijkstraWins && <Text style={styles.comparisonBadge}>WINNER</Text>}
+            </View>
+            {dj ? (
+              <>
+                <View style={styles.comparisonMetricRow}>
+                  <Text style={styles.comparisonMetricVal}>{dj.hops}</Text>
+                  <Text style={styles.comparisonMetricLbl}>hops</Text>
+                </View>
+                <View style={styles.comparisonMetricRow}>
+                  <Text style={styles.comparisonMetricVal}>{dj.nodesVisited}</Text>
+                  <Text style={styles.comparisonMetricLbl}>nodes explored</Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    {dj.path.map((id, idx) => (
+                      <React.Fragment key={id}>
+                        <View style={[styles.comparisonChip, { borderColor: `${Colors.primary}30`, backgroundColor: `${Colors.primary}08` }]}>
+                          <Text style={[styles.comparisonChipText, { color: Colors.primary }]} numberOfLines={1}>{getName(id)}</Text>
+                        </View>
+                        {idx < dj.path.length - 1 && <ArrowRight size={10} color={Colors.textMuted} />}
+                      </React.Fragment>
+                    ))}
+                  </View>
+                </ScrollView>
+              </>
+            ) : (
+              <Text style={styles.comparisonNoPath}>No path</Text>
+            )}
+          </View>
+
+          {/* A* column */}
+          <View style={[styles.comparisonCol, { borderColor: `${Colors.vizPath}40` }]}>
+            <View style={styles.comparisonColHeader}>
+              <Target size={14} color={Colors.vizPath} weight="duotone" />
+              <Text style={[styles.comparisonColTitle, { color: Colors.vizPath }]}>A*</Text>
+              {astarWins && <Text style={[styles.comparisonBadge, { backgroundColor: `${Colors.vizPath}20`, color: Colors.vizPath }]}>WINNER</Text>}
+            </View>
+            {as ? (
+              <>
+                <View style={styles.comparisonMetricRow}>
+                  <Text style={[styles.comparisonMetricVal, { color: Colors.vizPath }]}>{as.hops}</Text>
+                  <Text style={styles.comparisonMetricLbl}>hops</Text>
+                </View>
+                <View style={styles.comparisonMetricRow}>
+                  <Text style={[styles.comparisonMetricVal, { color: Colors.vizPath }]}>{as.nodesVisited}</Text>
+                  <Text style={styles.comparisonMetricLbl}>nodes explored</Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    {as.path.map((id, idx) => (
+                      <React.Fragment key={id}>
+                        <View style={[styles.comparisonChip, { borderColor: `${Colors.vizPath}40`, backgroundColor: `${Colors.vizPath}08` }]}>
+                          <Text style={[styles.comparisonChipText, { color: Colors.vizPath }]} numberOfLines={1}>{getName(id)}</Text>
+                        </View>
+                        {idx < as.path.length - 1 && <ArrowRight size={10} color={Colors.textMuted} />}
+                      </React.Fragment>
+                    ))}
+                  </View>
+                </ScrollView>
+              </>
+            ) : (
+              <Text style={styles.comparisonNoPath}>No path</Text>
+            )}
+          </View>
+        </View>
+      </Animated.View>
+    )
+  }
+
+  if (!currentStep) return null
 
   const handleToggleExpand = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
@@ -262,7 +422,7 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
     )
   }
 
-  const isCompleted = currentStepIndex === totalStepsVal - 1
+
 
   const renderResultSummary = () => {
     // Build a networking-first impact summary
@@ -1241,5 +1401,117 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     fontSize: 12,
     color: Colors.textMuted,
+  },
+
+  // ── Pathfinding Comparison panel ────────────────────────────────────────────
+  comparisonPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 10,
+    gap: 10,
+    zIndex: 100,
+  },
+  comparisonHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  comparisonTitle: {
+    flex: 1,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    color: Colors.textPrimary,
+  },
+  comparisonRoute: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  winnerBanner: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  winnerText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  comparisonColumns: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  comparisonCol: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 6,
+    backgroundColor: Colors.surfaceAlt,
+  },
+  comparisonColHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  comparisonColTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    flex: 1,
+  },
+  comparisonBadge: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 9,
+    letterSpacing: 0.5,
+    color: Colors.primary,
+    backgroundColor: `${Colors.primary}18`,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  comparisonMetricRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+  },
+  comparisonMetricVal: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 22,
+    color: Colors.primary,
+  },
+  comparisonMetricLbl: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  comparisonChip: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    maxWidth: 90,
+  },
+  comparisonChipText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 10,
+  },
+  comparisonNoPath: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+    marginTop: 8,
   },
 })

@@ -41,6 +41,7 @@ import Animated, {
 import { Colors } from '@/constants/colors'
 import { useGraphLayout } from '@/hooks/useGraphLayout'
 import { findShortestPath } from '@/lib/algorithms/dijkstra'
+import { validateConnectivity } from '@/lib/algorithms/bfsValidator'
 import { useVisualizationStore } from '@/stores/useVisualizationStore'
 import { GraphNodeComponent, NODE_WIDTH, NODE_HEIGHT } from './GraphNode'
 import { GraphEdgeComponent } from './GraphEdge'
@@ -48,14 +49,15 @@ import { PathOverlay } from './PathOverlay'
 import { MSTOverlay } from './MSTOverlay'
 import { VizLegend } from './VizLegend'
 import { AlgorithmToast, type ToastData } from '@/components/ui/AlgorithmToast'
+import { BottomSheet } from '@/components/ui/BottomSheet'
 import {
   MagnifyingGlassPlus,
   MagnifyingGlassMinus,
   CornersOut,
   ArrowCounterClockwise,
-  BookOpen,
-  Lightning,
   Play,
+  Warning,
+  X,
 } from 'phosphor-react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { CoachMark } from '@/components/ui/CoachMark'
@@ -78,7 +80,8 @@ const GRID_DOT_RADIUS = 1.2
 type NetworkGraphProps = {
   departments: Department[]
   onPathFound?: (result: PathResult | null, nodeIds: string[]) => void
-  onVisualize?: () => void // callback to open AlgorithmSelector (now "Explore Algorithms")
+  onVisualize?: () => void
+  onWarningPress?: () => void
   // Validation summary for the live badge
   validationWarnings?: number
   validationPassed?: boolean
@@ -88,6 +91,7 @@ export function NetworkGraph({
   departments,
   onPathFound,
   onVisualize,
+  onWarningPress,
   validationWarnings = 0,
   validationPassed,
 }: NetworkGraphProps) {
@@ -95,10 +99,18 @@ export function NetworkGraph({
   const [pathResult, setPathResult] = useState<PathResult | null>(null)
   const [showLegend, setShowLegend] = useState(true)
   const [toast, setToast] = useState<ToastData | null>(null)
+  const [showFailureSheet, setShowFailureSheet] = useState(false)
 
   const [showCoachMark, setShowCoachMark] = useState(false)
-  const dismissAlgoHintRef = useRef(false)
+  const [showAlgoHint, setShowAlgoHint] = useState(true)
   const [sessionHasSelectedTwoNodes, setSessionHasSelectedTwoNodes] = useState(false)
+
+  useEffect(() => {
+    if (showAlgoHint) {
+      const timer = setTimeout(() => setShowAlgoHint(false), 2000)
+      return () => clearTimeout(timer)
+    }
+  }, [showAlgoHint])
 
   // One-time coach mark check on mount
   useEffect(() => {
@@ -145,12 +157,15 @@ export function NetworkGraph({
   const currentStep = useVisualizationStore((s) => s.currentStep)
   const isExpanded = useVisualizationStore((s) => s.isExpanded)
   const isPlaying = useVisualizationStore((s) => s.isPlaying)
-  const { startVisualization, stopVisualization, setShowSteps, setIsExpanded } =
-    useVisualizationStore()
+  const criticalNodeIds = useVisualizationStore((s) => s.criticalNodeIds)
+  const failedNodeId = useVisualizationStore((s) => s.failedNodeId)
+  const failureSimResult = useVisualizationStore((s) => s.failureSimResult)
+  const { startVisualization, stopVisualization, setShowSteps, setIsExpanded,
+          setFailedNodeId, setFailureSimResult, clearFailureSim } = useVisualizationStore()
 
   useEffect(() => {
     if (vizActive) {
-      dismissAlgoHintRef.current = true
+      setShowAlgoHint(false)
     }
   }, [vizActive])
 
@@ -242,7 +257,7 @@ export function NetworkGraph({
         const newSelected = [srcId, tgtId]
         selectedNodesRef.current = newSelected
         setSelectedNodes(newSelected)
-        dismissAlgoHintRef.current = true
+        setShowAlgoHint(false)
         setSessionHasSelectedTwoNodes(true)
 
         // Compute path — all state updates are at handler top level, never inside
@@ -303,6 +318,66 @@ export function NetworkGraph({
     [hitTestNode, departments, onPathFound, vizActive, startVisualization, setIsExpanded, setShowSteps]
   )
 
+  // ── Failure simulation ────────────────────────────────────────────────────
+  // Long-pressing a node (≥600ms) simulates its removal:
+  //   1. Filter departments, remove the failed node
+  //   2. Re-run BFS to find nodes that become isolated
+  //   3. Check Dijkstra between remaining nodes to find broken paths
+  //   4. Store results → GraphNode renders failed/isolated overlays
+  const handleLongPress = useCallback(
+    (touchX: number, touchY: number) => {
+      if (vizActive) return  // don't interfere with viz playback
+
+      const pressedId = hitTestNode(touchX, touchY)
+      if (!pressedId) return
+
+      // Toggle off if pressing the already-failed node
+      if (failedNodeId === pressedId) {
+        clearFailureSim()
+        setShowFailureSheet(false)
+        return
+      }
+
+      // Simulate removal of this node
+      const filteredDepts = departments.filter((d) => d.id !== pressedId)
+      const failedNode = departments.find((d) => d.id === pressedId)
+      const failedName = failedNode?.name ?? pressedId
+
+      // Find isolated nodes (BFS reachability after removal)
+      const { isolated: isolatedNames } = validateConnectivity(filteredDepts)
+      // Convert names back to IDs
+      const nameToId = new Map(departments.map((d) => [d.name, d.id]))
+      const isolatedIds = isolatedNames.map((name) => nameToId.get(name) ?? '').filter(Boolean)
+
+      // Find pairs with broken Dijkstra paths
+      const brokenPaths: [string, string][] = []
+      const filteredIds = filteredDepts.map((d) => d.id)
+      for (let i = 0; i < filteredIds.length; i++) {
+        for (let j = i + 1; j < filteredIds.length; j++) {
+          const src = filteredIds[i]
+          const dst = filteredIds[j]
+          const path = findShortestPath(filteredDepts, src, dst)
+          if (!path) {
+            brokenPaths.push([src, dst])
+          }
+        }
+      }
+
+      setFailedNodeId(pressedId)
+      setFailureSimResult({ isolatedNodes: isolatedIds, brokenPaths })
+      setShowFailureSheet(true)
+
+      // Reset selection state
+      selectedNodesRef.current = []
+      setSelectedNodes([])
+      setPathResult(null)
+      setToast(null)
+      onPathFound?.(null, [])
+    },
+    [hitTestNode, vizActive, departments, failedNodeId, clearFailureSim,
+     setFailedNodeId, setFailureSimResult, onPathFound]
+  )
+
   const panGesture = Gesture.Pan()
     .onBegin(() => {
       savedTranslateX.value = translateX.value
@@ -327,8 +402,16 @@ export function NetworkGraph({
       handleTap(e.x, e.y)
     })
 
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(600)
+    .runOnJS(true)
+    .onStart((e) => {
+      handleLongPress(e.x, e.y)
+    })
+
   const composedGesture = Gesture.Exclusive(
     Gesture.Simultaneous(panGesture, pinchGesture),
+    longPressGesture,
     tapGesture
   )
 
@@ -364,6 +447,11 @@ export function NetworkGraph({
   // MST overlay data for Prim's visualization
   const mstEdges = vizActive && vizAlgorithm === 'prims' ? (currentStep?.mstEdges ?? []) : []
   const candidateEdge = vizActive && vizAlgorithm === 'prims' ? currentStep?.currentEdge : null
+
+  // Failure simulation helpers
+  const failedNode = failedNodeId ? departments.find((d) => d.id === failedNodeId) : null
+  const isolatedNodeIds = failureSimResult?.isolatedNodes ?? []
+  const brokenPathCount = failureSimResult?.brokenPaths.length ?? 0
 
   // Derived transform value forces Skia canvas redraws when zoom/pan values update on UI thread
   const skiaTransform = useDerivedValue(() => [
@@ -405,6 +493,28 @@ export function NetworkGraph({
         </View>
       )}
 
+      {/* Failure simulation banner */}
+      {failedNodeId && failedNode && (
+        <View style={styles.failureBanner}>
+          <Warning size={16} color={Colors.white} weight="fill" />
+          <Text style={styles.failureBannerText} numberOfLines={1}>
+            Simulating failure: <Text style={{ fontFamily: 'Inter_600SemiBold' }}>{failedNode.name}</Text>
+            {brokenPathCount > 0 ? `  ·  ${brokenPathCount} path${brokenPathCount !== 1 ? 's' : ''} broken` : ''}
+            {isolatedNodeIds.length > 0 ? `  ·  ${isolatedNodeIds.length} isolated` : ''}
+          </Text>
+          <Pressable
+            onPress={() => {
+              clearFailureSim()
+              setShowFailureSheet(false)
+            }}
+            hitSlop={8}
+            style={{ marginLeft: 8 }}
+          >
+            <X size={14} color={Colors.white} />
+          </Pressable>
+        </View>
+      )}
+
       {/* Reset selection pill (only when not in viz mode) */}
       {!vizActive && selectedNodes.length > 0 && (
         <Pressable style={styles.resetPill} onPress={handleReset}>
@@ -416,15 +526,18 @@ export function NetworkGraph({
       {/* Algorithm result toast — appears after auto-Dijkstra / auto-Prim's */}
       <AlgorithmToast toast={toast} onDismiss={() => setToast(null)} />
 
-      {/* Live validation badge */}
+      {/* Live validation badge — moved to top-left to not conflict with Explain toggle */}
       {hasBadge && !vizActive && selectedNodes.length === 0 && (
-        <View style={[styles.validationBadge, { backgroundColor: badgeBg, borderColor: `${badgeColor}40` }]}>
+        <Pressable
+          style={[styles.validationBadge, { backgroundColor: badgeBg, borderColor: `${badgeColor}40` }]}
+          onPress={validationPassed ? undefined : onWarningPress}
+        >
           <Text style={[styles.validationBadgeText, { color: badgeColor }]}>{badgeLabel}</Text>
-        </View>
+        </Pressable>
       )}
 
       {/* Hint banner — networking language */}
-      {!vizActive && departments.length >= 2 && !sessionHasSelectedTwoNodes && !dismissAlgoHintRef.current && (
+      {!vizActive && departments.length >= 2 && !sessionHasSelectedTwoNodes && showAlgoHint && (
         <View style={styles.hintBanner}>
           <Text style={styles.hintBannerText}>
             Tap two devices to find the best route, or run a full network analysis.
@@ -447,16 +560,33 @@ export function NetworkGraph({
 
           <Group transform={skiaTransform}>
             {/* Render edges first (behind nodes) */}
-            {edges.map((edge, i) => (
-              <GraphEdgeComponent
-                key={`edge-${i}`}
-                edge={edge}
-                nodes={nodes}
-                departments={departments}
-                font={systemFont}
-                vizEdgeState={getEdgeVizState(edge.source, edge.target)}
-              />
-            ))}
+            {(() => {
+              // Build parallel edge index: edges sharing same node pair get staggered curves
+              const pairCount = new Map<string, number>()
+              for (const e of edges) {
+                const key = [e.source, e.target].sort().join('|')
+                pairCount.set(key, (pairCount.get(key) ?? 0) + 1)
+              }
+              const runningIndex = new Map<string, number>()
+              return edges.map((edge, i) => {
+                const key = [edge.source, edge.target].sort().join('|')
+                const total = pairCount.get(key) ?? 1
+                const idx = runningIndex.get(key) ?? 0
+                runningIndex.set(key, idx + 1)
+                return (
+                  <GraphEdgeComponent
+                    key={`edge-${i}`}
+                    edge={edge}
+                    nodes={nodes}
+                    departments={departments}
+                    font={systemFont}
+                    vizEdgeState={getEdgeVizState(edge.source, edge.target)}
+                    parallelIndex={idx}
+                    parallelTotal={total}
+                  />
+                )
+              })
+            })()}
 
             {/* MST overlay (Prim's only) */}
             {vizActive && vizAlgorithm === 'prims' && (
@@ -480,6 +610,9 @@ export function NetworkGraph({
                 selected={!vizActive && selectedNodes.includes(node.id)}
                 font={systemFont}
                 vizState={getNodeVizState(node.id)}
+                isCritical={!vizActive && criticalNodeIds.includes(node.id) && !failedNodeId}
+                isFailed={node.id === failedNodeId}
+                isIsolated={isolatedNodeIds.includes(node.id)}
               />
             ))}
           </Group>
@@ -523,7 +656,7 @@ export function NetworkGraph({
           style={({ pressed }) => [styles.exploreLink, pressed && { opacity: 0.85 }]}
           onPress={() => {
             setShowLegend(true)
-            dismissAlgoHintRef.current = true
+            setShowAlgoHint(false)
             setSessionHasSelectedTwoNodes(true)
             onVisualize()
           }}
@@ -545,6 +678,71 @@ export function NetworkGraph({
         text="Tap to explore Dijkstra, A*, Prim's, and more on this topology."
         onDismiss={handleDismissCoachMark}
       />
+
+      {/* Failure simulation bottom sheet */}
+      <BottomSheet
+        visible={showFailureSheet}
+        onClose={() => setShowFailureSheet(false)}
+        snapHeight={340}
+      >
+        <View style={styles.sheetContent}>
+          <View style={styles.sheetHeader}>
+            <Warning size={22} color={Colors.error} weight="fill" />
+            <Text style={styles.sheetTitle}>Failure Impact Analysis</Text>
+          </View>
+          <Text style={styles.sheetSubtitle}>
+            Impact of removing <Text style={{ color: Colors.error, fontFamily: 'Inter_600SemiBold' }}>{failedNode?.name ?? ''}</Text> from the topology:
+          </Text>
+
+          <View style={styles.sheetMetricsRow}>
+            <View style={[styles.sheetMetric, { borderColor: `${Colors.error}30`, backgroundColor: Colors.errorContainer }]}>
+              <Text style={[styles.sheetMetricVal, { color: Colors.error }]}>{brokenPathCount}</Text>
+              <Text style={styles.sheetMetricLbl}>Paths broken</Text>
+            </View>
+            <View style={[styles.sheetMetric, { borderColor: `${Colors.warning}30`, backgroundColor: Colors.warningContainer }]}>
+              <Text style={[styles.sheetMetricVal, { color: Colors.warning }]}>{isolatedNodeIds.length}</Text>
+              <Text style={styles.sheetMetricLbl}>Isolated nodes</Text>
+            </View>
+            <View style={[styles.sheetMetric, { borderColor: `${Colors.success}30`, backgroundColor: Colors.successContainer }]}>
+              <Text style={[styles.sheetMetricVal, { color: Colors.success }]}>
+                {departments.length - 1 - isolatedNodeIds.length}
+              </Text>
+              <Text style={styles.sheetMetricLbl}>Still reachable</Text>
+            </View>
+          </View>
+
+          {isolatedNodeIds.length > 0 && (
+            <View style={styles.sheetSection}>
+              <Text style={styles.sheetSectionLabel}>UNREACHABLE NODES</Text>
+              <View style={styles.sheetChipRow}>
+                {isolatedNodeIds.slice(0, 6).map((id) => {
+                  const name = departments.find((d) => d.id === id)?.name ?? id
+                  return (
+                    <View key={id} style={styles.sheetChip}>
+                      <Text style={styles.sheetChipText}>{name}</Text>
+                    </View>
+                  )
+                })}
+                {isolatedNodeIds.length > 6 && (
+                  <View style={styles.sheetChip}>
+                    <Text style={styles.sheetChipText}>+{isolatedNodeIds.length - 6} more</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          <Pressable
+            style={styles.sheetDismissBtn}
+            onPress={() => {
+              clearFailureSim()
+              setShowFailureSheet(false)
+            }}
+          >
+            <Text style={styles.sheetDismissBtnText}>Clear Simulation</Text>
+          </Pressable>
+        </View>
+      </BottomSheet>
     </View>
   )
 }
@@ -606,7 +804,7 @@ const styles = StyleSheet.create({
   validationBadge: {
     position: 'absolute',
     top: 10,
-    right: 68,
+    left: 12,
     zIndex: 10,
     borderRadius: 999,
     paddingHorizontal: 12,
@@ -685,5 +883,138 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
     color: '#E0EBFF',
+  },
+
+  // ── Failure simulation ──────────────────────────────────────────────────────
+  failureBanner: {
+    position: 'absolute',
+    top: 10,
+    left: 16,
+    right: 16,
+    zIndex: 12,
+    backgroundColor: Colors.error,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: Colors.error,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  failureBannerText: {
+    flex: 1,
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.white,
+  },
+  warningBar: {
+    position: 'absolute',
+    bottom: 90,
+    left: 16,
+    right: 16,
+    backgroundColor: Colors.errorContainer,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.error,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 10,
+    shadowColor: Colors.error,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+
+  // Bottom sheet content
+  sheetContent: {
+    padding: 20,
+    gap: 14,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  sheetTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 18,
+    color: Colors.textPrimary,
+  },
+  sheetSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+  },
+  sheetMetricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  sheetMetric: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+  },
+  sheetMetricVal: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 28,
+  },
+  sheetMetricLbl: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    color: Colors.textMuted,
+    textAlign: 'center',
+  },
+  sheetSection: {
+    gap: 8,
+  },
+  sheetSectionLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    color: Colors.textMuted,
+  },
+  sheetChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  sheetChip: {
+    backgroundColor: Colors.errorContainer,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: `${Colors.error}25`,
+  },
+  sheetChipText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.error,
+  },
+  sheetDismissBtn: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: Colors.errorContainer,
+    borderWidth: 1,
+    borderColor: `${Colors.error}30`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  sheetDismissBtnText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    color: Colors.error,
   },
 })

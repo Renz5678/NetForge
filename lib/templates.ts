@@ -11,7 +11,7 @@ import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
 export type NetworkTemplate = {
   id: string
   name: string
-  emoji: string
+  iconName: string
   description: string
   scenario: string        // Networking problem this template solves
   highlights: string[]    // Key features users will discover
@@ -117,7 +117,7 @@ function getSmallBizConfig(userId: string): NetworkConfig {
       ports: [{ id: 'sb_servers_p1', name: 'FastEthernet0/1', connectedToNodeId: 'sb_switch', connectedToPortId: 'sb_switch_p4' }],
     },
   ]
-  return buildConfig('tpl_small_biz', userId, '🏪 Small Business Network', depts, '192.168.1.0', 10)
+  return buildConfig('tpl_small_biz', userId, 'Small Business Network', depts, '192.168.1.0', 10)
 }
 
 // ─── Template 2: Enterprise Campus Network ────────────────────────────────────
@@ -220,7 +220,7 @@ function getEnterpriseCampusConfig(userId: string): NetworkConfig {
       ports: [{ id: 'ec_exec_p1', name: 'GigabitEthernet0/1', connectedToNodeId: 'ec_distrib_b', connectedToPortId: 'ec_db_p3' }],
     },
   ]
-  return buildConfig('tpl_enterprise_campus', userId, '🏢 Enterprise Campus Network', depts, '10.1.0.0', 10)
+  return buildConfig('tpl_enterprise_campus', userId, 'Enterprise Campus Network', depts, '10.1.0.0', 10)
 }
 
 // ─── Template 3: Multi-Branch WAN ────────────────────────────────────────────
@@ -300,7 +300,7 @@ function getMultiBranchConfig(userId: string): NetworkConfig {
       ports: [{ id: 'mb_bb_u_p1', name: 'GigabitEthernet0/1', connectedToNodeId: 'mb_branch_b_router', connectedToPortId: 'mb_bb_r_p2' }],
     },
   ]
-  return buildConfig('tpl_multi_branch', userId, '🌐 Multi-Branch WAN', depts, '172.16.0.0', 10)
+  return buildConfig('tpl_multi_branch', userId, 'Multi-Branch WAN', depts, '172.16.0.0', 10)
 }
 
 // ─── Template 4: Data Center Spine-Leaf ──────────────────────────────────────
@@ -396,7 +396,7 @@ function getDataCenterConfig(userId: string): NetworkConfig {
       ports: [{ id: 'dc_st_p1', name: 'GigabitEthernet0/1', connectedToNodeId: 'dc_leaf3', connectedToPortId: 'dc_l3_p3' }],
     },
   ]
-  return buildConfig('tpl_datacenter', userId, '🖥 Data Center Spine-Leaf', depts, '10.100.0.0', 100)
+  return buildConfig('tpl_datacenter', userId, 'Data Center Spine-Leaf', depts, '10.100.0.0', 100)
 }
 
 // ─── Template 5: ISP Core Network ────────────────────────────────────────────
@@ -486,7 +486,7 @@ function getISPCoreConfig(userId: string): NetworkConfig {
       ports: [{ id: 'isp_biz_p1', name: 'FastEthernet0/1', connectedToNodeId: 'isp_access_b', connectedToPortId: 'isp_ab_p3' }],
     },
   ]
-  return buildConfig('tpl_isp_core', userId, '📡 ISP Core Network', depts, '203.0.113.0', 100)
+  return buildConfig('tpl_isp_core', userId, 'ISP Core Network', depts, '203.0.113.0', 100)
 }
 
 // ─── Templates Registry ────────────────────────────────────────────────────────
@@ -494,7 +494,7 @@ export const NETWORK_TEMPLATES: NetworkTemplate[] = [
   {
     id: 'small_biz',
     name: 'Small Business',
-    emoji: '🏪',
+    iconName: 'Storefront',
     description: 'Simple office network with staff, guest WiFi, and file servers.',
     scenario: 'Set up network segmentation so guest WiFi cannot access internal file servers.',
     highlights: ['VLAN isolation', 'Guest ACLs', 'Basic routing'],
@@ -504,7 +504,7 @@ export const NETWORK_TEMPLATES: NetworkTemplate[] = [
   {
     id: 'enterprise_campus',
     name: 'Enterprise Campus',
-    emoji: '🏢',
+    iconName: 'Buildings',
     description: 'Multi-department campus with core/distribution/access hierarchy.',
     scenario: 'Design a hierarchical campus network with department isolation and redundant paths.',
     highlights: ['Three-tier hierarchy', 'OSPF routing', 'VLAN segmentation', 'Firewall ACLs'],
@@ -514,7 +514,7 @@ export const NETWORK_TEMPLATES: NetworkTemplate[] = [
   {
     id: 'multi_branch',
     name: 'Multi-Branch WAN',
-    emoji: '🌐',
+    iconName: 'Globe',
     description: 'HQ connected to two branch offices over a WAN backbone.',
     scenario: 'Connect branch offices to HQ and ensure traffic can route between all sites.',
     highlights: ['Multi-area OSPF', 'WAN links', 'Branch isolation'],
@@ -524,7 +524,7 @@ export const NETWORK_TEMPLATES: NetworkTemplate[] = [
   {
     id: 'datacenter',
     name: 'Data Center Spine-Leaf',
-    emoji: '🖥',
+    iconName: 'HardDrives',
     description: 'Modern spine-leaf fabric with redundant uplinks from every leaf.',
     scenario: 'Design a high-availability data center fabric with no single point of failure.',
     highlights: ['Spine-leaf topology', 'Dual uplinks', 'Storage VLAN'],
@@ -534,7 +534,7 @@ export const NETWORK_TEMPLATES: NetworkTemplate[] = [
   {
     id: 'isp_core',
     name: 'ISP Core Network',
-    emoji: '📡',
+    iconName: 'Broadcast',
     description: 'Internet Service Provider backbone with PoP nodes and subscriber access.',
     scenario: 'Model an ISP backbone connecting residential and business subscribers to transit.',
     highlights: ['BGP transit', 'OSPF backbone', 'Subscriber segmentation'],

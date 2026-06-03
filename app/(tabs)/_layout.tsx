@@ -1,11 +1,28 @@
+import React from 'react'
 import { Tabs } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
 import { House, Folders, ShieldCheck, Export, ChartPieSlice } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
 import { useConfigStore } from '@/stores/useConfigStore'
 
+function TabIconWithBadge({
+  icon,
+  showBadge,
+}: {
+  icon: React.ReactNode
+  showBadge: boolean
+}) {
+  return (
+    <View style={styles.badgeWrap}>
+      {icon}
+      {showBadge && <View style={styles.dot} />}
+    </View>
+  )
+}
+
 export default function TabsLayout() {
   const configsCount = useConfigStore((s) => s.configs.length)
+  const hasActiveConfig = useConfigStore((s) => !!s.activeConfig)
 
   return (
     <Tabs
@@ -56,7 +73,10 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconWrap}>
               {focused && <View style={styles.indicator} />}
-              <ShieldCheck size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
+              <TabIconWithBadge
+                showBadge={!hasActiveConfig}
+                icon={<ShieldCheck size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />}
+              />
             </View>
           ),
         }}
@@ -80,7 +100,10 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconWrap}>
               {focused && <View style={styles.indicator} />}
-              <Export size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
+              <TabIconWithBadge
+                showBadge={!hasActiveConfig}
+                icon={<Export size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />}
+              />
             </View>
           ),
         }}
@@ -124,5 +147,19 @@ const styles = StyleSheet.create({
     height: 2,
     backgroundColor: Colors.primary,
     borderRadius: 1,
+  },
+  // Wrapper used by TabIconWithBadge to anchor the dot
+  badgeWrap: {
+    position: 'relative',
+  },
+  // Amber dot shown on Validate / Export when no config is active
+  dot: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F59E0B',
   },
 })

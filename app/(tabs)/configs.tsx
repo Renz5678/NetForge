@@ -167,7 +167,6 @@ const swipeCard = StyleSheet.create({
     backgroundColor: Colors.error,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1,
   },
 })
 
@@ -195,11 +194,12 @@ export default function ConfigsScreen() {
 
   useEffect(() => {
     if (user?.id) loadConfigs(user.id)
-  }, [user?.id])
+  }, [user?.id, loadConfigs])
 
-  const filtered = configs.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = configs
+    .filter((c) => !c.id.startsWith('local_tpl_'))
+    .filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
+
 
   const validateIp = (ip: string) => {
     return /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip.trim())
@@ -236,17 +236,20 @@ export default function ConfigsScreen() {
     if (!valid || !user?.id) return
 
     setCreating(true)
-    const config = await createConfig(newName.trim(), user.id, baseIp.trim(), vlanNum)
-    setCreating(false)
-    setShowNewSheet(false)
-    setNewName('')
-    setBaseIp(defaultBaseIp)
-    setVlanStart(defaultVlanStart)
-    setNameError('')
-    setIpError('')
-    setVlanError('')
-    if (config) {
-      router.push(`/config/${config.id}`)
+    try {
+      const config = await createConfig(newName.trim(), user.id, baseIp.trim(), vlanNum)
+      setShowNewSheet(false)
+      setNewName('')
+      setBaseIp(defaultBaseIp)
+      setVlanStart(defaultVlanStart)
+      setNameError('')
+      setIpError('')
+      setVlanError('')
+      if (config) {
+        router.push(`/config/${config.id}`)
+      }
+    } finally {
+      setCreating(false)
     }
   }
 

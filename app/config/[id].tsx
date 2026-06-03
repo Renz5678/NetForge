@@ -17,6 +17,7 @@ import {
   Pressable,
   TextInput,
   ScrollView,
+  Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
@@ -31,6 +32,12 @@ import {
   Globe,
   ListNumbers,
   Warning,
+  Question,
+  Link,
+  Tag,
+  NetworkSlash,
+  WarningCircle,
+  Info,
 } from 'phosphor-react-native'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -52,7 +59,10 @@ import { buildAStarSteps } from '@/lib/algorithms/aStarVisualizer'
 import { buildCycleDetectionSteps } from '@/lib/algorithms/cycleDetectionVisualizer'
 import { buildTopologicalSortSteps } from '@/lib/algorithms/topologicalSortVisualizer'
 import { buildPrimsSteps } from '@/lib/algorithms/primsVisualizer'
+import { findShortestPath } from '@/lib/algorithms/dijkstra'
+import { findShortestPathAStar } from '@/lib/algorithms/aStar'
 import type { Department, PathResult, AlgorithmType } from '@/types'
+import type { ComparisonResult } from '@/stores/useVisualizationStore'
 import { DepartmentSchema } from '@/lib/validators'
 
 const generateId = () => 'dept_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9)
@@ -401,7 +411,7 @@ function DeptSheet({
                   onPress={() => setOspfEnabled(!ospfEnabled)}
                 >
                   <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 11, color: ospfEnabled ? Colors.success : Colors.textMuted }}>
-                    {ospfEnabled ? '⚡ OSPF Active' : '✕ Disabled'}
+                    {ospfEnabled ? 'OSPF Active' : 'Disabled'}
                   </Text>
                 </Pressable>
               </View>
@@ -643,7 +653,7 @@ function DeptSheet({
 
         {/* Peer Connections */}
         <View style={deptSheet.field}>
-          <Text style={deptSheet.label}>🔗 Connected Nodes</Text>
+          <Text style={deptSheet.label}>Connected Nodes</Text>
           <Text style={{ fontSize: 11, color: Colors.textMuted, marginBottom: 8 }}>
             Tap to toggle which nodes this device links to.
           </Text>
@@ -666,7 +676,7 @@ function DeptSheet({
         {/* Port Wiring Cards (shown when peers are selected and device isn't a switch) */}
         {peers.length > 0 && type !== 'switch' && (
           <View style={[deptSheet.field, { marginTop: 8 }]}>
-            <Text style={deptSheet.label}>🔌 Port Wiring</Text>
+            <Text style={deptSheet.label}>Port Wiring</Text>
             <Text style={{ fontSize: 11, color: Colors.textMuted, marginBottom: 10 }}>
               Assign a local interface port to each connected peer.
             </Text>
@@ -816,10 +826,12 @@ export default function ConfigDetailScreen() {
   const { activeConfig, setActiveConfig, updateConfig, addDepartment, updateDepartment, deleteDepartment } =
     useConfigStore()
   const departments = activeConfig?.departments ?? []
+  const isSample = activeConfig?.id.startsWith('local_tpl_') ?? false
 
   const [activeTab, setActiveTab] = useState<'departments' | 'subnets' | 'graph'>('departments')
   const [editedName, setEditedName] = useState('')
   const [isDirty, setIsDirty] = useState(false)
+  const [nameInputFocused, setNameInputFocused] = useState(false)
   const [search, setSearch] = useState('')
   const [showAddSheet, setShowAddSheet] = useState(false)
   const [editingDept, setEditingDept] = useState<Department | null>(null)
@@ -945,6 +957,43 @@ export default function ConfigDetailScreen() {
           })
           break
         }
+        case 'pathfindingComparison': {
+          const srcId = config.sourceId ?? depts[0]?.id ?? ''
+          const dstId = config.targetId ?? depts[depts.length - 1]?.id ?? ''
+
+          // Run Dijkstra (pure algorithm, not the visualizer steps)
+          const dijkstraResult = findShortestPath(depts, srcId, dstId)
+
+          // Run A* (needs node positions from canvas)
+          const astarResult = findShortestPathAStar(depts, srcId, dstId, nodePositions)
+
+          // Count nodes visited: run the step builders to get visited sets
+          const dijkstraStepRes = buildDijkstraSteps(depts, srcId, dstId)
+          const astarStepRes = buildAStarSteps(depts, srcId, dstId, nodePositions)
+
+          const comparison: ComparisonResult = {
+            sourceId: srcId,
+            targetId: dstId,
+            dijkstra: dijkstraResult
+              ? { path: dijkstraResult.path, hops: dijkstraResult.hops, nodesVisited: dijkstraStepRes.visitedNodeIds.size }
+              : null,
+            aStar: astarResult
+              ? { path: astarResult.path, hops: astarResult.hops, nodesVisited: astarStepRes.visitedNodeIds.size }
+              : null,
+          }
+
+          // Store comparison result, then trigger a minimal Dijkstra visualization
+          // so the panel has valid steps/state to render against.
+          startVisualization('pathfindingComparison', dijkstraStepRes.steps, {
+            sourceId: srcId,
+            targetId: dstId,
+            dijkstraVisited: dijkstraStepRes.visitedNodeIds,
+            astarVisited: astarStepRes.visitedNodeIds,
+            comparisonResult: comparison,
+            showSteps: false, // comparison is a static card, not a step-by-step
+          })
+          break
+        }
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -980,24 +1029,50 @@ export default function ConfigDetailScreen() {
     <SafeAreaView style={styles.safe}>
       {/* Top bar */}
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <ArrowLeft size={22} color={Colors.primary} />
-        </Pressable>
-        <TextInput
-          style={styles.titleInput}
-          value={editedName}
-          onChangeText={handleNameChange}
-          onBlur={handleSave}
-          selectTextOnFocus
-        />
-        <Pressable
-          onPress={handleSave}
-          disabled={!isDirty}
-          style={[styles.saveButton, !isDirty && styles.saveButtonDisabled]}
-        >
-          <Text style={[styles.saveText, !isDirty && styles.saveTextDisabled]}>Save</Text>
-        </Pressable>
+        {/* Breadcrumb row */}
+        <View style={styles.breadcrumbRow}>
+          <Pressable onPress={() => router.back()}>
+            <Text style={styles.breadcrumbLink}>My Configs</Text>
+          </Pressable>
+          <Text style={styles.breadcrumb}>{' › '}{editedName}</Text>
+        </View>
+
+        {/* Title row */}
+        <View style={styles.titleRow}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <ArrowLeft size={22} color={Colors.primary} />
+          </Pressable>
+          <TextInput
+            style={[
+              styles.titleInput,
+              nameInputFocused && styles.titleInputFocused,
+            ]}
+            value={editedName}
+            onChangeText={handleNameChange}
+            onBlur={() => {
+              setNameInputFocused(false)
+              handleSave()
+            }}
+            onFocus={() => setNameInputFocused(true)}
+            selectTextOnFocus
+          />
+          <Pressable
+            onPress={handleSave}
+            disabled={!isDirty}
+            style={[styles.saveButton, !isDirty && styles.saveButtonDisabled]}
+          >
+            <Text style={[styles.saveText, !isDirty && styles.saveTextDisabled]}>Save</Text>
+          </Pressable>
+        </View>
       </View>
+
+      {/* Sample topology banner */}
+      {isSample && (
+        <View style={styles.sampleBanner}>
+          <Info size={13} color={Colors.textMuted} />
+          <Text style={styles.sampleBannerText}>Sample topology — view only, changes won't be saved</Text>
+        </View>
+      )}
 
       {/* Segmented control */}
       <View style={styles.segmented}>
@@ -1076,7 +1151,7 @@ export default function ConfigDetailScreen() {
 
                 <View style={styles.deptMeta}>
                   <View style={styles.chip}>
-                    <Text style={styles.chipText}>🖥 {item.deviceCount} Devices</Text>
+                    <Text style={styles.chipText}>{item.deviceCount} Devices</Text>
                   </View>
                   {item.subnet && (
                     <View style={styles.chip}>
@@ -1216,10 +1291,11 @@ export default function ConfigDetailScreen() {
       {activeTab === 'graph' && (
         <View style={{ flex: 1, position: 'relative' }}>
           <ErrorBoundary inline inlineLabel="Network Graph">
-            <NetworkGraph
+          <NetworkGraph
               departments={departments}
               onPathFound={handlePathFound}
               onVisualize={() => setShowVizSelector(true)}
+              onWarningPress={() => setShowConflictSheet(true)}
               validationWarnings={
                 [validation.cycleCheck, validation.allocationCheck,
                  validation.connectivityCheck, validation.vlanCheck
@@ -1288,42 +1364,81 @@ export default function ConfigDetailScreen() {
         }}
       />
 
-      {/* Topology Conflicts Bottom Sheet */}
       <BottomSheet
         visible={showConflictSheet}
         onClose={() => setShowConflictSheet(false)}
-        snapHeight={420}
+        snapHeight={520}
       >
-        <Text style={styles.sheetTitle}>Topology Conflicts Detected</Text>
+        <Text style={styles.sheetTitle}>Topology Issues Detected</Text>
         <Text style={styles.sheetSubtitle}>
-          The current network layout contains validation issues that make it invalid.
+          The following issues make this network invalid. Tap each card for details and how to fix it.
         </Text>
         <ScrollView style={styles.conflictList} showsVerticalScrollIndicator={false}>
           {!validation.cycleCheck.passed && (
             <View style={styles.conflictItem}>
-              <Text style={styles.conflictHeader}>⚠️ Routing Loop Detected</Text>
+              <View style={styles.conflictTitleRow}>
+                <Warning size={16} color={Colors.warning} weight="fill" />
+                <Text style={styles.conflictHeader}>Routing Loop Detected</Text>
+                <Pressable onPress={() => Alert.alert('Why Routing Loops are Bad', 'Routing loops cause broadcast storms and severe network instability. Packets get trapped endlessly cycling between nodes, eventually bringing the entire network down.')} hitSlop={8} style={styles.questionIcon}>
+                  <Question size={16} color={Colors.textMuted} weight="fill" />
+                </Pressable>
+              </View>
               <Text style={styles.conflictMessage}>{validation.cycleCheck.message}</Text>
+              <View style={styles.fixSuggestion}>
+                <Text style={styles.fixLabel}>HOW TO FIX</Text>
+                <Text style={styles.fixText}>Go to the Departments tab and remove the circular peer link that connects back to a parent node. A routing loop means Device A links to Device B, and Device B links back to Device A through the same path. Use a switch or firewall as an intermediate node to break the cycle.</Text>
+              </View>
             </View>
           )}
 
           {!validation.allocationCheck.passed && (
             <View style={styles.conflictItem}>
-              <Text style={styles.conflictHeader}>🚫 Subnet Overlap / Error</Text>
+              <View style={styles.conflictTitleRow}>
+                <WarningCircle size={16} color={Colors.error} weight="fill" />
+                <Text style={styles.conflictHeader}>Subnet Overlap / Error</Text>
+                <Pressable onPress={() => Alert.alert('Why IP Overlap is Bad', 'IP overlapping happens when multiple devices are assigned the same IP address or subnet range. This causes intermittent connectivity drops, ARP conflicts, and routing failures.')} hitSlop={8} style={styles.questionIcon}>
+                  <Question size={16} color={Colors.textMuted} weight="fill" />
+                </Pressable>
+              </View>
               <Text style={styles.conflictMessage}>{validation.allocationCheck.message}</Text>
+              <View style={styles.fixSuggestion}>
+                <Text style={styles.fixLabel}>HOW TO FIX</Text>
+                <Text style={styles.fixText}>In the Subnets tab, change the Base IP or the CIDR prefix of overlapping departments. Each department must have a unique, non-overlapping subnet range. Try increasing the CIDR prefix (e.g., /24 → /26) or using a different address block.</Text>
+              </View>
             </View>
           )}
 
           {!validation.connectivityCheck.passed && (
             <View style={styles.conflictItem}>
-              <Text style={styles.conflictHeader}>🔗 Connectivity Isolation</Text>
+              <View style={styles.conflictTitleRow}>
+                <Link size={16} color={Colors.textSecondary} weight="fill" />
+                <Text style={styles.conflictHeader}>Connectivity Isolation</Text>
+                <Pressable onPress={() => Alert.alert('Why Connectivity Fails', 'If a node is unreachable, there is no physical or logical path from the core to that department. Traffic will be blackholed — sent but never delivered.')} hitSlop={8} style={styles.questionIcon}>
+                  <Question size={16} color={Colors.textMuted} weight="fill" />
+                </Pressable>
+              </View>
               <Text style={styles.conflictMessage}>{validation.connectivityCheck.message}</Text>
+              <View style={styles.fixSuggestion}>
+                <Text style={styles.fixLabel}>HOW TO FIX</Text>
+                <Text style={styles.fixText}>Open the isolated department and add a peer connection to a router or switch that is already part of the main topology. Every department must have at least one connected peer with a reachable path to the core network.</Text>
+              </View>
             </View>
           )}
 
           {!validation.vlanCheck.passed && (
             <View style={styles.conflictItem}>
-              <Text style={styles.conflictHeader}>🏷️ VLAN Tag Collision</Text>
+              <View style={styles.conflictTitleRow}>
+                <Tag size={16} color={Colors.primary} weight="fill" />
+                <Text style={styles.conflictHeader}>VLAN Tag Collision</Text>
+                <Pressable onPress={() => Alert.alert('Why Invalid VLANs are Bad', 'VLAN inconsistencies lead to dropped traffic. Devices may be physically connected but logically isolated, causing hard-to-diagnose connectivity issues.')} hitSlop={8} style={styles.questionIcon}>
+                  <Question size={16} color={Colors.textMuted} weight="fill" />
+                </Pressable>
+              </View>
               <Text style={styles.conflictMessage}>{validation.vlanCheck.message}</Text>
+              <View style={styles.fixSuggestion}>
+                <Text style={styles.fixLabel}>HOW TO FIX</Text>
+                <Text style={styles.fixText}>In the department editor, ensure each department is assigned a unique VLAN ID. Go to the port wiring section of your switch and verify that trunk ports allow the correct VLAN IDs and access ports use only one VLAN.</Text>
+              </View>
             </View>
           )}
         </ScrollView>
@@ -1395,23 +1510,65 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.surfaceAlt },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingText: { fontFamily: 'Inter_400Regular', fontSize: 16, color: Colors.textMuted },
-  topBar: {
+  sampleBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.white,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 7,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.ice,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+  },
+  sampleBannerText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textMuted,
+    flex: 1,
+  },
+  topBar: {
+    flexDirection: 'column',
+    backgroundColor: Colors.white,
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  breadcrumbRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    paddingLeft: 2,
+  },
+  breadcrumb: {
+    fontFamily: 'Outfit_400Regular',
+    fontSize: 11,
+    color: Colors.textMuted,
+    flexShrink: 1,
+  },
+  breadcrumbLink: {
+    fontFamily: 'Outfit_400Regular',
+    fontSize: 11,
+    color: Colors.primary,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   backButton: { padding: 4 },
   titleInput: {
     flex: 1,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Outfit_600SemiBold',
     fontSize: 18,
-    color: Colors.primary,
-    textAlign: 'center',
+    color: Colors.textPrimary,
+    borderBottomWidth: 1,
+    borderBottomColor: 'transparent',
+    paddingVertical: 2,
+  },
+  titleInputFocused: {
+    borderBottomColor: Colors.primary,
   },
   saveButton: { paddingHorizontal: 4 },
   saveButtonDisabled: { opacity: 0.3 },
@@ -1637,17 +1794,47 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 8,
   },
+  conflictTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  questionIcon: {
+    marginLeft: 'auto',
+  },
   conflictHeader: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
     color: Colors.textPrimary,
-    marginBottom: 4,
   },
   conflictMessage: {
     fontFamily: 'Inter_400Regular',
     fontSize: 12,
     color: Colors.textSecondary,
     lineHeight: 16,
+  },
+  fixSuggestion: {
+    marginTop: 10,
+    backgroundColor: `${Colors.primary}08`,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  fixLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+    color: Colors.primary,
+    letterSpacing: 0.6,
+  },
+  fixText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 18,
   },
   sheetButtons: {
     gap: 8,

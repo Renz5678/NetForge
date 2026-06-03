@@ -2,10 +2,12 @@ import React, { useState } from 'react'
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
   Pressable
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -15,8 +17,8 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { supabase } from '@/lib/supabase'
 import { Colors } from '@/constants/colors'
-import { NetForgeLogo } from '@/components/ui/NetForgeLogo'
 
 export default function LoginScreen() {
   const router = useRouter()
@@ -29,6 +31,9 @@ export default function LoginScreen() {
   const [passwordError, setPasswordError] = useState('')
   const [generalError, setGeneralError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotSent, setForgotSent] = useState(false)
+  const [guestLoading, setGuestLoading] = useState(false)
 
   const validate = (): boolean => {
     let valid = true
@@ -65,6 +70,44 @@ export default function LoginScreen() {
     }
   }
 
+  const handleForgotPassword = async () => {
+    const trimmed = email.trim()
+    if (!trimmed) {
+      Alert.alert(
+        'Enter your email',
+        'Type your email address in the field above, then tap "Forgot password?" again.'
+      )
+      return
+    }
+    if (!/\S+@\S+\.\S+/.test(trimmed)) {
+      setEmailError('Please enter a valid email first')
+      return
+    }
+    setForgotLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmed)
+    setForgotLoading(false)
+    if (error) {
+      if (
+        error.message.toLowerCase().includes('user not found') ||
+        error.message.toLowerCase().includes('not found') ||
+        error.message.toLowerCase().includes('not registered')
+      ) {
+        Alert.alert(
+          'Email not registered',
+          'We couldn\'t find an account with that email address. Would you like to create one?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign up', onPress: () => router.push('/(auth)/signup') }
+          ]
+        )
+      } else {
+        Alert.alert('Reset Failed', error.message)
+      }
+    } else {
+      setForgotSent(true)
+    }
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
@@ -79,7 +122,11 @@ export default function LoginScreen() {
           {/* App icon */}
           <View style={styles.iconContainer}>
             <View style={styles.appIcon}>
-              <NetForgeLogo size={42} color={Colors.white} />
+              <Image
+                source={require('../../assets/images/icon.png')}
+                style={styles.appIconImage}
+                resizeMode="cover"
+              />
             </View>
           </View>
 
@@ -132,8 +179,10 @@ export default function LoginScreen() {
               onPress={handleLogin}
             />
 
-            <Pressable style={styles.forgotContainer} onPress={() => {}}>
-              <Text style={styles.forgotText}>Forgot password?</Text>
+            <Pressable style={styles.forgotContainer} onPress={handleForgotPassword} disabled={forgotLoading || forgotSent}>
+              <Text style={styles.forgotText}>
+                {forgotSent ? 'Reset link sent' : forgotLoading ? 'Sending...' : 'Forgot password?'}
+              </Text>
             </Pressable>
 
             {/* Divider */}
@@ -157,9 +206,17 @@ export default function LoginScreen() {
             {__DEV__ && (
               <Pressable
                 style={styles.guestButton}
+                disabled={guestLoading}
                 onPress={async () => {
-                  await useAuthStore.getState().signInAsGuest()
-                  router.replace('/(tabs)')
+                  setGuestLoading(true)
+                  try {
+                    await useAuthStore.getState().signInAsGuest()
+                    router.replace('/(tabs)')
+                  } catch (e: any) {
+                    Alert.alert('Guest Sign-in Failed', e?.message ?? 'An unexpected error occurred.')
+                  } finally {
+                    setGuestLoading(false)
+                  }
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -202,9 +259,16 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 20,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  appIconImage: {
+    width: 72,
+    height: 72,
   },
   appIconText: {
     fontSize: 36,

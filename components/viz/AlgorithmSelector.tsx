@@ -20,6 +20,7 @@ import {
   ArrowsClockwise,
   ListNumbers,
   ShareNetwork,
+  ArrowsLeftRight,
 } from 'phosphor-react-native'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
@@ -82,6 +83,15 @@ const ALGORITHMS: AlgorithmCard[] = [
     requiresTarget: false,
     requiresRoot: true,
   },
+  {
+    type: 'pathfindingComparison',
+    title: 'Route Algorithm Comparison',
+    subtitle: 'Compare Dijkstra vs A* on the same path',
+    description: 'Runs both Dijkstra and A* between two devices and displays results side-by-side — showing path length, hops, and nodes explored by each. Reveals when spatial awareness gives A* an efficiency advantage.',
+    requiresSource: true,
+    requiresTarget: true,
+    requiresRoot: false,
+  },
 ]
 
 type AlgorithmSelectorProps = {
@@ -109,6 +119,8 @@ function getAlgoIcon(type: AlgorithmType, color: string, size: number) {
       return <ListNumbers size={size} color={color} weight="duotone" />
     case 'prims':
       return <ShareNetwork size={size} color={color} weight="duotone" />
+    case 'pathfindingComparison':
+      return <ArrowsLeftRight size={size} color={color} weight="duotone" />
     default:
       return null
   }

@@ -59,6 +59,7 @@ function getAlgorithmLabel(algorithm: AlgorithmType): string {
     case 'cycleDetection': return 'Cycle Detection'
     case 'topologicalSort': return 'Topological Sort'
     case 'prims': return 'Optimal Wiring'
+    case 'pathfindingComparison': return 'Route Comparison'
   }
 }
 

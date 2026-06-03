@@ -37,7 +37,6 @@ import {
   Trash,
   Key,
   SignOut,
-  UserCircle,
   Warning,
   CaretRight,
 } from 'phosphor-react-native'
@@ -359,18 +358,32 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
                 </Pressable>
               )}
 
-              {/* Sign-in CTA for guests */}
+              {/* Sign-in CTAs for guests — Create Account (primary) + Sign In (secondary) */}
               {isGuest && (
-                <Pressable
-                  style={styles.signInCta}
-                  onPress={() => {
-                    onClose()
-                    router.replace('/(auth)/signup')
-                  }}
-                >
-                  <UserCircle size={16} color={Colors.white} weight="fill" />
-                  <Text style={styles.signInCtaText}>Create account to sync data</Text>
-                </Pressable>
+                <View style={styles.ctaContainer}>
+                  <Button
+                    label="Create Account"
+                    variant="primary"
+                    fullWidth
+                    accessibilityLabel="Create a new account to sync your data"
+                    accessibilityRole="button"
+                    onPress={() => {
+                      router.replace('/(auth)/signup')
+                      setTimeout(onClose, 50)
+                    }}
+                  />
+                  <Button
+                    label="Sign In"
+                    variant="secondary"
+                    fullWidth
+                    accessibilityLabel="Sign in to an existing account"
+                    accessibilityRole="button"
+                    onPress={() => {
+                      router.replace('/(auth)/login')
+                      setTimeout(onClose, 50)
+                    }}
+                  />
+                </View>
               )}
             </View>
 
@@ -642,20 +655,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.primary,
   },
-  signInCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
+  ctaContainer: {
     marginTop: 12,
-    backgroundColor: Colors.primary,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  signInCtaText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 13,
-    color: Colors.white,
+    gap: 8,
+    alignSelf: 'stretch',   // stretch across the full sidebar width
+    width: '100%',          // ensure fullWidth buttons actually fill this container
   },
 
   // ── Section labels ───────────────────────────────────────────────────────

@@ -61,7 +61,8 @@ export function useValidation(departments: Department[]): ValidationResult {
           if (dest.subnet) {
             const [baseIp] = dest.subnet.split('/')
             const ipParts = baseIp.split('.').map((p) => parseInt(p, 10))
-            ipParts[3] += 1 // check host IP e.g. 10.0.0.1
+            // Clamp to ≤254 so we never produce an invalid octet (e.g. 256)
+            ipParts[3] = Math.min(ipParts[3] + 1, 254)
             const testIp = ipParts.join('.')
 
             const trace = simulateRoute(departments, src.id, testIp)

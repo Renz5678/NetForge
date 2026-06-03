@@ -16,6 +16,30 @@ import { Button } from '@/components/ui/Button'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { Colors } from '@/constants/colors'
 
+const PasswordRequirements = ({ password }: { password: string }) => {
+  if (!password) return null
+  const reqs = [
+    { label: 'At least 8 characters', met: password.length >= 8 },
+    { label: 'One uppercase letter', met: /[A-Z]/.test(password) },
+    { label: 'One lowercase letter', met: /[a-z]/.test(password) },
+    { label: 'One number', met: /[0-9]/.test(password) },
+    { label: 'One special character', met: /[^A-Za-z0-9]/.test(password) },
+  ]
+
+  return (
+    <View style={styles.reqContainer}>
+      {reqs.map((r, i) => (
+        <View key={i} style={styles.reqRow}>
+          <View style={[styles.reqDot, r.met && styles.reqDotMet]}>
+            {r.met && <Text style={styles.reqCheck}>✓</Text>}
+          </View>
+          <Text style={[styles.reqText, r.met && styles.reqTextMet]}>{r.label}</Text>
+        </View>
+      ))}
+    </View>
+  )
+}
+
 export default function SignupScreen() {
   const router = useRouter()
   const signUp = useAuthStore((s) => s.signUp)
@@ -26,7 +50,6 @@ export default function SignupScreen() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
-  const [agreedToTos, setAgreedToTos] = useState(false)
 
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [generalError, setGeneralError] = useState('')
@@ -36,7 +59,11 @@ export default function SignupScreen() {
     const newErrors: Record<string, string> = {}
     setGeneralError('')
 
-    if (!fullName.trim()) newErrors.fullName = 'Full name is required'
+    if (!fullName.trim()) {
+      newErrors.fullName = 'Full name is required'
+    } else if (!/^[a-zA-Z0-9\s\-\.,']+$/.test(fullName)) {
+      newErrors.fullName = 'Name contains invalid characters'
+    }
     if (!email.trim()) {
       newErrors.email = 'Email is required'
     } else if (!/\S+@\S+\.\S+/.test(email)) {
@@ -44,16 +71,19 @@ export default function SignupScreen() {
     }
     if (!password) {
       newErrors.password = 'Password is required'
-    } else if (password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters'
+    } else if (
+      password.length < 8 ||
+      !/[A-Z]/.test(password) ||
+      !/[a-z]/.test(password) ||
+      !/[0-9]/.test(password) ||
+      !/[^A-Za-z0-9]/.test(password)
+    ) {
+      newErrors.password = 'Please meet all password requirements'
     }
     if (!confirmPassword) {
       newErrors.confirmPassword = 'Please confirm your password'
     } else if (password !== confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match'
-    }
-    if (!agreedToTos) {
-      newErrors.tos = 'You must agree to the Terms of Service'
     }
 
     setErrors(newErrors)
@@ -85,7 +115,7 @@ export default function SignupScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Back button */}
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Pressable onPress={() => router.canGoBack() ? router.back() : router.replace('/(auth)/login')} style={styles.backButton}>
             <ArrowLeft size={24} color={Colors.textPrimary} />
           </Pressable>
 
@@ -131,6 +161,7 @@ export default function SignupScreen() {
                 </Pressable>
               }
             />
+            <PasswordRequirements password={password} />
             <Input
               label="Confirm password"
               placeholder="Repeat your password"
@@ -138,7 +169,7 @@ export default function SignupScreen() {
               onChangeText={setConfirmPassword}
               secureTextEntry={!showConfirm}
               autoComplete="new-password"
-              error={errors.confirmPassword}
+              error={(confirmPassword && password !== confirmPassword) ? 'Passwords do not match' : errors.confirmPassword}
               rightElement={
                 <Pressable onPress={() => setShowConfirm((v) => !v)}>
                   {showConfirm ? (
@@ -150,22 +181,7 @@ export default function SignupScreen() {
               }
             />
 
-            {/* ToS checkbox */}
-            <Pressable
-              style={styles.tosRow}
-              onPress={() => setAgreedToTos((v) => !v)}
-            >
-              <View style={[styles.checkbox, agreedToTos && styles.checkboxChecked]}>
-                {agreedToTos && <Text style={styles.checkmark}>✓</Text>}
-              </View>
-              <Text style={styles.tosText}>
-                I agree to the{' '}
-                <Text style={styles.tosLink}>Terms of Service</Text>
-                {' '}and{' '}
-                <Text style={styles.tosLink}>Privacy Policy</Text>.
-              </Text>
-            </Pressable>
-            {errors.tos ? <Text style={styles.errorText}>{errors.tos}</Text> : null}
+            {/* General Errors */}
 
             {generalError ? <Text style={styles.errorText}>{generalError}</Text> : null}
 
@@ -237,41 +253,45 @@ const styles = StyleSheet.create({
   form: {
     gap: 16,
   },
-  tosRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
+
+  reqContainer: {
+    marginTop: -8,
+    marginBottom: 8,
+    gap: 6,
+    paddingHorizontal: 4,
   },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: Colors.pale,
+  reqRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reqDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: Colors.textMuted,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 2,
   },
-  checkboxChecked: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+  reqDotMet: {
+    backgroundColor: Colors.success,
+    borderColor: Colors.success,
   },
-  checkmark: {
-    fontSize: 12,
+  reqCheck: {
     color: Colors.white,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 9,
+    fontFamily: 'Inter_700Bold',
   },
-  tosText: {
-    flex: 1,
+  reqText: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: Colors.textSecondary,
-    lineHeight: 20,
+    fontSize: 12,
+    color: Colors.textMuted,
   },
-  tosLink: {
-    color: Colors.primary,
-    fontFamily: 'Inter_500Medium',
+  reqTextMet: {
+    color: Colors.success,
   },
+
   errorText: {
     fontFamily: 'Inter_400Regular',
     fontSize: 12,
