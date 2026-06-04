@@ -1,16 +1,25 @@
-// GraphNode.tsx — enhanced visual design
-// Each device type has a distinct color palette, icon abbreviation, and shape treatment.
+// GraphNode.tsx — v2: Device icons + gradient fills + peer indicators
+//
+// Each device type renders a unique vector icon drawn with Skia primitives
+// (no asset loading — crisp at any zoom level, zero file dependencies).
+//
 // Rendering order (back → front):
-//   1. Drop shadow rect (depth)
-//   2. Pulse ring (viz animation)
-//   3. Glow halo (viz queue states)
-//   4. Critical/failed rings
-//   5. Selection ring
-//   6. Card background (rounded rect)
-//   7. Top accent bar (device-type tint)
-//   8. Badge (pill with abbreviation)
-//   9. Labels
-//   10. Viz state label chip
+//   1.  Drop shadow
+//   2.  Animated pulse ring (current viz node)
+//   3.  Glow halo (viz queue states)
+//   4.  Critical ring / Failed ring
+//   5.  Peer highlight ring (nodes adjacent to selected node)
+//   6.  Selection ring
+//   7.  Card background (LinearGradient per type)
+//   8.  Left accent stripe (type accent colour)
+//   9.  Glass inner highlight
+//  10.  Badge background
+//  11.  Device icon (type-specific Skia primitives)
+//  12.  Node name label
+//  13.  Subnet / VLAN subtext
+//  14.  Status dot (top-right corner)
+//  15.  Peer-count chip (bottom-right)
+//  16.  Viz state label (below node, viz mode only)
 
 import React from 'react'
 import {
@@ -28,14 +37,19 @@ import { Platform } from 'react-native'
 import { Colors } from '@/constants/colors'
 import type { GraphNode, NodeVizState } from '@/types'
 import { useVisualizationStore } from '@/stores/useVisualizationStore'
-import { useSharedValue, useDerivedValue, withRepeat, withTiming } from 'react-native-reanimated'
+import {
+  useSharedValue,
+  useDerivedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated'
 
-// ── Node dimensions ──────────────────────────────────────────────────────────
+// ── Node dimensions ───────────────────────────────────────────────────────────
 export const NODE_WIDTH  = 172
-export const NODE_HEIGHT = 58
+export const NODE_HEIGHT = 72   // ↑ from 58 → richer card with icon breathing room
 const RADIUS = 14
 
-// ── Fonts ────────────────────────────────────────────────────────────────────
+// ── Fonts ─────────────────────────────────────────────────────────────────────
 const labelFont = matchFont({
   fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
   fontSize:   12,
@@ -48,9 +62,9 @@ const subFont = matchFont({
   fontWeight: 'normal',
 })
 
-const badgeFont = matchFont({
+const chipFont = matchFont({
   fontFamily: Platform.OS === 'ios' ? 'Helvetica Neue' : 'sans-serif',
-  fontSize:   10,
+  fontSize:   8,
   fontWeight: 'bold',
 })
 
@@ -60,83 +74,86 @@ const stateFont = matchFont({
   fontWeight: 'bold',
 })
 
-// ── Per-type visual identity ─────────────────────────────────────────────────
-// Each device type has: card fill, darker accent, badge fill, abbreviation
+// ── Per-type gradient + icon identity ─────────────────────────────────────────
 const TYPE_IDENTITY: Record<string, {
-  fill: string
-  accent: string     // top accent strip color (slightly lighter/contrasting)
-  badgeBg: string
-  abbr: string
+  gradTop:   string
+  gradBot:   string
+  accent:    string
+  badgeBg:   string
+  iconColor: string
 }> = {
   router: {
-    fill:    '#1E3A8A',   // deep navy blue
-    accent:  '#3B82F6',   // bright blue
-    badgeBg: 'rgba(59,130,246,0.40)',
-    abbr:    'RT',
+    gradTop:   '#1e40af',
+    gradBot:   '#1e3a8a',
+    accent:    '#3B82F6',
+    badgeBg:   'rgba(59,130,246,0.30)',
+    iconColor: '#93C5FD',
   },
   switch: {
-    fill:    '#065F46',   // deep emerald
-    accent:  '#10B981',   // emerald green
-    badgeBg: 'rgba(16,185,129,0.40)',
-    abbr:    'SW',
+    gradTop:   '#065F46',
+    gradBot:   '#064e3b',
+    accent:    '#10B981',
+    badgeBg:   'rgba(16,185,129,0.30)',
+    iconColor: '#6EE7B7',
   },
   firewall: {
-    fill:    '#7C2D12',   // deep rust
-    accent:  '#F97316',   // orange
-    badgeBg: 'rgba(249,115,22,0.40)',
-    abbr:    'FW',
+    gradTop:   '#92400E',
+    gradBot:   '#7c2d12',
+    accent:    '#F97316',
+    badgeBg:   'rgba(249,115,22,0.30)',
+    iconColor: '#FDBA74',
   },
   wan: {
-    fill:    '#134E4A',   // dark teal
-    accent:  '#2DD4BF',   // teal
-    badgeBg: 'rgba(45,212,191,0.40)',
-    abbr:    'WAN',
+    gradTop:   '#134E4A',
+    gradBot:   '#0f3b38',
+    accent:    '#2DD4BF',
+    badgeBg:   'rgba(45,212,191,0.30)',
+    iconColor: '#5EEAD4',
   },
   department: {
-    fill:    '#1E40AF',   // rich blue
-    accent:  '#60A5FA',   // light blue
-    badgeBg: 'rgba(96,165,250,0.35)',
-    abbr:    'DEP',
+    gradTop:   '#1E3A5F',
+    gradBot:   '#172d4a',
+    accent:    '#60A5FA',
+    badgeBg:   'rgba(96,165,250,0.25)',
+    iconColor: '#BAE6FD',
   },
 }
 
-const STATUS_FILL: Record<string, string> = {
-  valid:    Colors.nodeValid,
-  cycle:    Colors.nodeCycle,
-  isolated: Colors.nodeIsolated,
+const VIZ_GRAD: Record<NodeVizState, [string, string]> = {
+  unvisited:   ['#1d4ed8', '#1e3a8a'],
+  inQueue:     ['#d97706', '#92400e'],
+  inStack:     ['#c2410c', '#7c2d12'],
+  settled:     ['#059669', '#065f46'],
+  cycle:       ['#dc2626', '#7f1d1d'],
+  path:        ['#0891b2', '#155e75'],
+  mstIncluded: ['#059669', '#065f46'],
+  mstFrontier: ['#d97706', '#92400e'],
 }
 
-const VIZ_FILL: Record<NodeVizState, string> = {
-  unvisited:   Colors.vizUnvisited,
-  inQueue:     Colors.vizInQueue,
-  inStack:     Colors.vizInStack,
-  settled:     Colors.vizSettled,
-  cycle:       Colors.vizCycle,
-  path:        Colors.vizPath,
-  mstIncluded: Colors.vizSettled,
-  mstFrontier: Colors.vizInQueue,
-}
+const GLOW_STATES = new Set<NodeVizState>(['inQueue', 'inStack', 'mstFrontier', 'path'])
 
-const GLOW_STATES = new Set<NodeVizState>(['inQueue','inStack','mstFrontier','path'])
+// ── Layout constants ──────────────────────────────────────────────────────────
+const BADGE_W    = 46
+const BADGE_H    = 46
+const BADGE_LEFT = 10
+const BADGE_TOP  = (NODE_HEIGHT - BADGE_H) / 2   // = 13
 
-// ── Layout constants ─────────────────────────────────────────────────────────
-const BADGE_W      = 38
-const BADGE_H      = 38
-const BADGE_LEFT   = 10
-const BADGE_TOP    = (NODE_HEIGHT - BADGE_H) / 2
+const ACCENT_W   = 4    // left accent stripe width
 
-const TEXT_LEFT    = BADGE_LEFT + BADGE_W + 10
+const TEXT_LEFT  = BADGE_LEFT + BADGE_W + 10
 
-// Two-line block: 12 (label) + 5 (gap) + 8 (sub) = 25px
-const LABEL_TOP    = (NODE_HEIGHT - 25) / 2
-const LABEL_BASE   = LABEL_TOP + 12
-const SUB_BASE     = LABEL_TOP + 12 + 5 + 8
+// Two-line text block: 12 + 6 + 8 = 26 px
+const LABEL_TOP  = (NODE_HEIGHT - 26) / 2
+const LABEL_BASE = LABEL_TOP + 12
+const SUB_BASE   = LABEL_TOP + 12 + 6 + 8
 
-const ACCENT_H     = 4   // top accent stripe height
+const STATUS_DOT_R = 4
+const CHIP_H       = 14
 
-const CRITICAL_RING_INSET = 6
-const FAILED_RING_INSET   = 5
+const CRITICAL_INSET = 6
+const FAILED_INSET   = 5
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function truncate(s: string, max: number) {
   return s.length > max ? s.slice(0, max - 1) + '…' : s
 }
@@ -152,7 +169,7 @@ function getFriendlyVizState(state?: NodeVizState): string {
   }
 }
 
-function buildRoundedRectPath(x: number, y: number, w: number, h: number, r: number): string {
+function buildRoundedRectPath(x: number, y: number, w: number, h: number, r: number) {
   return [
     `M ${x + r} ${y}`,
     `L ${x + w - r} ${y}`,
@@ -167,119 +184,330 @@ function buildRoundedRectPath(x: number, y: number, w: number, h: number, r: num
   ].join(' ')
 }
 
-type Props = {
-  node: GraphNode
-  selected?: boolean
-  font: ReturnType<typeof matchFont>
-  vizState?: NodeVizState
-  isCritical?: boolean
-  isFailed?: boolean
-  isIsolated?: boolean
+// ── Device Icon Components ────────────────────────────────────────────────────
+// All icons designed on a 24×24 grid, rendered at absolute canvas coordinates.
+// Stroke-first approach: identifiable silhouettes that read well at small sizes.
+
+function RouterIcon({ cx, cy, size, color }: {
+  cx: number; cy: number; size: number; color: string
+}) {
+  const s  = size / 24
+  const r  = 9.5 * s
+  const ag = 3.5 * s
+  const ar = 8.5 * s
+  const ah = 1.8 * s
+  const ad = 2.8 * s   // arrowhead depth
+  const sw = 1.5 * s
+
+  // Pre-compute all arrow coordinates inline — avoids Fragment children inside Skia
+  return (
+    <Group>
+      <Circle cx={cx} cy={cy} r={r} color={color} style="stroke" strokeWidth={sw} />
+      <Circle cx={cx} cy={cy} r={2.2 * s} color={color} style="fill" />
+      {/* Up shaft */}
+      <Path path={`M${cx} ${cy - ag} L${cx} ${cy - ar}`} color={color} style="stroke" strokeWidth={sw} strokeCap="round" />
+      {/* Up head */}
+      <Path path={`M${cx - ah} ${cy - ar + ad} L${cx} ${cy - ar} L${cx + ah} ${cy - ar + ad}`} color={color} style="stroke" strokeWidth={sw} strokeCap="round" strokeJoin="round" />
+      {/* Down shaft */}
+      <Path path={`M${cx} ${cy + ag} L${cx} ${cy + ar}`} color={color} style="stroke" strokeWidth={sw} strokeCap="round" />
+      {/* Down head */}
+      <Path path={`M${cx - ah} ${cy + ar - ad} L${cx} ${cy + ar} L${cx + ah} ${cy + ar - ad}`} color={color} style="stroke" strokeWidth={sw} strokeCap="round" strokeJoin="round" />
+      {/* Left shaft */}
+      <Path path={`M${cx - ag} ${cy} L${cx - ar} ${cy}`} color={color} style="stroke" strokeWidth={sw} strokeCap="round" />
+      {/* Left head */}
+      <Path path={`M${cx - ar + ad} ${cy - ah} L${cx - ar} ${cy} L${cx - ar + ad} ${cy + ah}`} color={color} style="stroke" strokeWidth={sw} strokeCap="round" strokeJoin="round" />
+      {/* Right shaft */}
+      <Path path={`M${cx + ag} ${cy} L${cx + ar} ${cy}`} color={color} style="stroke" strokeWidth={sw} strokeCap="round" />
+      {/* Right head */}
+      <Path path={`M${cx + ar - ad} ${cy - ah} L${cx + ar} ${cy} L${cx + ar - ad} ${cy + ah}`} color={color} style="stroke" strokeWidth={sw} strokeCap="round" strokeJoin="round" />
+    </Group>
+  )
 }
 
+function SwitchIcon({ cx, cy, size, color }: {
+  cx: number; cy: number; size: number; color: string
+}) {
+  const s  = size / 24
+  const bw = 19 * s
+  const bh = 9 * s
+  const bx = cx - bw / 2
+  const by = cy - bh / 2
+  const br = 2 * s
+  const sw = 1.5 * s
+
+  // 4 downlink ports + 1 uplink
+  const portXs = [bx + 3*s, bx + 6.5*s, bx + 10*s, bx + 13.5*s]
+  const portY  = by + bh * 0.62
+  const portR  = 1.5 * s
+  const uplinkX = bx + bw - 3 * s
+
+  return (
+    <Group>
+      {/* Chassis */}
+      <RoundedRect x={bx} y={by} width={bw} height={bh} r={br} color={color} style="stroke" strokeWidth={sw} />
+      {/* LED strip at top */}
+      <RoundedRect x={bx + 2*s} y={by + 1.5*s} width={bw - 4*s} height={1.8*s} r={0.9*s} color={`${color}50`} style="fill" />
+      {/* Downlink port dots */}
+      {portXs.map((px, i) => (
+        <Circle key={i} cx={px} cy={portY} r={portR} color={color} style="fill" />
+      ))}
+      {/* Uplink port (slightly different to distinguish) */}
+      <RoundedRect x={uplinkX - portR} y={portY - portR} width={portR*2} height={portR*2} r={portR*0.5} color={color} style="fill" />
+    </Group>
+  )
+}
+
+function FirewallIcon({ cx, cy, size, color }: {
+  cx: number; cy: number; size: number; color: string
+}) {
+  const s  = size / 24
+  const sw = 1.5 * s
+
+  // Shield vertices (24×24 design space, offset to cx/cy)
+  const ox = cx - 12 * s
+  const oy = cy - 12 * s
+  const S  = s
+
+  const shieldPath = [
+    `M${ox + 12*S} ${oy + 2*S}`,
+    `L${ox + 4.5*S} ${oy + 5*S}`,
+    `L${ox + 4.5*S} ${oy + 12.5*S}`,
+    `C${ox + 4.5*S} ${oy + 17*S} ${ox + 8*S} ${oy + 20.5*S} ${ox + 12*S} ${oy + 22*S}`,
+    `C${ox + 16*S} ${oy + 20.5*S} ${ox + 19.5*S} ${oy + 17*S} ${ox + 19.5*S} ${oy + 12.5*S}`,
+    `L${ox + 19.5*S} ${oy + 5*S}`,
+    `Z`,
+  ].join(' ')
+
+  // Lock body inside shield
+  const lx = cx - 3 * s, lw = 6 * s, lh = 4.5 * s
+  const ly = cy + 0.5 * s
+
+  return (
+    <Group>
+      {/* Shield fill */}
+      <Path path={shieldPath} color={`${color}28`} style="fill" />
+      {/* Shield outline */}
+      <Path path={shieldPath} color={color} style="stroke" strokeWidth={sw} strokeJoin="round" />
+      {/* Lock arch */}
+      <Path
+        path={`M${cx - 2.5*s} ${cy} C${cx - 2.5*s} ${cy - 3.5*s} ${cx + 2.5*s} ${cy - 3.5*s} ${cx + 2.5*s} ${cy}`}
+        color={color} style="stroke" strokeWidth={sw} strokeCap="round"
+      />
+      {/* Lock body */}
+      <RoundedRect x={lx} y={ly} width={lw} height={lh} r={1*s} color={color} style="fill" />
+      {/* Keyhole dot */}
+      <Circle cx={cx} cy={ly + lh * 0.45} r={0.9*s} color={`${color}55`} style="fill" />
+    </Group>
+  )
+}
+
+function WanIcon({ cx, cy, size, color }: {
+  cx: number; cy: number; size: number; color: string
+}) {
+  const s  = size / 24
+  const r  = 9.5 * s
+  const sw = 1.4 * s
+
+  return (
+    <Group>
+      {/* Globe circle */}
+      <Circle cx={cx} cy={cy} r={r} color={color} style="stroke" strokeWidth={sw} />
+      {/* Equator */}
+      <Path path={`M${cx - r} ${cy} Q${cx} ${cy - 2.5*s} ${cx + r} ${cy}`} color={color} style="stroke" strokeWidth={sw * 0.85} />
+      {/* North latitude */}
+      <Path
+        path={`M${cx - r*0.75} ${cy - 3.5*s} Q${cx} ${cy - 5*s} ${cx + r*0.75} ${cy - 3.5*s}`}
+        color={color} style="stroke" strokeWidth={sw * 0.7}
+      />
+      {/* South latitude */}
+      <Path
+        path={`M${cx - r*0.75} ${cy + 3.5*s} Q${cx} ${cy + 5*s} ${cx + r*0.75} ${cy + 3.5*s}`}
+        color={color} style="stroke" strokeWidth={sw * 0.7}
+      />
+      {/* Left meridian */}
+      <Path
+        path={`M${cx} ${cy - r} C${cx - 5.5*s} ${cy - r*0.5} ${cx - 5.5*s} ${cy + r*0.5} ${cx} ${cy + r}`}
+        color={color} style="stroke" strokeWidth={sw * 0.85}
+      />
+      {/* Right meridian */}
+      <Path
+        path={`M${cx} ${cy - r} C${cx + 5.5*s} ${cy - r*0.5} ${cx + 5.5*s} ${cy + r*0.5} ${cx} ${cy + r}`}
+        color={color} style="stroke" strokeWidth={sw * 0.85}
+      />
+    </Group>
+  )
+}
+
+function DepartmentIcon({ cx, cy, size, color }: {
+  cx: number; cy: number; size: number; color: string
+}) {
+  const s  = size / 24
+  const sw = 1.5 * s
+
+  // Monitor dimensions
+  const mw = 18 * s, mh = 12.5 * s
+  const mx = cx - mw / 2
+  const my = cy - mh / 2 - 1.5 * s
+
+  return (
+    <Group>
+      {/* Screen bezel */}
+      <RoundedRect x={mx} y={my} width={mw} height={mh} r={2*s} color={color} style="stroke" strokeWidth={sw} />
+      {/* Screen content lines */}
+      <Path path={`M${mx+2.5*s} ${my+3*s}   L${mx+mw-2.5*s} ${my+3*s}`}   color={color} style="stroke" strokeWidth={s}     strokeCap="round" />
+      <Path path={`M${mx+2.5*s} ${my+5.5*s} L${mx+mw-5*s}   ${my+5.5*s}`} color={color} style="stroke" strokeWidth={s}     strokeCap="round" />
+      <Path path={`M${mx+2.5*s} ${my+8*s}   L${mx+mw-7*s}   ${my+8*s}`}   color={color} style="stroke" strokeWidth={s * 0.8} strokeCap="round" />
+      {/* Stand */}
+      <Path path={`M${cx} ${my+mh} L${cx} ${my+mh+3*s}`} color={color} style="stroke" strokeWidth={sw} strokeCap="round" />
+      {/* Base */}
+      <Path path={`M${cx-4*s} ${my+mh+3*s} L${cx+4*s} ${my+mh+3*s}`} color={color} style="stroke" strokeWidth={sw} strokeCap="round" />
+    </Group>
+  )
+}
+
+function DeviceIcon({ type, cx, cy, size, color }: {
+  type: string; cx: number; cy: number; size: number; color: string
+}) {
+  switch (type) {
+    case 'router':     return <RouterIcon     cx={cx} cy={cy} size={size} color={color} />
+    case 'switch':     return <SwitchIcon     cx={cx} cy={cy} size={size} color={color} />
+    case 'firewall':   return <FirewallIcon   cx={cx} cy={cy} size={size} color={color} />
+    case 'wan':        return <WanIcon        cx={cx} cy={cy} size={size} color={color} />
+    default:           return <DepartmentIcon cx={cx} cy={cy} size={size} color={color} />
+  }
+}
+
+// ── Props ─────────────────────────────────────────────────────────────────────
+type Props = {
+  node:              GraphNode
+  selected?:         boolean
+  isPeerHighlighted?: boolean   // true when this node is adjacent to the selected node
+  peerCount?:        number     // total connections (shown as chip)
+  font:              ReturnType<typeof matchFont>
+  vizState?:         NodeVizState
+  isCritical?:       boolean
+  isFailed?:         boolean
+  isIsolated?:       boolean
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export function GraphNodeComponent({
   node,
   selected,
+  isPeerHighlighted = false,
+  peerCount,
   vizState,
   isCritical = false,
-  isFailed = false,
+  isFailed   = false,
   isIsolated = false,
 }: Props) {
-  const nx = node.x - NODE_WIDTH / 2
+  const nx = node.x - NODE_WIDTH  / 2
   const ny = node.y - NODE_HEIGHT / 2
 
-  const typeKey = node.type ?? 'department'
+  const typeKey  = node.type ?? 'department'
   const identity = TYPE_IDENTITY[typeKey] ?? TYPE_IDENTITY.department
 
-  const vizActive = useVisualizationStore((s) => s.isActive)
-  const showSteps = useVisualizationStore((s) => s.showSteps)
+  const vizActive   = useVisualizationStore((s) => s.isActive)
+  const showSteps   = useVisualizationStore((s) => s.showSteps)
   const currentStep = useVisualizationStore((s) => s.currentStep)
   const isCurrentNode = vizActive && currentStep?.currentNode === node.id
 
+  // Animated pulse for current viz node
   const pulse = useSharedValue(0)
-
   React.useEffect(() => {
     if (isCurrentNode) {
-      pulse.value = withRepeat(withTiming(1, { duration: 1000 }), -1, false)
+      pulse.value = withRepeat(withTiming(1, { duration: 900 }), -1, false)
     } else {
       pulse.value = 0
     }
   }, [isCurrentNode])
+  const animRadius  = useDerivedValue(() => 24 + 10 * pulse.value)
+  const animOpacity = useDerivedValue(() => 0.5 * (1 - pulse.value))
 
-  const animRadius = useDerivedValue(() => {
-    return 21 + 8 * pulse.value
-  })
+  // ── Card fill (gradient) ───────────────────────────────────────────────────
+  // In viz/failure/isolated mode we use a flat override color; otherwise type gradient.
+  let gradTop = identity.gradTop
+  let gradBot = identity.gradBot
+  let useFlat = false
+  let flatColor = ''
 
-  const animOpacity = useDerivedValue(() => 0.45 * (1 - pulse.value))
-
-  // Card fill
-  let fill: string
   if (isFailed) {
-    fill = '#7F1D1D'  // deep red for failed
+    useFlat = true; flatColor = '#7F1D1D'
   } else if (isIsolated) {
-    fill = '#78350F'  // amber-brown for isolated
+    useFlat = true; flatColor = '#78350F'
   } else if (vizState) {
-    fill = VIZ_FILL[vizState]
-  } else if (node.status !== 'valid') {
-    fill = STATUS_FILL[node.status]
-  } else {
-    fill = identity.fill
+    const [vt, vb] = VIZ_GRAD[vizState]
+    gradTop = vt; gradBot = vb
   }
 
-  // Accent color (top strip) matches type even during viz
-  const accentColor = (isFailed || isIsolated || vizState) ? 'rgba(255,255,255,0.22)' : identity.accent
+  const accentColor = (isFailed || isIsolated || vizState)
+    ? 'rgba(255,255,255,0.20)'
+    : identity.accent
 
   const showGlow = vizState ? GLOW_STATES.has(vizState) : false
-  const abbr = identity.abbr
 
+  // ── Text ───────────────────────────────────────────────────────────────────
   const labelText = truncate(node.label, 14)
   const subtext   = node.subnet && node.subnet !== '—'
     ? truncate(`${node.subnet}  V${node.vlanId}`, 20)
     : typeKey.toUpperCase()
 
-  const abbrW = badgeFont ? badgeFont.measureText(abbr).width : 0
-  const abbrX = nx + BADGE_LEFT + (BADGE_W - abbrW) / 2
-  const abbrY = ny + BADGE_TOP + (BADGE_H + 10) / 2
+  // ── Viz state chip ─────────────────────────────────────────────────────────
+  const friendlyState = getFriendlyVizState(vizState)
+  const stateTextW    = stateFont ? stateFont.measureText(friendlyState).width : 0
 
-  const friendlyStateText = getFriendlyVizState(vizState)
-  const stateTextW = stateFont.measureText(friendlyStateText).width
+  // ── Peer count chip ────────────────────────────────────────────────────────
+  const chipLabel = peerCount !== undefined ? `${peerCount}` : ''
+  const chipW     = chipFont ? chipFont.measureText(chipLabel).width + 10 : 20
 
-  const criticalRingX = nx - CRITICAL_RING_INSET
-  const criticalRingY = ny - CRITICAL_RING_INSET
-  const criticalRingW = NODE_WIDTH  + CRITICAL_RING_INSET * 2
-  const criticalRingH = NODE_HEIGHT + CRITICAL_RING_INSET * 2
-  const criticalPath  = buildRoundedRectPath(criticalRingX, criticalRingY, criticalRingW, criticalRingH, RADIUS + CRITICAL_RING_INSET)
+  // ── Critical / failed ring paths ──────────────────────────────────────────
+  const critRingX = nx - CRITICAL_INSET
+  const critRingY = ny - CRITICAL_INSET
+  const critRingW = NODE_WIDTH  + CRITICAL_INSET * 2
+  const critRingH = NODE_HEIGHT + CRITICAL_INSET * 2
+  const critPath  = buildRoundedRectPath(critRingX, critRingY, critRingW, critRingH, RADIUS + CRITICAL_INSET)
 
-  const failedRingX = nx - FAILED_RING_INSET
-  const failedRingY = ny - FAILED_RING_INSET
-  const failedRingW = NODE_WIDTH  + FAILED_RING_INSET * 2
-  const failedRingH = NODE_HEIGHT + FAILED_RING_INSET * 2
-  const failedPath  = buildRoundedRectPath(failedRingX, failedRingY, failedRingW, failedRingH, RADIUS + FAILED_RING_INSET)
+  const failRingX = nx - FAILED_INSET
+  const failRingY = ny - FAILED_INSET
+  const failRingW = NODE_WIDTH  + FAILED_INSET * 2
+  const failRingH = NODE_HEIGHT + FAILED_INSET * 2
+  const failPath  = buildRoundedRectPath(failRingX, failRingY, failRingW, failRingH, RADIUS + FAILED_INSET)
+
+  // ── Icon position ──────────────────────────────────────────────────────────
+  const iconCx   = nx + BADGE_LEFT + BADGE_W / 2
+  const iconCy   = ny + BADGE_TOP  + BADGE_H / 2
+  const iconSize = 30   // rendering size (design is at 24×24)
+
+  // ── Status dot colour ──────────────────────────────────────────────────────
+  const statusColor = isFailed    ? Colors.error
+                    : isIsolated  ? Colors.warning
+                    : vizState    ? (VIZ_GRAD[vizState][0])
+                    : Colors.success
 
   return (
     <Group>
-      {/* 1. Drop shadow — slight offset rect for depth */}
+      {/* 1. Drop shadow */}
       <RoundedRect
-        x={nx + 2} y={ny + 3}
+        x={nx + 2} y={ny + 4}
         width={NODE_WIDTH} height={NODE_HEIGHT}
         r={RADIUS}
-        color="rgba(0,0,0,0.28)"
+        color="rgba(0,0,0,0.40)"
       />
 
       {/* 2. Animated pulse ring */}
       {isCurrentNode && (
         <Group opacity={animOpacity}>
-          <Circle cx={node.x} cy={node.y} r={animRadius} color={fill} style="stroke" strokeWidth={2.5} />
+          <Circle cx={node.x} cy={node.y} r={animRadius} color={gradTop} style="stroke" strokeWidth={2.5} />
         </Group>
       )}
 
       {/* 3. Glow halo */}
       {showGlow && (
         <RoundedRect
-          x={nx - 10} y={ny - 10}
-          width={NODE_WIDTH + 20} height={NODE_HEIGHT + 20}
-          r={RADIUS + 10}
-          color={`${fill}35`}
+          x={nx - 12} y={ny - 12}
+          width={NODE_WIDTH + 24} height={NODE_HEIGHT + 24}
+          r={RADIUS + 12}
+          color={`${gradTop}30`}
         />
       )}
 
@@ -287,91 +515,122 @@ export function GraphNodeComponent({
       {isCritical && !isFailed && (
         <>
           <RoundedRect
-            x={criticalRingX - 2} y={criticalRingY - 2}
-            width={criticalRingW + 4} height={criticalRingH + 4}
-            r={RADIUS + CRITICAL_RING_INSET + 2}
-            color={`${Colors.warning}22`}
+            x={critRingX - 2} y={critRingY - 2}
+            width={critRingW + 4} height={critRingH + 4}
+            r={RADIUS + CRITICAL_INSET + 2}
+            color={`${Colors.warning}20`}
           />
-          <Path path={criticalPath} color={Colors.warning} style="stroke" strokeWidth={2.5} />
+          <Path path={critPath} color={Colors.warning} style="stroke" strokeWidth={2.5} />
         </>
       )}
 
       {/* 4b. Failed ring */}
       {isFailed && (
         <>
-          <Path path={failedPath} color="rgba(239,68,68,0.35)" style="fill" />
-          <Path path={failedPath} color="#EF4444" style="stroke" strokeWidth={3} />
+          <Path path={failPath} color="rgba(239,68,68,0.28)" style="fill" />
+          <Path path={failPath} color="#EF4444" style="stroke" strokeWidth={3} />
         </>
       )}
 
-      {/* 5. Selection ring — bright white with stronger visibility */}
+      {/* 5. Peer highlight ring */}
+      {isPeerHighlighted && !selected && (
+        <>
+          <RoundedRect
+            x={nx - 6} y={ny - 6}
+            width={NODE_WIDTH + 12} height={NODE_HEIGHT + 12}
+            r={RADIUS + 6}
+            color={Colors.peerRingFill}
+          />
+          <RoundedRect
+            x={nx - 6} y={ny - 6}
+            width={NODE_WIDTH + 12} height={NODE_HEIGHT + 12}
+            r={RADIUS + 6}
+            color={Colors.peerRing}
+            style="stroke"
+            strokeWidth={1.8}
+          />
+        </>
+      )}
+
+      {/* 6. Selection ring */}
       {selected && (
         <>
           <RoundedRect
-            x={nx - 5} y={ny - 5}
-            width={NODE_WIDTH + 10} height={NODE_HEIGHT + 10}
-            r={RADIUS + 5}
-            color="rgba(255,255,255,0.45)"
+            x={nx - 6} y={ny - 6}
+            width={NODE_WIDTH + 12} height={NODE_HEIGHT + 12}
+            r={RADIUS + 6}
+            color="rgba(255,255,255,0.35)"
           />
           <RoundedRect
-            x={nx - 5} y={ny - 5}
-            width={NODE_WIDTH + 10} height={NODE_HEIGHT + 10}
-            r={RADIUS + 5}
+            x={nx - 6} y={ny - 6}
+            width={NODE_WIDTH + 12} height={NODE_HEIGHT + 12}
+            r={RADIUS + 6}
             color="rgba(255,255,255,0.0)"
             style="stroke"
-            strokeWidth={2}
+            strokeWidth={2.5}
           />
         </>
       )}
 
-      {/* 6. Card background */}
-      <RoundedRect x={nx} y={ny} width={NODE_WIDTH} height={NODE_HEIGHT} r={RADIUS} color={fill} />
+      {/* 7. Card background with gradient */}
+      {useFlat ? (
+        <RoundedRect x={nx} y={ny} width={NODE_WIDTH} height={NODE_HEIGHT} r={RADIUS} color={flatColor} />
+      ) : (
+        <RoundedRect x={nx} y={ny} width={NODE_WIDTH} height={NODE_HEIGHT} r={RADIUS} color={gradBot}>
+          <LinearGradient
+            start={vec(nx, ny)}
+            end={vec(nx, ny + NODE_HEIGHT)}
+            colors={[gradTop, gradBot]}
+          />
+        </RoundedRect>
+      )}
 
-      {/* 7. Top accent strip — full width, rounded only at top-left/top-right corners */}
-      <RoundedRect
-        x={nx} y={ny}
-        width={NODE_WIDTH} height={ACCENT_H + RADIUS}
-        r={RADIUS}
-        color={accentColor}
-      />
-      {/* Solid rect to square off the bottom half of the accent strip */}
+      {/* 8. Left accent stripe
+           A Rect that spans only the straight portion of the left edge
+           (RADIUS px inset top + bottom to clear the card's rounded corners).
+           The gradient RoundedRect behind it provides the visual clipping — no artefacts. */}
       <Rect
-        x={nx} y={ny + RADIUS}
-        width={NODE_WIDTH} height={ACCENT_H}
+        x={nx}
+        y={ny + RADIUS}
+        width={ACCENT_W}
+        height={NODE_HEIGHT - RADIUS * 2}
         color={accentColor}
       />
 
-      {/* Subtle inner highlight at very top for gloss effect */}
+      {/* 9. Glass inner highlight at top */}
       <RoundedRect
-        x={nx + 4} y={ny + ACCENT_H}
-        width={NODE_WIDTH - 8} height={14}
+        x={nx + ACCENT_W + 4} y={ny + 3}
+        width={NODE_WIDTH - ACCENT_W - 8} height={16}
         r={6}
-        color="rgba(255,255,255,0.07)"
+        color="rgba(255,255,255,0.06)"
       />
 
-      {/* 8a. Badge background — rounded square with device-specific tint */}
+      {/* 10. Badge background */}
       <RoundedRect
         x={nx + BADGE_LEFT} y={ny + BADGE_TOP}
         width={BADGE_W} height={BADGE_H}
         r={10}
         color={identity.badgeBg}
       />
-      {/* Badge inner border for definition */}
       <RoundedRect
         x={nx + BADGE_LEFT} y={ny + BADGE_TOP}
         width={BADGE_W} height={BADGE_H}
         r={10}
-        color="rgba(255,255,255,0.18)"
+        color="rgba(255,255,255,0.14)"
         style="stroke"
         strokeWidth={1}
       />
 
-      {/* 8b. Badge label */}
-      {badgeFont && (
-        <SkiaText x={abbrX} y={abbrY} text={abbr} font={badgeFont} color="rgba(255,255,255,0.96)" />
-      )}
+      {/* 11. Device icon */}
+      <DeviceIcon
+        type={typeKey}
+        cx={iconCx}
+        cy={iconCy}
+        size={iconSize}
+        color={identity.iconColor}
+      />
 
-      {/* 8c. Node label */}
+      {/* 12. Node name */}
       {labelFont && (
         <SkiaText
           x={nx + TEXT_LEFT}
@@ -382,34 +641,71 @@ export function GraphNodeComponent({
         />
       )}
 
-      {/* 8d. Subnet / VLAN subtext */}
+      {/* 13. Subnet / VLAN or type subtext */}
       {subFont && (
         <SkiaText
           x={nx + TEXT_LEFT}
           y={ny + SUB_BASE}
           text={subtext}
           font={subFont}
-          color="rgba(200,220,255,0.80)"
+          color="rgba(200,220,255,0.75)"
         />
       )}
 
-      {/* 9. Friendly vizState label */}
+      {/* 14. Status dot — top-right corner */}
+      <Circle
+        cx={nx + NODE_WIDTH - STATUS_DOT_R - 8}
+        cy={ny + STATUS_DOT_R + 7}
+        r={STATUS_DOT_R}
+        color={statusColor}
+      />
+      <Circle
+        cx={nx + NODE_WIDTH - STATUS_DOT_R - 8}
+        cy={ny + STATUS_DOT_R + 7}
+        r={STATUS_DOT_R}
+        color="rgba(0,0,0,0.25)"
+        style="stroke"
+        strokeWidth={1}
+      />
+
+      {/* 15. Peer count chip — bottom-right */}
+      {peerCount !== undefined && chipFont && (
+        <>
+          <RoundedRect
+            x={nx + NODE_WIDTH - chipW - 6}
+            y={ny + NODE_HEIGHT - CHIP_H - 6}
+            width={chipW}
+            height={CHIP_H}
+            r={CHIP_H / 2}
+            color="rgba(0,0,0,0.40)"
+          />
+          <SkiaText
+            x={nx + NODE_WIDTH - chipW - 6 + 5}
+            y={ny + NODE_HEIGHT - 6 - 3}
+            text={chipLabel}
+            font={chipFont}
+            color="rgba(200,220,255,0.80)"
+          />
+        </>
+      )}
+
+      {/* 16. Viz state chip — below card */}
       {vizActive && showSteps && vizState && (
         <>
           <RoundedRect
-            x={node.x - stateTextW / 2 - 6}
-            y={ny + NODE_HEIGHT + 4}
-            width={stateTextW + 12}
-            height={14}
+            x={node.x - stateTextW / 2 - 7}
+            y={ny + NODE_HEIGHT + 5}
+            width={stateTextW + 14}
+            height={15}
             r={4}
-            color="rgba(20, 30, 50, 0.82)"
+            color="rgba(13,17,23,0.88)"
           />
           <SkiaText
             x={node.x - stateTextW / 2}
-            y={ny + NODE_HEIGHT + 4 + 10}
-            text={friendlyStateText}
+            y={ny + NODE_HEIGHT + 5 + 11}
+            text={friendlyState}
             font={stateFont}
-            color="rgba(255, 255, 255, 0.88)"
+            color="rgba(255,255,255,0.90)"
           />
         </>
       )}

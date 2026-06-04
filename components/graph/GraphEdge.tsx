@@ -1,3 +1,14 @@
+// GraphEdge.tsx — v2: Weight-based stroke width + link type labels
+//
+// Link type → visual encoding (professional network diagram conventions):
+//   wan     → thickest stroke (4.0), amber/teal tint
+//   routed  → thick stroke (3.0), type-derived colour
+//   trunk   → medium (2.5), brighter variant
+//   access  → thin (2.0), muted, type-derived colour
+//
+// Viz mode overrides colour/width with algorithm state colours.
+// Weight pill shows actual cost during weighted algorithm runs.
+
 import React from 'react'
 import { Path, Text as SkiaText, RoundedRect, matchFont } from '@shopify/react-native-skia'
 import { Colors } from '@/constants/colors'
@@ -5,9 +16,9 @@ import type { GraphNode, GraphEdge, Department, EdgeVizState } from '@/types'
 import { useVisualizationStore } from '@/stores/useVisualizationStore'
 
 // ── Arrow constants ───────────────────────────────────────────────────────────
-const ARROW_SIZE = 10
+const ARROW_SIZE = 9
 
-// Visualization edge color overrides
+// ── Viz state colour overrides ────────────────────────────────────────────────
 const VIZ_EDGE_COLORS: Partial<Record<EdgeVizState, string>> = {
   'back-edge': Colors.vizCycle,
   'path':      Colors.vizPath,
@@ -16,13 +27,29 @@ const VIZ_EDGE_COLORS: Partial<Record<EdgeVizState, string>> = {
   'candidate': Colors.vizCandidate,
 }
 
-// Per source-type edge tint (default state only)
+// ── Per-type default edge tints ───────────────────────────────────────────────
 const TYPE_EDGE_COLOR: Record<string, string> = {
-  router:     '#2563EB',  // blue
-  switch:     '#059669',  // emerald
-  firewall:   '#D97706',  // amber
-  wan:        '#0D9488',  // teal
-  department: '#3B82F6',  // sky blue
+  router:     '#3B82F6',   // blue
+  switch:     '#10B981',   // emerald
+  firewall:   '#F97316',   // orange
+  wan:        '#2DD4BF',   // teal
+  department: '#60A5FA',   // sky blue
+}
+
+// ── Link type → stroke width ──────────────────────────────────────────────────
+const LINK_STROKE: Record<string, number> = {
+  wan:     4.0,
+  routed:  3.0,
+  trunk:   2.5,
+  access:  1.8,
+}
+
+// ── Link type → dash pattern label ────────────────────────────────────────────
+const LINK_LABEL: Record<string, string> = {
+  wan:    'WAN',
+  routed: 'L3',
+  trunk:  'Trunk',
+  access: 'Access',
 }
 
 const portFont = matchFont({
@@ -37,6 +64,12 @@ const weightFont = matchFont({
   fontWeight: 'normal',
 })
 
+const linkTypeFont = matchFont({
+  fontFamily: 'monospace',
+  fontSize: 7,
+  fontWeight: 'normal',
+})
+
 type GraphEdgeProps = {
   edge: GraphEdge
   nodes: GraphNode[]
@@ -44,15 +77,13 @@ type GraphEdgeProps = {
   font?: ReturnType<typeof matchFont>
   highlighted?: boolean
   vizEdgeState?: EdgeVizState
-  /** Index among parallel edges between same node pair (0 = straight, 1 = offset right, etc.) */
   parallelIndex?: number
   parallelTotal?: number
 }
 
 /**
- * Returns a quadratic bezier path string with a perpendicular control point offset.
- * When parallelIndex = 0 and parallelTotal = 1, offset = 0 (straight line).
- * For multiple parallel edges, each gets a different signed offset so they fan out.
+ * Quadratic bezier path with perpendicular control-point offset for parallel edges.
+ * parallelIndex=0 + parallelTotal=1 → straight line.
  */
 function buildCurvedEdgePath(
   x1: number, y1: number,
@@ -72,8 +103,7 @@ function buildCurvedEdgePath(
   const px = -uy
   const py =  ux
 
-  // Compute offset for this edge among parallel edges
-  // 0 → straight; 1 of 2 → +40; 2 of 2 → -40; etc.
+  // Fan out parallel edges
   let curveOffset = 0
   if (parallelTotal > 1) {
     const step = 38
@@ -85,10 +115,10 @@ function buildCurvedEdgePath(
   const midX = (x1 + x2) / 2 + px * curveOffset
   const midY = (y1 + y2) / 2 + py * curveOffset
 
-  // Compute border offsets: approximate start/end on node borders
+  // Clip to node border (approximate half-extents)
   const getT = (uX: number, uY: number) => {
     const tX = uX !== 0 ? 86 / Math.abs(uX) : Infinity
-    const tY = uY !== 0 ? 29 / Math.abs(uY) : Infinity
+    const tY = uY !== 0 ? 36 / Math.abs(uY) : Infinity  // updated for taller nodes
     return Math.min(tX, tY)
   }
   const tStart = getT(ux, uy)
@@ -99,18 +129,17 @@ function buildCurvedEdgePath(
   const endX   = x2 - ux * tEnd
   const endY   = y2 - uy * tEnd
 
-  // Direction at end of bezier curve (tangent toward end point from control point)
+  // Tangent at end for arrowhead direction
   const tangentX = endX - midX
   const tangentY = endY - midY
   const tLen = Math.sqrt(tangentX * tangentX + tangentY * tangentY)
-  const tuX = tLen > 0 ? tangentX / tLen : ux
-  const tuY = tLen > 0 ? tangentY / tLen : uy
+  const tuX  = tLen > 0 ? tangentX / tLen : ux
+  const tuY  = tLen > 0 ? tangentY / tLen : uy
 
-  // Arrowhead at endX/endY
   const baseX = endX - tuX * ARROW_SIZE
   const baseY = endY - tuY * ARROW_SIZE
-  const perpX = -tuY * ARROW_SIZE * 0.38
-  const perpY =  tuX * ARROW_SIZE * 0.38
+  const perpX = -tuY * ARROW_SIZE * 0.36
+  const perpY =  tuX * ARROW_SIZE * 0.36
 
   const leftX  = baseX + perpX
   const leftY  = baseY + perpY
@@ -134,24 +163,23 @@ export function GraphEdgeComponent({
 }: GraphEdgeProps) {
   const source = nodes.find((n) => n.id === edge.source)
   const target = nodes.find((n) => n.id === edge.target)
-
   if (!source || !target) return null
 
   const geom = buildCurvedEdgePath(
     source.x, source.y,
     target.x, target.y,
     parallelIndex,
-    parallelTotal
+    parallelTotal,
   )
   if (!geom) return null
 
-  // Port names
+  // ── Source / target department lookup ────────────────────────────────────
   const sourceDept = departments?.find((d) => d.id === edge.source)
   const targetDept = departments?.find((d) => d.id === edge.target)
 
+  // ── Port names ───────────────────────────────────────────────────────────
   let sourcePortName = ''
   let targetPortName = ''
-
   if (sourceDept && targetDept && sourceDept.ports) {
     const port = sourceDept.ports.find((p) => p.connectedToNodeId === targetDept.id)
     if (port) {
@@ -168,47 +196,64 @@ export function GraphEdgeComponent({
       }
     }
   }
-
   const showPorts = (sourcePortName || targetPortName) && !vizEdgeState
 
-  // Edge color: default uses source type tint; viz overrides
+  // ── Link type + base colour ───────────────────────────────────────────────
+  const linkType   = edge.linkType ?? 'access'
+  const edgeWeight = edge.weight ?? 1
   const sourceType = sourceDept?.type ?? source.type ?? 'department'
   const defaultColor = TYPE_EDGE_COLOR[sourceType] ?? '#475569'
 
-  let edgeColor: string = highlighted ? Colors.primary : defaultColor
-  let strokeWidth = highlighted ? 3.5 : 2.0
+  // ── Visual state resolution ───────────────────────────────────────────────
+  let edgeColor: string
+  let strokeWidth: number
 
-  if (vizEdgeState && vizEdgeState !== 'default') {
-    edgeColor = VIZ_EDGE_COLORS[vizEdgeState] ?? defaultColor
-    strokeWidth = vizEdgeState === 'back-edge' ? 4.5 : 3.0
+  if (highlighted) {
+    edgeColor   = Colors.vizPath
+    strokeWidth = 4.0
+  } else if (vizEdgeState && vizEdgeState !== 'default') {
+    edgeColor   = VIZ_EDGE_COLORS[vizEdgeState] ?? defaultColor
+    strokeWidth = vizEdgeState === 'back-edge' ? 4.5 : 3.2
+  } else {
+    edgeColor   = defaultColor
+    strokeWidth = LINK_STROKE[linkType] ?? 2.0
   }
 
-  // Glow beneath edge
+  // Glow beneath edge — wider, semi-transparent
   const glowColor =
-    vizEdgeState && vizEdgeState !== 'default'
-      ? `${edgeColor}30`
-      : highlighted
-        ? `${Colors.primary}30`
-        : `${defaultColor}22`
+    highlighted
+      ? `${Colors.vizPath}38`
+      : vizEdgeState && vizEdgeState !== 'default'
+        ? `${edgeColor}30`
+        : `${defaultColor}20`
 
-  const vizActive = useVisualizationStore((s) => s.isActive)
-  const vizAlgorithm = useVisualizationStore((s) => s.algorithm)
-  const isWeightedAlgo = vizActive && (vizAlgorithm === 'dijkstra' || vizAlgorithm === 'aStar' || vizAlgorithm === 'prims')
+  const vizActive     = useVisualizationStore((s) => s.isActive)
+  const vizAlgorithm  = useVisualizationStore((s) => s.algorithm)
+  const isWeightedAlgo = vizActive && (
+    vizAlgorithm === 'dijkstra' ||
+    vizAlgorithm === 'aStar'    ||
+    vizAlgorithm === 'prims'
+  )
 
-  // Port label positions along the curve (~28% and ~72%)
-  const srcLabelX = source.x + (geom.midX - source.x) * 0.56
-  const srcLabelY = source.y + (geom.midY - source.y) * 0.56
-  const tgtLabelX = target.x + (geom.midX - target.x) * 0.56
-  const tgtLabelY = target.y + (geom.midY - target.y) * 0.56
+  // ── Label positions (~30% and ~70% along the curve) ──────────────────────
+  const srcLabelX = source.x + (geom.midX - source.x) * 0.58
+  const srcLabelY = source.y + (geom.midY - source.y) * 0.58
+  const tgtLabelX = target.x + (geom.midX - target.x) * 0.58
+  const tgtLabelY = target.y + (geom.midY - target.y) * 0.58
 
-  const PILL_PADDING_X = 4
-  const PILL_PADDING_Y = 2
-  const PILL_H = 13
+  const PILL_PX = 4
+  const PILL_PY = 2
+  const PILL_H  = 13
 
-  const srcW = portFont.measureText(sourcePortName).width
-  const tgtW = portFont.measureText(targetPortName).width
-  const weightText = '1'
-  const weightW = weightFont.measureText(weightText).width
+  const srcW    = portFont.measureText(sourcePortName).width
+  const tgtW    = portFont.measureText(targetPortName).width
+  const weightText = String(edgeWeight)
+  const weightW    = weightFont.measureText(weightText).width
+
+  // Link type label (shown when NOT in viz mode and NOT showing port labels)
+  const showLinkLabel = !vizActive && !showPorts && linkType !== 'access'
+  const linkLabelText = LINK_LABEL[linkType] ?? ''
+  const linkLabelW    = linkTypeFont ? linkTypeFont.measureText(linkLabelText).width : 0
 
   return (
     <>
@@ -217,7 +262,7 @@ export function GraphEdgeComponent({
         path={geom.linePath}
         color={glowColor}
         style="stroke"
-        strokeWidth={strokeWidth + 5}
+        strokeWidth={strokeWidth + 6}
       />
 
       {/* Main edge line */}
@@ -231,39 +276,60 @@ export function GraphEdgeComponent({
       {/* Arrowhead */}
       <Path path={geom.arrowPath} color={edgeColor} style="fill" />
 
-      {/* Weight label (weighted algorithms only) */}
+      {/* Weight label (weighted algorithm viz only) */}
       {isWeightedAlgo && (
         <>
           <RoundedRect
-            x={geom.midX - weightW / 2 - PILL_PADDING_X}
-            y={geom.midY - PILL_H / 2 - PILL_PADDING_Y / 2}
-            width={weightW + PILL_PADDING_X * 2}
-            height={PILL_H + PILL_PADDING_Y}
+            x={geom.midX - weightW / 2 - PILL_PX}
+            y={geom.midY - PILL_H / 2 - PILL_PY / 2}
+            width={weightW + PILL_PX * 2}
+            height={PILL_H + PILL_PY}
             r={4}
-            color="rgba(20,30,50,0.78)"
+            color="rgba(13,17,23,0.85)"
           />
           <SkiaText
             x={geom.midX - weightW / 2}
             y={geom.midY + PILL_H / 2 - 2}
             text={weightText}
             font={weightFont}
-            color="#C8D8EE"
+            color={edgeColor}
           />
         </>
       )}
 
-      {/* Port labels */}
+      {/* Link type label (non-viz, non-port mode, WAN / L3 / Trunk only) */}
+      {showLinkLabel && linkTypeFont && (
+        <>
+          <RoundedRect
+            x={geom.midX - linkLabelW / 2 - 4}
+            y={geom.midY - 7}
+            width={linkLabelW + 8}
+            height={13}
+            r={3}
+            color="rgba(13,17,23,0.70)"
+          />
+          <SkiaText
+            x={geom.midX - linkLabelW / 2}
+            y={geom.midY + 4}
+            text={linkLabelText}
+            font={linkTypeFont}
+            color={`${edgeColor}CC`}
+          />
+        </>
+      )}
+
+      {/* Port name pills */}
       {showPorts && (
         <>
           {sourcePortName && (
             <>
               <RoundedRect
-                x={srcLabelX - srcW / 2 - PILL_PADDING_X}
-                y={srcLabelY - PILL_H / 2 - PILL_PADDING_Y / 2}
-                width={srcW + PILL_PADDING_X * 2}
-                height={PILL_H + PILL_PADDING_Y}
+                x={srcLabelX - srcW / 2 - PILL_PX}
+                y={srcLabelY - PILL_H / 2 - PILL_PY / 2}
+                width={srcW + PILL_PX * 2}
+                height={PILL_H + PILL_PY}
                 r={4}
-                color="rgba(20,30,50,0.72)"
+                color="rgba(13,17,23,0.72)"
               />
               <SkiaText
                 x={srcLabelX - srcW / 2}
@@ -277,12 +343,12 @@ export function GraphEdgeComponent({
           {targetPortName && (
             <>
               <RoundedRect
-                x={tgtLabelX - tgtW / 2 - PILL_PADDING_X}
-                y={tgtLabelY - PILL_H / 2 - PILL_PADDING_Y / 2}
-                width={tgtW + PILL_PADDING_X * 2}
-                height={PILL_H + PILL_PADDING_Y}
+                x={tgtLabelX - tgtW / 2 - PILL_PX}
+                y={tgtLabelY - PILL_H / 2 - PILL_PY / 2}
+                width={tgtW + PILL_PX * 2}
+                height={PILL_H + PILL_PY}
                 r={4}
-                color="rgba(20,30,50,0.72)"
+                color="rgba(13,17,23,0.72)"
               />
               <SkiaText
                 x={tgtLabelX - tgtW / 2}

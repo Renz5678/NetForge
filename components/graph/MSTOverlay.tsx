@@ -9,8 +9,8 @@ import { Colors } from '@/constants/colors'
 import type { GraphNode, MSTEdge } from '@/types'
 
 const MST_STROKE_WIDTH = 3.5
-const NODE_HALF_W = 68  // half of NODE_WIDTH (136)
-const NODE_HALF_H = 26  // half of NODE_HEIGHT (52)
+const NODE_HALF_W = 86  // half of NODE_WIDTH (172)
+const NODE_HALF_H = 36  // half of NODE_HEIGHT (72)
 const ARROW_SIZE = 10
 
 function getMSTEdgePath(

@@ -14,6 +14,7 @@
 import { useMemo } from 'react'
 import { detectCycles } from '@/lib/algorithms/cycleDetection'
 import { validateConnectivity } from '@/lib/algorithms/bfsValidator'
+import { getEdgeWeight, getLinkType } from '@/lib/algorithms/edgeWeights'
 import type { Department, GraphNode, GraphEdge } from '@/types'
 
 type GraphLayout = {
@@ -247,7 +248,7 @@ export function useGraphLayout(
       }
     })
 
-    // ── Edges (undirected, de-duplicated) ────────────────────────────────
+    // ── Edges (undirected, de-duplicated, with link costs) ──────────────────────
     const edgeSet = new Set<string>()
     const edges: GraphEdge[] = []
     for (const dept of departments) {
@@ -256,7 +257,13 @@ export function useGraphLayout(
         const key = [dept.id, peerId].sort().join('|')
         if (edgeSet.has(key)) continue
         edgeSet.add(key)
-        edges.push({ source: dept.id, target: peerId })
+        const peerDept = departments.find((d) => d.id === peerId)!
+        edges.push({
+          source:   dept.id,
+          target:   peerId,
+          weight:   getEdgeWeight(dept, peerDept),
+          linkType: getLinkType(dept, peerDept),
+        })
       }
     }
 

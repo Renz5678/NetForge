@@ -1,18 +1,18 @@
-// NetworkGraph.tsx
+// NetworkGraph.tsx — v2
 // Full canvas graph renderer using @shopify/react-native-skia.
 // Pan + pinch zoom via GestureDetector.
-// Node tap: single = tooltip, two nodes = auto-Dijkstra sweep then path highlight.
-// Visualization mode: subscribes to useVisualizationStore and applies
-// viz color overlays to nodes and edges via the vizState/vizEdgeState props.
 //
-// KEY BEHAVIOUR CHANGE:
-// When two nodes are selected, Dijkstra fires automatically at 'fast' speed
-// with no expanded panel (showSteps=false). The algorithm is *visible* as
-// the frontier sweeps but the user never had to select "Dijkstra" from a menu.
-// After it completes, an AlgorithmToast badge appears: "Shortest path · Dijkstra · N hops"
-// with a "Step-by-step ›" link that opens the full visualizer panel.
+// What's new in v2:
+//   - Dark canvas background (#0D1117) — professional network-diagram aesthetic
+//   - Circuit-board dot grid (dimmer, tinted dots on dark bg)
+//   - Topology zone shading (WAN / Core / Access tier tints)
+//   - Peer highlight rings: on first node tap, all adjacent nodes get a blue ring
+//   - NodeTooltip: floating info card on single-node selection
+//   - Speed dial: ×0.5 / ×1 / ×2 chip group in viz banner
+//   - Floating pill zoom controls (horizontal layout, glass styling)
+//   - peerCount + isPeerHighlighted passed to every GraphNodeComponent
 
-import React, { useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import {
   View,
   StyleSheet,
@@ -30,6 +30,7 @@ import {
   matchFont,
   Circle,
   Paint,
+  Rect,
 } from '@shopify/react-native-skia'
 import { GestureDetector, Gesture } from 'react-native-gesture-handler'
 import Animated, {
@@ -42,12 +43,13 @@ import { Colors } from '@/constants/colors'
 import { useGraphLayout } from '@/hooks/useGraphLayout'
 import { findShortestPath } from '@/lib/algorithms/dijkstra'
 import { validateConnectivity } from '@/lib/algorithms/bfsValidator'
-import { useVisualizationStore } from '@/stores/useVisualizationStore'
+import { useVisualizationStore, SPEED_MS } from '@/stores/useVisualizationStore'
 import { GraphNodeComponent, NODE_WIDTH, NODE_HEIGHT } from './GraphNode'
 import { GraphEdgeComponent } from './GraphEdge'
 import { PathOverlay } from './PathOverlay'
 import { MSTOverlay } from './MSTOverlay'
 import { VizLegend } from './VizLegend'
+import { NodeTooltip } from './NodeTooltip'
 import { AlgorithmToast, type ToastData } from '@/components/ui/AlgorithmToast'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import {
@@ -58,6 +60,7 @@ import {
   Play,
   Warning,
   X,
+  Gauge,
 } from 'phosphor-react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { CoachMark } from '@/components/ui/CoachMark'
@@ -73,18 +76,22 @@ const systemFont = matchFont({
   fontWeight: 'bold',
 })
 
-// Dot-grid density: every N canvas pixels a dot is drawn
-const GRID_SPACING = 28
-const GRID_DOT_RADIUS = 1.2
+// Grid constants
+const GRID_SPACING   = 28
+const GRID_DOT_R     = 1.2
+
+// Tier type sets for zone shading
+const WAN_TYPES      = new Set(['wan'])
+const CORE_TYPES     = new Set(['firewall', 'router'])
+const ACCESS_TYPES   = new Set(['switch', 'department'])
 
 type NetworkGraphProps = {
   departments: Department[]
-  onPathFound?: (result: PathResult | null, nodeIds: string[]) => void
-  onVisualize?: () => void
-  onWarningPress?: () => void
-  // Validation summary for the live badge
+  onPathFound?:       (result: PathResult | null, nodeIds: string[]) => void
+  onVisualize?:       () => void
+  onWarningPress?:    () => void
   validationWarnings?: number
-  validationPassed?: boolean
+  validationPassed?:  boolean
 }
 
 export function NetworkGraph({
@@ -100,6 +107,9 @@ export function NetworkGraph({
   const [showLegend, setShowLegend] = useState(true)
   const [toast, setToast] = useState<ToastData | null>(null)
   const [showFailureSheet, setShowFailureSheet] = useState(false)
+  const [tooltipNodeId, setTooltipNodeId] = useState<string | null>(null)
+  // Screen-space position captured at tap time (reading .value during render is not allowed)
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number; nodeH: number } | null>(null)
 
   const [showCoachMark, setShowCoachMark] = useState(false)
   const [showAlgoHint, setShowAlgoHint] = useState(true)
@@ -112,16 +122,13 @@ export function NetworkGraph({
     }
   }, [showAlgoHint])
 
-  // One-time coach mark check on mount
   useEffect(() => {
     const checkHint = async () => {
       try {
         const hasSeen = await AsyncStorage.getItem('hasSeenAlgorithmHint')
-        if (!hasSeen) {
-          setShowCoachMark(true)
-        }
+        if (!hasSeen) setShowCoachMark(true)
       } catch (err) {
-        console.warn('AsyncStorage error checking coach mark hint:', err)
+        console.warn('AsyncStorage error:', err)
       }
     }
     checkHint()
@@ -132,161 +139,191 @@ export function NetworkGraph({
     try {
       await AsyncStorage.setItem('hasSeenAlgorithmHint', 'true')
     } catch (err) {
-      console.warn('AsyncStorage error saving coach mark hint:', err)
+      console.warn('AsyncStorage error:', err)
     }
   }
 
-  // Mirror of selectedNodes in a ref so handleTap can read the current
-  // value without a functional updater — critical to avoid calling setState
-  // (setPathResult, onPathFound) inside another setState's updater function.
   const selectedNodesRef = useRef<string[]>([])
 
   // Pan & zoom
-  const translateX = useSharedValue(0)
-  const translateY = useSharedValue(0)
-  const scale = useSharedValue(1)
+  const translateX      = useSharedValue(0)
+  const translateY      = useSharedValue(0)
+  const scale           = useSharedValue(1)
   const savedTranslateX = useSharedValue(0)
   const savedTranslateY = useSharedValue(0)
-  const savedScale = useSharedValue(1)
+  const savedScale      = useSharedValue(1)
 
   const { nodes, edges } = useGraphLayout(departments, SCREEN_WIDTH, CANVAS_HEIGHT)
 
-  // Visualization store — read current step state
-  const vizActive = useVisualizationStore((s) => s.isActive)
-  const vizAlgorithm = useVisualizationStore((s) => s.algorithm)
-  const currentStep = useVisualizationStore((s) => s.currentStep)
-  const isExpanded = useVisualizationStore((s) => s.isExpanded)
-  const isPlaying = useVisualizationStore((s) => s.isPlaying)
+  // Viz store
+  const vizActive       = useVisualizationStore((s) => s.isActive)
+  const vizAlgorithm    = useVisualizationStore((s) => s.algorithm)
+  const currentStep     = useVisualizationStore((s) => s.currentStep)
+  const isExpanded      = useVisualizationStore((s) => s.isExpanded)
+  const isPlaying       = useVisualizationStore((s) => s.isPlaying)
   const criticalNodeIds = useVisualizationStore((s) => s.criticalNodeIds)
-  const failedNodeId = useVisualizationStore((s) => s.failedNodeId)
+  const failedNodeId    = useVisualizationStore((s) => s.failedNodeId)
   const failureSimResult = useVisualizationStore((s) => s.failureSimResult)
-  const { startVisualization, stopVisualization, setShowSteps, setIsExpanded,
-          setFailedNodeId, setFailureSimResult, clearFailureSim } = useVisualizationStore()
+  const vizSpeed        = useVisualizationStore((s) => s.speed)
+  const {
+    startVisualization, stopVisualization, setShowSteps, setIsExpanded,
+    setFailedNodeId, setFailureSimResult, clearFailureSim, setSpeed,
+  } = useVisualizationStore()
 
   useEffect(() => {
-    if (vizActive) {
-      setShowAlgoHint(false)
-    }
+    if (vizActive) setShowAlgoHint(false)
   }, [vizActive])
 
-  // Track if the current viz is an auto-triggered Dijkstra (not user-selected)
-  // so we can show the toast and "Step-by-step" CTA instead of the full panel
-  const autoVizRef = useRef(false)
-
-  // Stop auto viz and dismiss toast when it finishes playing
-  const prevIsPlaying = useRef(isPlaying)
+  const autoVizRef     = useRef(false)
+  const prevIsPlaying  = useRef(isPlaying)
   React.useEffect(() => {
     if (autoVizRef.current && prevIsPlaying.current && !isPlaying && vizActive) {
-      // Auto-viz finished playing — stop it so the path overlay takes over
       stopVisualization()
       autoVizRef.current = false
     }
     prevIsPlaying.current = isPlaying
   }, [isPlaying, vizActive])
 
-  // Auto-center camera offset when visualization is active/expanded
+  // Camera auto-adjust during viz
   React.useEffect(() => {
     if (vizActive) {
       if (isExpanded) {
         translateY.value = withSpring(-140)
-        scale.value = withSpring(0.78)
+        scale.value      = withSpring(0.78)
       } else {
         translateY.value = withSpring(-40)
-        scale.value = withSpring(0.9)
+        scale.value      = withSpring(0.9)
       }
     } else {
       translateY.value = withSpring(0)
-      scale.value = withSpring(1)
+      scale.value      = withSpring(1)
       translateX.value = withSpring(0)
     }
   }, [vizActive, isExpanded, translateY, translateX, scale])
 
+  // ── Peer count map ────────────────────────────────────────────────────────
+  const peerCountMap = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const edge of edges) {
+      map.set(edge.source, (map.get(edge.source) ?? 0) + 1)
+      map.set(edge.target, (map.get(edge.target) ?? 0) + 1)
+    }
+    return map
+  }, [edges])
+
+  // ── Peer node IDs of the currently selected node ──────────────────────────
+  const peerNodeIds = useMemo(() => {
+    if (selectedNodes.length !== 1) return new Set<string>()
+    const selId = selectedNodes[0]
+    const peers = new Set<string>()
+    for (const edge of edges) {
+      if (edge.source === selId) peers.add(edge.target)
+      else if (edge.target === selId) peers.add(edge.source)
+    }
+    return peers
+  }, [selectedNodes, edges])
+
+  // ── Tooltip: selected dept lookup ─────────────────────────────────────────
+  const tooltipDept = tooltipNodeId
+    ? departments.find((d) => d.id === tooltipNodeId) ?? null
+    : null
+
+  // tooltipPos is set inside handleTap at tap time (reading .value in an event
+  // handler is permitted by Reanimated; render-time reads are not)
+
+  // ── Hit test ──────────────────────────────────────────────────────────────
   const hitTestNode = useCallback(
     (touchX: number, touchY: number): string | null => {
       const canvasX = (touchX - translateX.value) / scale.value
       const canvasY = (touchY - translateY.value) / scale.value
-
       for (const node of nodes) {
-        const nx = node.x - NODE_WIDTH / 2
+        const nx = node.x - NODE_WIDTH  / 2
         const ny = node.y - NODE_HEIGHT / 2
         if (
-          canvasX >= nx &&
-          canvasX <= nx + NODE_WIDTH &&
-          canvasY >= ny &&
-          canvasY <= ny + NODE_HEIGHT
+          canvasX >= nx && canvasX <= nx + NODE_WIDTH &&
+          canvasY >= ny && canvasY <= ny + NODE_HEIGHT
         ) {
           return node.id
         }
       }
       return null
     },
-    [nodes, translateX, translateY, scale]
+    [nodes, translateX, translateY, scale],
   )
 
+  // ── Tap handler ───────────────────────────────────────────────────────────
   const handleTap = useCallback(
     (touchX: number, touchY: number) => {
-      // In viz mode, taps are ignored (no node selection interference)
       if (vizActive) return
 
       const tappedId = hitTestNode(touchX, touchY)
-      // Read current selection from ref — avoids functional updater pattern
-      // which would cause setState-during-render errors when calling onPathFound
-      const prev = selectedNodesRef.current
+      const prev     = selectedNodesRef.current
 
       if (!tappedId) {
         selectedNodesRef.current = []
         setSelectedNodes([])
         setPathResult(null)
         setToast(null)
+        setTooltipNodeId(null)
+        setTooltipPos(null)
         onPathFound?.(null, [])
         return
       }
 
       if (prev.length === 0) {
-        // First node selected — just highlight it
+        // Single tap — show tooltip + peer rings
+        // Capture screen-space position now (reading .value is OK inside a callback)
+        const tappedNodeData = nodes.find((n) => n.id === tappedId)
+        const posX  = tappedNodeData ? tappedNodeData.x * scale.value + translateX.value : 0
+        const posY  = tappedNodeData ? tappedNodeData.y * scale.value + translateY.value : 0
+        const posNH = tappedNodeData ? NODE_HEIGHT * scale.value : NODE_HEIGHT
         selectedNodesRef.current = [tappedId]
         setSelectedNodes([tappedId])
+        setTooltipNodeId(tappedId)
+        setTooltipPos({ x: posX, y: posY, nodeH: posNH })
         return
       }
 
       if (prev.length === 1) {
-        if (prev[0] === tappedId) return // tapped same node again
+        // Tap same node → dismiss tooltip
+        if (prev[0] === tappedId) {
+          setTooltipNodeId(null)
+          return
+        }
 
-        const srcId = prev[0]
-        const tgtId = tappedId
+        const srcId      = prev[0]
+        const tgtId      = tappedId
         const newSelected = [srcId, tgtId]
         selectedNodesRef.current = newSelected
         setSelectedNodes(newSelected)
+        setTooltipNodeId(null)
+        setTooltipPos(null)
         setShowAlgoHint(false)
         setSessionHasSelectedTwoNodes(true)
 
-        // Compute path — all state updates are at handler top level, never inside
-        // a setState updater, so React won't complain about setState-during-render
         const pathFindResult = findShortestPath(departments, srcId, tgtId)
         setPathResult(pathFindResult)
         onPathFound?.(pathFindResult, newSelected)
 
-        // ── Auto-trigger Dijkstra visualization ──────────────────────────
-        // Dynamic import to avoid a circular dep at module level
+        // Auto-trigger Dijkstra viz
         import('@/lib/algorithms/dijkstraVisualizer').then(({ buildDijkstraSteps }) => {
           const vizResult = buildDijkstraSteps(departments, srcId, tgtId)
-          const steps = vizResult.steps
+          const steps     = vizResult.steps
           if (steps.length > 0) {
             autoVizRef.current = true
-            setToast(null) // clear any existing toast while viz plays
+            setToast(null)
             startVisualization('dijkstra', steps, {
               sourceId: srcId,
               targetId: tgtId,
-              showSteps: false, // mini-panel only, no expanded data structure view
+              showSteps: false,
             })
 
-            // Show toast after viz auto-play finishes (~steps * speed interval)
-            const hops = pathFindResult?.hops ?? 0
+            const hops    = pathFindResult?.hops ?? 0
             const srcName = departments.find((d) => d.id === srcId)?.name ?? srcId
             const tgtName = departments.find((d) => d.id === tgtId)?.name ?? tgtId
             setTimeout(() => {
               const toastLabel = pathFindResult
-                ? `${srcName} \u2192 ${tgtName} \u00b7 ${hops} hop${hops !== 1 ? 's' : ''} \u00b7 Shortest Route Analysis`
+                ? `${srcName} → ${tgtName} · ${hops} hop${hops !== 1 ? 's' : ''} · Shortest Route Analysis`
                 : `No route found between ${srcName} and ${tgtName}`
               setToast({
                 label: toastLabel,
@@ -308,66 +345,55 @@ export function NetworkGraph({
         return
       }
 
-      // Third+ tap — reset to new single selection
+      // 3rd+ tap → reset to new single selection
+      const tappedNodeData = nodes.find((n) => n.id === tappedId)
+      const posX  = tappedNodeData ? tappedNodeData.x * scale.value + translateX.value : 0
+      const posY  = tappedNodeData ? tappedNodeData.y * scale.value + translateY.value : 0
+      const posNH = tappedNodeData ? NODE_HEIGHT * scale.value : NODE_HEIGHT
       selectedNodesRef.current = [tappedId]
       setSelectedNodes([tappedId])
+      setTooltipNodeId(tappedId)
+      setTooltipPos({ x: posX, y: posY, nodeH: posNH })
       setPathResult(null)
       setToast(null)
       onPathFound?.(null, [])
     },
-    [hitTestNode, departments, onPathFound, vizActive, startVisualization, setIsExpanded, setShowSteps]
+    [hitTestNode, departments, onPathFound, vizActive, startVisualization, setIsExpanded, setShowSteps],
   )
 
-  // ── Failure simulation ────────────────────────────────────────────────────
-  // Long-pressing a node (≥600ms) simulates its removal:
-  //   1. Filter departments, remove the failed node
-  //   2. Re-run BFS to find nodes that become isolated
-  //   3. Check Dijkstra between remaining nodes to find broken paths
-  //   4. Store results → GraphNode renders failed/isolated overlays
+  // ── Long-press failure simulation ─────────────────────────────────────────
   const handleLongPress = useCallback(
     (touchX: number, touchY: number) => {
-      if (vizActive) return  // don't interfere with viz playback
+      if (vizActive) return
 
       const pressedId = hitTestNode(touchX, touchY)
       if (!pressedId) return
 
-      // Toggle off if pressing the already-failed node
       if (failedNodeId === pressedId) {
         clearFailureSim()
         setShowFailureSheet(false)
         return
       }
 
-      // Simulate removal of this node
       const filteredDepts = departments.filter((d) => d.id !== pressedId)
-      const failedNode = departments.find((d) => d.id === pressedId)
-      const failedName = failedNode?.name ?? pressedId
-
-      // Find isolated nodes (BFS reachability after removal)
       const { isolated: isolatedNames } = validateConnectivity(filteredDepts)
-      // Convert names back to IDs
-      const nameToId = new Map(departments.map((d) => [d.name, d.id]))
+      const nameToId    = new Map(departments.map((d) => [d.name, d.id]))
       const isolatedIds = isolatedNames.map((name) => nameToId.get(name) ?? '').filter(Boolean)
 
-      // Find pairs with broken Dijkstra paths
       const brokenPaths: [string, string][] = []
       const filteredIds = filteredDepts.map((d) => d.id)
       for (let i = 0; i < filteredIds.length; i++) {
         for (let j = i + 1; j < filteredIds.length; j++) {
-          const src = filteredIds[i]
-          const dst = filteredIds[j]
-          const path = findShortestPath(filteredDepts, src, dst)
-          if (!path) {
-            brokenPaths.push([src, dst])
-          }
+          const path = findShortestPath(filteredDepts, filteredIds[i], filteredIds[j])
+          if (!path) brokenPaths.push([filteredIds[i], filteredIds[j]])
         }
       }
 
       setFailedNodeId(pressedId)
       setFailureSimResult({ isolatedNodes: isolatedIds, brokenPaths })
       setShowFailureSheet(true)
+      setTooltipNodeId(null)
 
-      // Reset selection state
       selectedNodesRef.current = []
       setSelectedNodes([])
       setPathResult(null)
@@ -375,9 +401,10 @@ export function NetworkGraph({
       onPathFound?.(null, [])
     },
     [hitTestNode, vizActive, departments, failedNodeId, clearFailureSim,
-     setFailedNodeId, setFailureSimResult, onPathFound]
+     setFailedNodeId, setFailureSimResult, onPathFound],
   )
 
+  // ── Gestures ──────────────────────────────────────────────────────────────
   const panGesture = Gesture.Pan()
     .onBegin(() => {
       savedTranslateX.value = translateX.value
@@ -389,36 +416,32 @@ export function NetworkGraph({
     })
 
   const pinchGesture = Gesture.Pinch()
-    .onBegin(() => {
-      savedScale.value = scale.value
-    })
+    .onBegin(() => { savedScale.value = scale.value })
     .onUpdate((e) => {
       scale.value = Math.min(Math.max(savedScale.value * e.scale, 0.3), 5)
     })
 
   const tapGesture = Gesture.Tap()
     .runOnJS(true)
-    .onEnd((e) => {
-      handleTap(e.x, e.y)
-    })
+    .onEnd((e) => { handleTap(e.x, e.y) })
 
   const longPressGesture = Gesture.LongPress()
     .minDuration(600)
     .runOnJS(true)
-    .onStart((e) => {
-      handleLongPress(e.x, e.y)
-    })
+    .onStart((e) => { handleLongPress(e.x, e.y) })
 
   const composedGesture = Gesture.Exclusive(
     Gesture.Simultaneous(panGesture, pinchGesture),
     longPressGesture,
-    tapGesture
+    tapGesture,
   )
 
   const handleReset = () => {
     setSelectedNodes([])
     setPathResult(null)
     setToast(null)
+    setTooltipNodeId(null)
+    setTooltipPos(null)
     onPathFound?.(null, [])
   }
 
@@ -430,37 +453,33 @@ export function NetworkGraph({
     ],
   }))
 
-  // Resolve viz state for each node from the current step snapshot
+  // ── Viz state resolvers ───────────────────────────────────────────────────
   const getNodeVizState = (nodeId: string) => {
     if (!vizActive || !currentStep) return undefined
     return currentStep.nodeStates[nodeId]
   }
 
-  // Resolve viz state for each edge from the current step snapshot
   const getEdgeVizState = (srcId: string, tgtId: string) => {
     if (!vizActive || !currentStep?.edgeStates) return undefined
-    const key = `${srcId}→${tgtId}`
-    const reverseKey = `${tgtId}→${srcId}`
-    return currentStep.edgeStates[key] ?? currentStep.edgeStates[reverseKey]
+    const key     = `${srcId}→${tgtId}`
+    const revKey  = `${tgtId}→${srcId}`
+    return currentStep.edgeStates[key] ?? currentStep.edgeStates[revKey]
   }
 
-  // MST overlay data for Prim's visualization
-  const mstEdges = vizActive && vizAlgorithm === 'prims' ? (currentStep?.mstEdges ?? []) : []
+  const mstEdges     = vizActive && vizAlgorithm === 'prims' ? (currentStep?.mstEdges ?? []) : []
   const candidateEdge = vizActive && vizAlgorithm === 'prims' ? currentStep?.currentEdge : null
 
-  // Failure simulation helpers
-  const failedNode = failedNodeId ? departments.find((d) => d.id === failedNodeId) : null
+  const failedNode      = failedNodeId ? departments.find((d) => d.id === failedNodeId) : null
   const isolatedNodeIds = failureSimResult?.isolatedNodes ?? []
   const brokenPathCount = failureSimResult?.brokenPaths.length ?? 0
 
-  // Derived transform value forces Skia canvas redraws when zoom/pan values update on UI thread
   const skiaTransform = useDerivedValue(() => [
     { translateX: translateX.value },
     { translateY: translateY.value },
     { scale: scale.value },
   ])
 
-  // Build dot-grid positions (static, computed once at render)
+  // ── Dot grid (static, computed once) ─────────────────────────────────────
   const dotGridPoints = React.useMemo(() => {
     const pts: { x: number; y: number }[] = []
     const cols = Math.ceil(SCREEN_WIDTH / GRID_SPACING) + 1
@@ -473,23 +492,75 @@ export function NetworkGraph({
     return pts
   }, [])
 
-  // Validation badge color
-  const hasBadge = departments.length > 0 && validationPassed !== undefined
+  // ── Zone shading rectangles ───────────────────────────────────────────────
+  // Compute y-range per tier type from node positions
+  const zoneRects = useMemo(() => {
+    const wanNodes  = nodes.filter((n) => WAN_TYPES.has(n.type   ?? ''))
+    const coreNodes = nodes.filter((n) => CORE_TYPES.has(n.type  ?? ''))
+    const accNodes  = nodes.filter((n) => ACCESS_TYPES.has(n.type ?? ''))
+
+    const rect = (ns: typeof nodes, color: string) => {
+      if (ns.length === 0) return null
+      const minY = Math.min(...ns.map((n) => n.y)) - NODE_HEIGHT / 2 - 20
+      const maxY = Math.max(...ns.map((n) => n.y)) + NODE_HEIGHT / 2 + 20
+      return { y: minY, h: maxY - minY, color }
+    }
+
+    return [
+      rect(wanNodes,  Colors.zoneWan),
+      rect(coreNodes, Colors.zoneCore),
+      rect(accNodes,  Colors.zoneAccess),
+    ].filter(Boolean) as { y: number; h: number; color: string }[]
+  }, [nodes])
+
+  // ── Validation badge ──────────────────────────────────────────────────────
+  const hasBadge   = departments.length > 0 && validationPassed !== undefined
   const badgeColor = validationPassed ? Colors.success : Colors.warning
-  const badgeBg = validationPassed ? Colors.successContainer : Colors.warningContainer
+  const badgeBg    = validationPassed ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)'
+  const badgeBorder = validationPassed ? 'rgba(16,185,129,0.30)' : 'rgba(245,158,11,0.30)'
   const badgeLabel = validationPassed
     ? '✓ Valid'
     : `⚠ ${validationWarnings} warning${validationWarnings !== 1 ? 's' : ''}`
 
+  // ── Parallel edge index ───────────────────────────────────────────────────
+  const { pairCount, edgeParallelInfo } = useMemo(() => {
+    const pc = new Map<string, number>()
+    for (const e of edges) {
+      const key = [e.source, e.target].sort().join('|')
+      pc.set(key, (pc.get(key) ?? 0) + 1)
+    }
+    const ri = new Map<string, number>()
+    const info = edges.map((edge) => {
+      const key   = [edge.source, edge.target].sort().join('|')
+      const total = pc.get(key) ?? 1
+      const idx   = ri.get(key) ?? 0
+      ri.set(key, idx + 1)
+      return { idx, total }
+    })
+    return { pairCount: pc, edgeParallelInfo: info }
+  }, [edges])
+
   return (
     <View style={styles.container}>
-      {/* Viz mode banner */}
+      {/* Viz mode banner + speed dial */}
       {vizActive && !autoVizRef.current && (
         <View style={styles.vizBanner}>
           <View style={styles.vizDot} />
-          <Text style={styles.vizBannerText}>
-            Visualization Mode Active
-          </Text>
+          <Text style={styles.vizBannerText}>Visualization Mode</Text>
+          {/* Speed dial */}
+          <View style={styles.speedDial}>
+            {(['slow', 'normal', 'fast'] as const).map((sp) => (
+              <Pressable
+                key={sp}
+                style={[styles.speedBtn, vizSpeed === sp && styles.speedBtnActive]}
+                onPress={() => setSpeed(sp)}
+              >
+                <Text style={[styles.speedBtnText, vizSpeed === sp && styles.speedBtnTextActive]}>
+                  {sp === 'slow' ? '×½' : sp === 'normal' ? '×1' : '×2'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
       )}
 
@@ -503,10 +574,7 @@ export function NetworkGraph({
             {isolatedNodeIds.length > 0 ? `  ·  ${isolatedNodeIds.length} isolated` : ''}
           </Text>
           <Pressable
-            onPress={() => {
-              clearFailureSim()
-              setShowFailureSheet(false)
-            }}
+            onPress={() => { clearFailureSim(); setShowFailureSheet(false) }}
             hitSlop={8}
             style={{ marginLeft: 8 }}
           >
@@ -515,7 +583,7 @@ export function NetworkGraph({
         </View>
       )}
 
-      {/* Reset selection pill (only when not in viz mode) */}
+      {/* Reset selection pill */}
       {!vizActive && selectedNodes.length > 0 && (
         <Pressable style={styles.resetPill} onPress={handleReset}>
           <ArrowCounterClockwise size={14} color={Colors.primary} style={{ marginRight: 6 }} />
@@ -523,20 +591,20 @@ export function NetworkGraph({
         </Pressable>
       )}
 
-      {/* Algorithm result toast — appears after auto-Dijkstra / auto-Prim's */}
+      {/* Algorithm toast */}
       <AlgorithmToast toast={toast} onDismiss={() => setToast(null)} />
 
-      {/* Live validation badge — moved to top-left to not conflict with Explain toggle */}
+      {/* Validation badge */}
       {hasBadge && !vizActive && selectedNodes.length === 0 && (
         <Pressable
-          style={[styles.validationBadge, { backgroundColor: badgeBg, borderColor: `${badgeColor}40` }]}
+          style={[styles.validationBadge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}
           onPress={validationPassed ? undefined : onWarningPress}
         >
           <Text style={[styles.validationBadgeText, { color: badgeColor }]}>{badgeLabel}</Text>
         </Pressable>
       )}
 
-      {/* Hint banner — networking language */}
+      {/* Hint banner */}
       {!vizActive && departments.length >= 2 && !sessionHasSelectedTwoNodes && showAlgoHint && (
         <View style={styles.hintBanner}>
           <Text style={styles.hintBannerText}>
@@ -545,48 +613,49 @@ export function NetworkGraph({
         </View>
       )}
 
+      {/* Canvas */}
       <GestureDetector gesture={composedGesture}>
         <Canvas style={styles.canvas}>
-          {/* Dot-grid background — rendered outside the zoom group so it stays fixed */}
+          {/* Fixed dot grid — outside zoom group */}
           {dotGridPoints.map((pt, i) => (
             <Circle
               key={i}
               cx={pt.x}
               cy={pt.y}
-              r={GRID_DOT_RADIUS}
-              color={`${Colors.primary}18`}
+              r={GRID_DOT_R}
+              color="rgba(99,132,255,0.18)"
             />
           ))}
 
           <Group transform={skiaTransform}>
-            {/* Render edges first (behind nodes) */}
-            {(() => {
-              // Build parallel edge index: edges sharing same node pair get staggered curves
-              const pairCount = new Map<string, number>()
-              for (const e of edges) {
-                const key = [e.source, e.target].sort().join('|')
-                pairCount.set(key, (pairCount.get(key) ?? 0) + 1)
-              }
-              const runningIndex = new Map<string, number>()
-              return edges.map((edge, i) => {
-                const key = [edge.source, edge.target].sort().join('|')
-                const total = pairCount.get(key) ?? 1
-                const idx = runningIndex.get(key) ?? 0
-                runningIndex.set(key, idx + 1)
-                return (
-                  <GraphEdgeComponent
-                    key={`edge-${i}`}
-                    edge={edge}
-                    nodes={nodes}
-                    departments={departments}
-                    font={systemFont}
-                    vizEdgeState={getEdgeVizState(edge.source, edge.target)}
-                    parallelIndex={idx}
-                    parallelTotal={total}
-                  />
-                )
-              })
-            })()}
+            {/* Zone shading — behind everything */}
+            {zoneRects.map((zone, i) => (
+              <Rect
+                key={`zone-${i}`}
+                x={0}
+                y={zone.y}
+                width={SCREEN_WIDTH * 4}  // wide enough for any layout
+                height={zone.h}
+                color={zone.color}
+              />
+            ))}
+
+            {/* Edges */}
+            {edges.map((edge, i) => {
+              const { idx, total } = edgeParallelInfo[i] ?? { idx: 0, total: 1 }
+              return (
+                <GraphEdgeComponent
+                  key={`edge-${i}`}
+                  edge={edge}
+                  nodes={nodes}
+                  departments={departments}
+                  font={systemFont}
+                  vizEdgeState={getEdgeVizState(edge.source, edge.target)}
+                  parallelIndex={idx}
+                  parallelTotal={total}
+                />
+              )
+            })}
 
             {/* MST overlay (Prim's only) */}
             {vizActive && vizAlgorithm === 'prims' && (
@@ -597,17 +666,19 @@ export function NetworkGraph({
               />
             )}
 
-            {/* Path overlay (non-viz mode Dijkstra) */}
+            {/* Path overlay (non-viz Dijkstra) */}
             {!vizActive && pathResult && (
               <PathOverlay path={pathResult.path} nodes={nodes} edges={edges} />
             )}
 
-            {/* Render nodes */}
+            {/* Nodes */}
             {nodes.map((node) => (
               <GraphNodeComponent
                 key={node.id}
                 node={node}
                 selected={!vizActive && selectedNodes.includes(node.id)}
+                isPeerHighlighted={!vizActive && selectedNodes.length === 1 && peerNodeIds.has(node.id)}
+                peerCount={peerCountMap.get(node.id)}
                 font={systemFont}
                 vizState={getNodeVizState(node.id)}
                 isCritical={!vizActive && criticalNodeIds.includes(node.id) && !failedNodeId}
@@ -619,38 +690,71 @@ export function NetworkGraph({
         </Canvas>
       </GestureDetector>
 
-      {/* Viz legend overlay - forced visible in vizActive mode, close button hidden */}
+      {/* Viz legend */}
       {vizActive && vizAlgorithm && (
         <VizLegend algorithm={vizAlgorithm} onDismiss={() => {}} hideClose={true} />
       )}
 
-      {/* Zoom controls */}
+      {/* Node tooltip */}
+      {tooltipDept && tooltipPos && !vizActive && selectedNodes.length === 1 && (
+        <NodeTooltip
+          dept={tooltipDept}
+          screenX={tooltipPos.x}
+          screenY={tooltipPos.y}
+          peerCount={peerCountMap.get(tooltipNodeId!) ?? 0}
+          nodeHeight={tooltipPos.nodeH}
+          onClose={() => {
+            setTooltipNodeId(null)
+            setTooltipPos(null)
+            setSelectedNodes([])
+            selectedNodesRef.current = []
+          }}
+          onAnalyze={() => {
+            setTooltipNodeId(null)
+            setTooltipPos(null)
+            setShowLegend(true)
+            setShowAlgoHint(false)
+            setSessionHasSelectedTwoNodes(true)
+            onVisualize?.()
+          }}
+          onSimFailure={() => {
+            if (tooltipNodeId) handleLongPress(
+              tooltipPos.x,
+              tooltipPos.y,
+            )
+          }}
+        />
+      )}
+
+      {/* Floating pill zoom controls */}
       <View style={styles.zoomControls}>
         <Pressable
           style={styles.zoomButton}
           onPress={() => { scale.value = withSpring(Math.min(scale.value * 1.3, 5)) }}
         >
-          <MagnifyingGlassPlus size={20} color={Colors.textPrimary} />
+          <MagnifyingGlassPlus size={18} color="#E2E8F0" />
         </Pressable>
+        <View style={styles.zoomDivider} />
         <Pressable
           style={styles.zoomButton}
           onPress={() => { scale.value = withSpring(Math.max(scale.value / 1.3, 0.3)) }}
         >
-          <MagnifyingGlassMinus size={20} color={Colors.textPrimary} />
+          <MagnifyingGlassMinus size={18} color="#E2E8F0" />
         </Pressable>
+        <View style={styles.zoomDivider} />
         <Pressable
           style={styles.zoomButton}
           onPress={() => {
-            scale.value = withSpring(1)
+            scale.value      = withSpring(1)
             translateX.value = withSpring(0)
             translateY.value = withSpring(0)
           }}
         >
-          <CornersOut size={20} color={Colors.textPrimary} />
+          <CornersOut size={18} color="#E2E8F0" />
         </Pressable>
       </View>
 
-      {/* "Analyze Network" — primary action at bottom-left */}
+      {/* Analyze Network button */}
       {!vizActive && departments.length >= 2 && onVisualize && (
         <Pressable
           style={({ pressed }) => [styles.exploreLink, pressed && { opacity: 0.85 }]}
@@ -663,12 +767,12 @@ export function NetworkGraph({
           accessibilityRole="button"
           accessibilityLabel="Analyze Network"
         >
-          <Play size={18} color={Colors.white} weight="fill" />
+          <Play size={16} color={Colors.white} weight="fill" />
           <Text style={styles.exploreLinkText}>Analyze Network</Text>
         </Pressable>
       )}
 
-      {/* Explain Mode Toggle — top-right corner */}
+      {/* Explain Mode Toggle */}
       {departments.length >= 1 && (
         <ExplainModeToggle style={styles.explainToggle} />
       )}
@@ -734,10 +838,7 @@ export function NetworkGraph({
 
           <Pressable
             style={styles.sheetDismissBtn}
-            onPress={() => {
-              clearFailureSim()
-              setShowFailureSheet(false)
-            }}
+            onPress={() => { clearFailureSim(); setShowFailureSheet(false) }}
           >
             <Text style={styles.sheetDismissBtnText}>Clear Simulation</Text>
           </Pressable>
@@ -756,20 +857,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.surfaceAlt,
   },
+
+  // ── Viz banner + speed dial ────────────────────────────────────────────────
   vizBanner: {
     position: 'absolute',
     top: 10,
     alignSelf: 'center',
     zIndex: 10,
-    backgroundColor: `${Colors.primary}15`,
+    backgroundColor: 'rgba(30,40,60,0.88)',
     borderRadius: 9999,
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderWidth: 1,
-    borderColor: `${Colors.primary}30`,
+    borderColor: 'rgba(99,132,255,0.28)',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
   },
   vizDot: {
     width: 8,
@@ -780,112 +888,33 @@ const styles = StyleSheet.create({
   vizBannerText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
-    color: Colors.primary,
+    color: '#93C5FD',
   },
-  resetPill: {
-    position: 'absolute',
-    top: 16,
-    alignSelf: 'center',
-    zIndex: 10,
-    backgroundColor: Colors.white,
-    borderRadius: 9999,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
+  speedDial: {
     flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 8,
+    overflow: 'hidden',
+    gap: 0,
   },
-  resetText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 14,
-    color: Colors.primary,
+  speedBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
-  validationBadge: {
-    position: 'absolute',
-    top: 10,
-    left: 12,
-    zIndex: 10,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderWidth: 1,
-  },
-  validationBadgeText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-  },
-  zoomControls: {
-    position: 'absolute',
-    bottom: 24,
-    right: 16,
-    gap: 8,
-    zIndex: 10,
-  },
-  zoomButton: {
-    width: 44,
-    height: 44,
-    backgroundColor: Colors.white,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exploreLink: {
-    position: 'absolute',
-    bottom: 28,
-    left: 16,
-    zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  speedBtnActive: {
     backgroundColor: Colors.primary,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    minHeight: 44,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 4,
   },
-  exploreLinkText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
+  speedBtnText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.55)',
+  },
+  speedBtnTextActive: {
     color: Colors.white,
   },
-  explainToggle: {
-    position: 'absolute',
-    top: 10,
-    right: 16,
-    zIndex: 11,
-  },
-  hintBanner: {
-    position: 'absolute',
-    top: 52,
-    alignSelf: 'center',
-    zIndex: 10,
-    backgroundColor: 'rgba(30, 42, 60, 0.85)',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  hintBannerText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    color: '#E0EBFF',
-  },
 
-  // ── Failure simulation ──────────────────────────────────────────────────────
+  // ── Failure banner ─────────────────────────────────────────────────────────
   failureBanner: {
     position: 'absolute',
     top: 10,
@@ -901,8 +930,8 @@ const styles = StyleSheet.create({
     gap: 8,
     shadowColor: Colors.error,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
     elevation: 6,
   },
   failureBannerText: {
@@ -911,110 +940,142 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.white,
   },
-  warningBar: {
+
+  // ── Reset pill ─────────────────────────────────────────────────────────────
+  resetPill: {
     position: 'absolute',
-    bottom: 90,
-    left: 16,
-    right: 16,
-    backgroundColor: Colors.errorContainer,
-    borderRadius: 14,
+    top: 16,
+    alignSelf: 'center',
+    zIndex: 10,
+    backgroundColor: 'rgba(13,17,23,0.88)',
+    borderRadius: 9999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderWidth: 1,
-    borderColor: Colors.error,
-    padding: 12,
+    borderColor: 'rgba(99,132,255,0.28)',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    zIndex: 10,
-    shadowColor: Colors.error,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+  },
+  resetText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    color: '#93C5FD',
   },
 
-  // Bottom sheet content
-  sheetContent: {
-    padding: 20,
-    gap: 14,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  sheetTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 18,
-    color: Colors.textPrimary,
-  },
-  sheetSubtitle: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: Colors.textSecondary,
-    lineHeight: 20,
-  },
-  sheetMetricsRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  sheetMetric: {
-    flex: 1,
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 4,
-  },
-  sheetMetricVal: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 28,
-  },
-  sheetMetricLbl: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 11,
-    color: Colors.textMuted,
-    textAlign: 'center',
-  },
-  sheetSection: {
-    gap: 8,
-  },
-  sheetSectionLabel: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 11,
-    letterSpacing: 0.8,
-    color: Colors.textMuted,
-  },
-  sheetChipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  sheetChip: {
-    backgroundColor: Colors.errorContainer,
+  // ── Validation badge ───────────────────────────────────────────────────────
+  validationBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 12,
+    zIndex: 10,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderWidth: 1,
-    borderColor: `${Colors.error}25`,
   },
-  sheetChipText: {
+  validationBadgeText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+  },
+
+  // ── Hint banner ────────────────────────────────────────────────────────────
+  hintBanner: {
+    position: 'absolute',
+    top: 52,
+    alignSelf: 'center',
+    zIndex: 10,
+    backgroundColor: 'rgba(13,17,23,0.88)',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(99,132,255,0.22)',
+  },
+  hintBannerText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
-    color: Colors.error,
+    color: '#93C5FD',
   },
-  sheetDismissBtn: {
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: Colors.errorContainer,
+
+  // ── Floating pill zoom controls ────────────────────────────────────────────
+  zoomControls: {
+    position: 'absolute',
+    bottom: 100,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(13,17,23,0.88)',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: `${Colors.error}30`,
+    borderColor: 'rgba(99,132,255,0.18)',
+    overflow: 'hidden',
+    zIndex: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  zoomButton: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 4,
   },
-  sheetDismissBtnText: {
+  zoomDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(99,132,255,0.18)',
+  },
+
+  // ── Analyze Network button ─────────────────────────────────────────────────
+  exploreLink: {
+    position: 'absolute',
+    bottom: 28,
+    left: 16,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minHeight: 44,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  exploreLinkText: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 15,
-    color: Colors.error,
+    fontSize: 14,
+    color: Colors.white,
   },
+
+  // ── Explain toggle ─────────────────────────────────────────────────────────
+  explainToggle: {
+    position: 'absolute',
+    top: 10,
+    right: 16,
+    zIndex: 11,
+  },
+
+  // ── Bottom sheet ───────────────────────────────────────────────────────────
+  sheetContent:     { padding: 20, gap: 14 },
+  sheetHeader:      { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sheetTitle:       { fontFamily: 'Inter_600SemiBold', fontSize: 18, color: Colors.textPrimary },
+  sheetSubtitle:    { fontFamily: 'Inter_400Regular', fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
+  sheetMetricsRow:  { flexDirection: 'row', gap: 10 },
+  sheetMetric:      { flex: 1, alignItems: 'center', padding: 12, borderRadius: 12, borderWidth: 1, gap: 4 },
+  sheetMetricVal:   { fontFamily: 'Inter_600SemiBold', fontSize: 28 },
+  sheetMetricLbl:   { fontFamily: 'Inter_500Medium', fontSize: 11, color: Colors.textMuted, textAlign: 'center' },
+  sheetSection:     { gap: 8 },
+  sheetSectionLabel: { fontFamily: 'Inter_500Medium', fontSize: 11, letterSpacing: 0.8, color: Colors.textMuted },
+  sheetChipRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  sheetChip:        { backgroundColor: Colors.errorContainer, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: `${Colors.error}25` },
+  sheetChipText:    { fontFamily: 'Inter_500Medium', fontSize: 12, color: Colors.error },
+  sheetDismissBtn:  { height: 48, borderRadius: 12, backgroundColor: Colors.errorContainer, borderWidth: 1, borderColor: `${Colors.error}30`, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  sheetDismissBtnText: { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: Colors.error },
 })

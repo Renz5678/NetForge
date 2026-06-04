@@ -59,6 +59,27 @@ export const Colors = {
   // ── Graph Edge ─────────────────────────────────────────────────────────────
   // Dark navy for default edges — high contrast on #F1F3FF canvas background
   edgeDefault:   '#1E3A5F',
+
+  // ── Dark Canvas ────────────────────────────────────────────────────────────
+  // Professional dark background matching network design tool aesthetics
+  canvasBg:      '#0D1117',
+  canvasGrid:    'rgba(139,156,255,0.07)',  // subtle blue-tinted grid dots
+
+  // ── Topology Zone Tints ────────────────────────────────────────────────────
+  // Very low-opacity shading applied behind each network tier
+  zoneWan:       'rgba(45,212,191,0.06)',   // teal — WAN / Internet edge
+  zoneCore:      'rgba(59,130,246,0.05)',   // blue  — Core routing layer
+  zoneAccess:    'rgba(16,185,129,0.04)',   // green — Access / endpoint layer
+
+  // ── Traffic Load Indicators ────────────────────────────────────────────────
+  trafficLow:    '#34D399',   // emerald — <40% utilisation
+  trafficMed:    '#FCD34D',   // amber   — 40-75% utilisation
+  trafficHigh:   '#F87171',   // rose    — >75% utilisation
+
+  // ── Peer Highlight ─────────────────────────────────────────────────────────
+  // Soft ring shown on nodes directly adjacent to the currently selected node
+  peerRing:      'rgba(96,165,250,0.70)',
+  peerRingFill:  'rgba(96,165,250,0.08)',
 } as const
 
 export type ColorKey = keyof typeof Colors

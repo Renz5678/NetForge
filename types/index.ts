@@ -95,6 +95,8 @@ export type GraphNode = {
 export type GraphEdge = {
   source: string
   target: string
+  weight?: number         // Realistic link cost derived from device type pair
+  linkType?: 'access' | 'trunk' | 'wan' | 'routed'  // Physical link classification
 }
 
 export type PathResult = {
