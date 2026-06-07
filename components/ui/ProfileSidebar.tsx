@@ -80,9 +80,11 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
     notifications,
     defaultBaseIp,
     defaultVlanStart,
+    appMode,
     setNotifications,
     setDefaultBaseIp,
     setDefaultVlanStart,
+    setAppMode,
   } = usePreferencesStore()
 
   const [tempBaseIp, setTempBaseIp] = useState(defaultBaseIp)
@@ -395,6 +397,19 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
                 <Switch
                   value={notifications}
                   onValueChange={setNotifications}
+                  trackColor={{ false: Colors.pale, true: Colors.primary }}
+                  thumbColor={Colors.white}
+                />
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.settingRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingLabel}>Student Mode</Text>
+                  <Text style={[styles.settingValue, { marginTop: 2 }]}>Algorithm explanations in findings</Text>
+                </View>
+                <Switch
+                  value={appMode === 'student'}
+                  onValueChange={(val) => setAppMode(val ? 'student' : 'engineer')}
                   trackColor={{ false: Colors.pale, true: Colors.primary }}
                   thumbColor={Colors.white}
                 />

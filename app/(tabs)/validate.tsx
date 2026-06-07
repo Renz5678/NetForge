@@ -1,368 +1,797 @@
-import React, { useEffect, useState, useCallback } from 'react'
+/**
+ * app/(tabs)/validate.tsx  — Validate tab
+ *
+ * Workflow states:
+ *   1. No active config       → functional prompt + "Go to Canvas" link
+ *   2. Config loaded, not run → live network summary + dominant "Validate Network" button
+ *   3. Running                → ValidatePhaseIndicator with 5 pulsing phase dots
+ *   4. Results (findings)     → ValidationScoreRing + grouped findings list
+ *
+ * "Re-validate" is a text link — not a primary button.
+ * "Go to Export" is a secondary button shown after a clean/passing result.
+ */
+
+import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,
   StyleSheet,
+  Pressable,
   ScrollView,
-  Pressable
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
-import { ShieldCheck, CheckCircle, Warning } from 'phosphor-react-native'
+import {
+  ShieldCheck,
+  TreeStructure,
+  Warning,
+  CheckCircle,
+  ArrowRight,
+  Info,
+} from 'phosphor-react-native'
+import { LinearGradient } from 'expo-linear-gradient'
 import { useConfigStore } from '@/stores/useConfigStore'
-import { useVisualizationStore } from '@/stores/useVisualizationStore'
-import { useValidation } from '@/hooks/useValidation'
-import { findArticulationPoints } from '@/lib/algorithms/articulationPoints'
-import { ValidationCard } from '@/components/ui/ValidationCard'
-import { ValidationScoreRing } from '@/components/ui/ValidationScoreRing'
-import { Button } from '@/components/ui/Button'
+import { usePreferencesStore } from '@/stores/usePreferencesStore'
 import { Colors } from '@/constants/colors'
-import { useHaptics } from '@/hooks/useHaptics'
 import { TopHeader } from '@/components/ui/TopHeader'
+import { ValidationScoreRing } from '@/components/ui/ValidationScoreRing'
+import { ValidatePhaseIndicator } from '@/components/ui/ValidatePhaseIndicator'
+import { FindingRow } from '@/components/ui/FindingRow'
+import { AlgorithmDrillDown } from '@/components/ui/AlgorithmDrillDown'
+import { validateNetwork } from '@/lib/validatePass'
+import type { ValidatePassResult, Finding, FindingSeverity, FindingPhase } from '@/lib/validatePass'
 
-export default function ValidateScreen() {
-  const router = useRouter()
-  const haptics = useHaptics()
-  const { activeConfig } = useConfigStore()
-  const { setCriticalNodeIds } = useVisualizationStore()
-  const [key, setKey] = useState(0)
-  const [hasRun, setHasRun] = useState(false)
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-  const departments = activeConfig?.departments ?? []
-  const validation = useValidation(departments)
+const ALL_PHASES: string[] = [
+  'connectivity',
+  'addressing',
+  'resilience',
+  'correctness',
+  'optimization',
+]
 
-  // Run articulation point detection whenever departments change and after validation run
-  const runSpfCheck = useCallback(() => {
-    const result = findArticulationPoints(departments)
-    setCriticalNodeIds(result.articulationPoints)
-    return result
-  }, [departments, setCriticalNodeIds])
+const PHASE_LABELS: Record<string, string> = {
+  connectivity: 'Connectivity',
+  addressing:   'Addressing',
+  resilience:   'Resilience',
+  correctness:  'Correctness',
+  optimization: 'Optimization',
+}
 
-  const allCorePass =
-    validation.cycleCheck.passed &&
-    validation.allocationCheck.passed &&
-    validation.connectivityCheck.passed &&
-    validation.vlanCheck.passed
+const SEVERITY_ORDER: FindingSeverity[] = ['red', 'yellow', 'blue']
 
-  const handleRerun = () => {
-    setKey((k) => k + 1)
+function severityColor(s: FindingSeverity): string {
+  switch (s) {
+    case 'red':    return Colors.error
+    case 'yellow': return Colors.warning
+    case 'blue':   return Colors.primary
+    default:       return Colors.pale
   }
+}
 
-  // Reset hasRun and clear critical node highlights when config changes
-  useEffect(() => {
-    setHasRun(false)
-    setCriticalNodeIds([])
-  }, [activeConfig?.id, setCriticalNodeIds])
-
-  // ── Haptic feedback based on result (once per run) ─────────────────────────
-  // NOTE: This must be declared before any conditional returns (Rules of Hooks).
-  useEffect(() => {
-    if (!hasRun || !activeConfig) return
-    const ap = findArticulationPoints(activeConfig.departments)
-    const corePass =
-      validation.cycleCheck.passed &&
-      validation.allocationCheck.passed &&
-      validation.connectivityCheck.passed &&
-      validation.vlanCheck.passed
-    if (corePass && !ap.articulationPoints.length) {
-      haptics.success()
-    } else if (!corePass) {
-      haptics.error()
-    } else {
-      haptics.warning()
-    }
-  // key changes on re-run; include it so the effect re-fires each run
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasRun, key])
-
-  // ── Empty state (no config loaded) ─────────────────────────────────────────
-  if (!activeConfig) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <TopHeader title="Validation" leftIcon={<ShieldCheck size={22} color={Colors.primary} />} />
-        <View style={styles.emptyState}>
-          <ShieldCheck size={56} color={Colors.pale} />
-          <Text style={styles.emptyTitle}>No configuration selected</Text>
-          <Text style={styles.emptySubtitle}>Select a configuration to run validation checks.</Text>
-          <Button
-            label="Go to Configs"
-            variant="primary"
-            onPress={() => router.push('/(tabs)/configs')}
-          />
-        </View>
-      </SafeAreaView>
-    )
+function severityBgColor(s: FindingSeverity): string {
+  switch (s) {
+    case 'red':    return Colors.errorContainer
+    case 'yellow': return Colors.warningContainer
+    case 'blue':   return `${Colors.primary}10`
+    default:       return Colors.surfaceAlt
   }
+}
 
-  // ── Pre-run state ───────────────────────────────────────────────────────────
-  if (!hasRun) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <TopHeader
-          title="Validation"
-          leftIcon={<ShieldCheck size={22} color={Colors.primary} />}
-        />
-        <View style={styles.emptyState}>
-          <CheckCircle size={48} color={Colors.pale} />
-          <Text style={styles.emptyTitle}>Validate Network Topology</Text>
-          <Text style={styles.emptySubtitle}>Run validation to check your topology for issues.</Text>
-          <Button
-            label="Run Validation"
-            variant="primary"
-            onPress={() => {
-              haptics.light()
-              setHasRun(true)
-              runSpfCheck()
-            }}
-          />
-        </View>
-      </SafeAreaView>
-    )
+function severityLabel(s: FindingSeverity): string {
+  switch (s) {
+    case 'red':    return 'Critical'
+    case 'yellow': return 'Warning'
+    case 'blue':   return 'Info'
+    default:       return ''
   }
+}
 
-  // ── Post-run state: compute AP results for display ──────────────────────────
-  const apResult = findArticulationPoints(departments)
-  const hasArticulationPoints = apResult.articulationPoints.length > 0
+// ─── Network Summary Card ─────────────────────────────────────────────────────
 
-  // Resolve AP names for display in the affected chips
-  const idToName = new Map(departments.map((d) => [d.id, d.name]))
-  const apNames = apResult.articulationPoints.map((id) => idToName.get(id) ?? id)
-  const bridgeCount = apResult.bridges.length
+function NetworkSummaryCard() {
+  const config = useConfigStore((s) => s.activeConfig)
+  if (!config) return null
 
-  const spfCheck = {
-    passed: !hasArticulationPoints,
-    message: hasArticulationPoints
-      ? `${apResult.articulationPoints.length} critical node${apResult.articulationPoints.length !== 1 ? 's' : ''} detected — removing ${apResult.articulationPoints.length !== 1 ? 'any of these' : 'this node'} would partition the network.`
-      : 'No single points of failure. All nodes are part of redundant paths.',
-    affected: hasArticulationPoints ? apNames : undefined,
-  }
-
-  const allPass = allCorePass && !hasArticulationPoints
-
-  // ── Score calculation ───────────────────────────────────────────────────────
-  const checksPassedCount = [
-    validation.cycleCheck,
-    validation.allocationCheck,
-    validation.connectivityCheck,
-    validation.vlanCheck,
-    spfCheck,
-  ].filter((c) => c.passed).length
-  const score = Math.round((checksPassedCount / 5) * 100)
-  const scoreLabel = `${checksPassedCount} of 5 checks passed`
-  const scoreSublabel =
-    score >= 100
-      ? 'Network ready to deploy'
-      : score >= 80
-      ? 'Minor issues detected'
-      : 'Critical issues found'
-
-  const checks = [
-    {
-      id: 'cycle',
-      title: 'Cycle detection',
-      description: 'Checking for routing loops in graph topology.',
-      result: validation.cycleCheck,
-      variant: undefined as undefined,
-      explanationTitle: 'Why Routing Loops are Bad',
-      explanation: 'Routing loops cause broadcast storms and severe network instability. Packets get trapped endlessly cycling between nodes, eventually bringing the entire network down. Fix the cyclic path before deploying.',
-    },
-    {
-      id: 'subnet',
-      title: 'Subnet allocation',
-      description: 'Checking for overlapping IP ranges in VLAN clusters.',
-      result: validation.allocationCheck,
-      variant: undefined as undefined,
-      explanationTitle: 'Why IP Overlap is Bad',
-      explanation: 'IP overlapping happens when multiple devices are assigned the same IP address or subnet range. This causes intermittent connectivity drops, as the network cannot reliably determine where to route traffic.',
-    },
-    {
-      id: 'connectivity',
-      title: 'Connectivity check',
-      description: 'Verifying all departments are reachable via BFS.',
-      result: validation.connectivityCheck,
-      variant: undefined as undefined,
-      explanationTitle: 'Why Connectivity Fails',
-      explanation: 'If a node is unreachable, it means there is no physical or logical path from the core to that department. Traffic will be blackholed and the segment will be completely isolated from the network.',
-    },
-    {
-      id: 'vlan',
-      title: 'VLAN assignment',
-      description: 'Verifying all access ports mapped to valid broadcast domains.',
-      result: validation.vlanCheck,
-      variant: undefined as undefined,
-      explanationTitle: 'Why Invalid VLANs are Bad',
-      explanation: 'VLAN inconsistencies (like trunk links missing allowed VLANs or access ports assigned to non-existent VLANs) lead to dropped traffic. Devices may be physically connected but logically isolated.',
-    },
-    {
-      id: 'spf',
-      title: 'Single point of failure',
-      description: hasArticulationPoints
-        ? `DFS (Decrease & Conquer) identified ${apResult.articulationPoints.length} articulation point${apResult.articulationPoints.length !== 1 ? 's' : ''}${bridgeCount > 0 ? ` and ${bridgeCount} bridge link${bridgeCount !== 1 ? 's' : ''}` : ''}. Consider adding redundant paths.`
-        : 'DFS (Decrease & Conquer) found no articulation points. Your topology has full link redundancy.',
-      result: spfCheck,
-      // Warning for APs (not strictly broken, but needs attention), pass if none
-      variant: (hasArticulationPoints ? 'warning' : 'pass') as 'warning' | 'pass' | undefined,
-      explanationTitle: 'Why Single Points of Failure are Bad',
-      explanation: 'A Single Point of Failure (SPF) or articulation point is a node or link that, if brought down, will completely sever parts of your network. Adding redundant paths protects against massive hardware outages.',
-    },
-  ]
+  const nodeCount  = config.departments.length
+  const linkCount  = Math.floor(config.departments.reduce((s, d) => s + d.peers.length, 0) / 2)
+  const vlanCount  = config.departments.filter((d) => d.vlanId !== undefined).length
+  const hasRouters = config.departments.some((d) => d.type === 'router' || d.type === 'firewall')
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Header */}
-      <TopHeader
-        title="Validation"
-        leftIcon={<ShieldCheck size={22} color={Colors.primary} />}
-      />
-
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Score Ring */}
-        <View style={styles.ringContainer}>
-          <ValidationScoreRing
-            score={score}
-            label={scoreLabel}
-            sublabel={scoreSublabel}
-          />
+    <View style={styles.summaryCard}>
+      <Text style={styles.summaryCardTitle} numberOfLines={1}>{config.name}</Text>
+      <View style={styles.summaryMetrics}>
+        <View style={styles.summaryMetric}>
+          <Text style={styles.summaryValue}>{nodeCount}</Text>
+          <Text style={styles.summaryMetricLabel}>Nodes</Text>
         </View>
-
-        {/* All-pass banner */}
-        {allPass && (
-          <View style={styles.passBanner}>
-            <ShieldCheck size={24} color={Colors.success} weight="fill" />
-            <Text style={styles.passBannerText}>
-              Validation complete. No critical topology conflicts found.
-            </Text>
-          </View>
-        )}
-
-        {/* Articulation point info banner when APs exist but other checks pass */}
-        {allCorePass && hasArticulationPoints && (
-          <View style={styles.warnBanner}>
-            <Warning size={22} color={Colors.warning} weight="fill" />
-            <Text style={styles.warnBannerText}>
-              Core topology is valid but {apResult.articulationPoints.length} critical node{apResult.articulationPoints.length !== 1 ? 's were' : ' was'} found.
-              Highlighted in amber on the topology map.
-            </Text>
-          </View>
-        )}
-
-        {/* Check cards */}
-        <View style={styles.cards} key={key}>
-          {checks.map((check, index) => (
-            <ValidationCard
-              key={`${check.id}-${key}`}
-              title={check.title}
-              description={check.description}
-              result={check.result}
-              index={index}
-              variant={check.variant}
-              explanationTitle={check.explanationTitle}
-              explanation={check.explanation}
-            />
-          ))}
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryMetric}>
+          <Text style={styles.summaryValue}>{linkCount}</Text>
+          <Text style={styles.summaryMetricLabel}>Links</Text>
         </View>
-      </ScrollView>
-
-      {/* Re-run button */}
-      <View style={styles.footer}>
-        <Button
-          label="Re-run validation"
-          variant="primary"
-          fullWidth
-          onPress={() => {
-            haptics.light()
-            handleRerun()
-            runSpfCheck()
-          }}
-        />
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryMetric}>
+          <Text style={styles.summaryValue}>{vlanCount}</Text>
+          <Text style={styles.summaryMetricLabel}>VLANs</Text>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryMetric}>
+          <Text style={[styles.summaryValue, { color: hasRouters ? Colors.success : Colors.warning }]}>
+            {hasRouters ? 'Yes' : 'No'}
+          </Text>
+          <Text style={styles.summaryMetricLabel}>Routing</Text>
+        </View>
       </View>
-    </SafeAreaView>
+    </View>
   )
 }
 
+// ─── Findings Group ───────────────────────────────────────────────────────────
+
+function FindingGroup({
+  severity,
+  findings,
+  onDrillDown,
+}: {
+  severity: FindingSeverity
+  findings: Finding[]
+  onDrillDown: (f: Finding) => void
+}) {
+  if (findings.length === 0) return null
+  const color = severityColor(severity)
+  const bg    = severityBgColor(severity)
+  const label = severityLabel(severity)
+
+  return (
+    <View style={styles.findingGroup}>
+      {/* Group header */}
+      <View style={[styles.findingGroupHeader, { backgroundColor: bg }]}>
+        <View style={[styles.findingGroupDot, { backgroundColor: color }]} />
+        <Text style={[styles.findingGroupLabel, { color }]}>{label}</Text>
+        <View style={[styles.findingGroupCount, { backgroundColor: color + '20' }]}>
+          <Text style={[styles.findingGroupCountText, { color }]}>{findings.length}</Text>
+        </View>
+      </View>
+
+      {/* Rows */}
+      <View style={styles.findingGroupBody}>
+        {findings.map((f, i) => (
+          <FindingRow
+            key={f.id}
+            finding={f}
+            onDrillDown={onDrillDown}
+            showDivider={i < findings.length - 1}
+          />
+        ))}
+      </View>
+    </View>
+  )
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
+export default function ValidateScreen() {
+  const router = useRouter()
+  const activeConfig = useConfigStore((s) => s.activeConfig)
+  const appMode = usePreferencesStore((s) => s.appMode)
+  const isStudent = appMode === 'student'
+
+  const [result, setResult] = useState<ValidatePassResult | null>(null)
+  const [running, setRunning] = useState(false)
+  const [currentPhase, setCurrentPhase] = useState(-1)
+  const [drillDown, setDrillDown] = useState<Finding | null>(null)
+  const [drillDownVisible, setDrillDownVisible] = useState(false)
+
+  const handleRun = useCallback(async () => {
+    if (!activeConfig) return
+    setRunning(true)
+    setResult(null)
+    setCurrentPhase(0)
+
+    // Simulate phase progress for visual feedback
+    // (validateNetwork itself is near-instant for typical topologies)
+    const phaseTimers: ReturnType<typeof setTimeout>[] = []
+    ALL_PHASES.forEach((_, i) => {
+      if (i === 0) return
+      phaseTimers.push(
+        setTimeout(() => setCurrentPhase(i), i * 280)
+      )
+    })
+
+    const runResult = await validateNetwork(activeConfig)
+
+    // Ensure all phase dots complete before showing results
+    setTimeout(() => {
+      phaseTimers.forEach(clearTimeout)
+      setRunning(false)
+      setCurrentPhase(ALL_PHASES.length) // all done
+      setResult(runResult)
+    }, ALL_PHASES.length * 280 + 200)
+  }, [activeConfig])
+
+  const handleDrillDown = (finding: Finding) => {
+    setDrillDown(finding)
+    setDrillDownVisible(true)
+  }
+
+  // Group findings by severity
+  const groupedFindings = React.useMemo(() => {
+    if (!result) return {} as Record<FindingSeverity, Finding[]>
+    return SEVERITY_ORDER.reduce<Record<FindingSeverity, Finding[]>>(
+      (acc, sev) => {
+        acc[sev] = result.findings.filter((f) => f.severity === sev)
+        return acc
+      },
+      { red: [], yellow: [], blue: [] }
+    )
+  }, [result])
+
+  const scoreLabel = result
+    ? result.score >= 90
+      ? 'Deploy Ready'
+      : result.score >= 70
+      ? 'Deploy with Caution'
+      : 'Not Ready'
+    : ''
+
+  // ── No config ─────────────────────────────────────────────────────────────
+
+  if (!activeConfig) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <TopHeader
+          title="Validate"
+          leftIcon={
+            <View style={styles.headerIcon}>
+              <ShieldCheck size={18} color={Colors.white} weight="fill" />
+            </View>
+          }
+        />
+        <View style={styles.noConfigContainer}>
+          <ShieldCheck size={52} color={Colors.pale} weight="duotone" />
+          <Text style={styles.noConfigTitle}>No project selected</Text>
+          <Text style={styles.noConfigSubtitle}>
+            Open a project in the Canvas tab to start a validation pass.
+          </Text>
+          <Pressable
+            style={styles.noConfigLink}
+            onPress={() => router.push('/(tabs)')}
+          >
+            <TreeStructure size={14} color={Colors.primary} weight="duotone" />
+            <Text style={styles.noConfigLinkText}>Go to Canvas</Text>
+            <ArrowRight size={13} color={Colors.primary} />
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  // ── Running ───────────────────────────────────────────────────────────────
+
+  if (running) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <TopHeader
+          title="Validate"
+          leftIcon={
+            <View style={styles.headerIcon}>
+              <ShieldCheck size={18} color={Colors.white} weight="fill" />
+            </View>
+          }
+        />
+        <View style={styles.runningContainer}>
+          <View style={styles.runningCard}>
+            <ShieldCheck size={32} color={Colors.primary} weight="duotone" />
+            <Text style={styles.runningTitle}>Analysing network…</Text>
+            <Text style={styles.runningSubtitle}>{activeConfig.name}</Text>
+            <View style={{ marginTop: 20, width: '100%' }}>
+              <ValidatePhaseIndicator
+                phases={ALL_PHASES}
+                currentPhase={currentPhase}
+              />
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  // ── Results ───────────────────────────────────────────────────────────────
+
+  if (result) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <TopHeader
+          title="Validate"
+          leftIcon={
+            <View style={styles.headerIcon}>
+              <ShieldCheck size={18} color={Colors.white} weight="fill" />
+            </View>
+          }
+          rightActions={
+            <Pressable onPress={handleRun} style={styles.rerunBtn}>
+              <Text style={styles.rerunText}>Re-run</Text>
+            </Pressable>
+          }
+        />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Score ring */}
+          <View style={styles.scoreSection}>
+            <ValidationScoreRing
+              score={result.score}
+              label={scoreLabel}
+              sublabel={`${result.findings.length} finding${result.findings.length !== 1 ? 's' : ''} · ${result.phasesRan.length} phases`}
+            />
+          </View>
+
+          {/* Zero findings — clean */}
+          {result.findings.length === 0 && (
+            <View style={styles.cleanCard}>
+              <CheckCircle size={28} color={Colors.success} weight="fill" />
+              <Text style={styles.cleanTitle}>All checks passed</Text>
+              <Text style={styles.cleanSubtitle}>
+                This topology is ready for configuration export.
+              </Text>
+            </View>
+          )}
+
+          {/* Student mode: algorithm summary */}
+          {isStudent && result.phasesRan.length > 0 && (
+            <View style={styles.algorithmSummary}>
+              <View style={styles.algorithmSummaryHeader}>
+                <Info size={14} color={Colors.primary} />
+                <Text style={styles.algorithmSummaryTitle}>Algorithms run in this pass</Text>
+              </View>
+              <Text style={styles.algorithmSummaryText}>
+                BFS Reachability · VLSM Allocation · Tarjan DFS · Cycle Detection · ACL Engine · Prim's MST
+              </Text>
+            </View>
+          )}
+
+          {/* Findings grouped by severity */}
+          {SEVERITY_ORDER.map((sev) => (
+            <FindingGroup
+              key={sev}
+              severity={sev}
+              findings={groupedFindings[sev] ?? []}
+              onDrillDown={handleDrillDown}
+            />
+          ))}
+
+          {/* Export CTA if score is passing */}
+          {result.score >= 70 && (
+            <Pressable
+              style={({ pressed }) => [styles.exportCta, pressed && { opacity: 0.85 }]}
+              onPress={() => router.push('/(tabs)/export')}
+            >
+              <Text style={styles.exportCtaText}>Continue to Export</Text>
+              <ArrowRight size={16} color={Colors.primary} />
+            </Pressable>
+          )}
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+
+        <AlgorithmDrillDown
+          finding={drillDown}
+          visible={drillDownVisible}
+          onClose={() => setDrillDownVisible(false)}
+        />
+      </SafeAreaView>
+    )
+  }
+
+  // ── Entry state (config loaded, not run) ──────────────────────────────────
+
+  return (
+    <LinearGradient colors={['#EEF4FF', '#F5F8FF', '#FFFFFF']} style={styles.container}>
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+        <TopHeader
+          title="Validate"
+          leftIcon={
+            <View style={styles.headerIcon}>
+              <ShieldCheck size={18} color={Colors.white} weight="fill" />
+            </View>
+          }
+        />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Network summary */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>ACTIVE PROJECT</Text>
+          </View>
+          <NetworkSummaryCard />
+
+          {/* Five phases preview */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>VALIDATION PHASES</Text>
+          </View>
+          <View style={styles.phasesPreviewCard}>
+            {ALL_PHASES.map((phase, i) => (
+              <View key={phase} style={styles.phaseRow}>
+                <View style={styles.phaseNumber}>
+                  <Text style={styles.phaseNumberText}>{i + 1}</Text>
+                </View>
+                <Text style={styles.phaseRowLabel}>{PHASE_LABELS[phase]}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Primary CTA */}
+          <Pressable
+            style={({ pressed }) => [styles.runBtn, pressed && { opacity: 0.88 }]}
+            onPress={handleRun}
+          >
+            <ShieldCheck size={20} color={Colors.white} weight="fill" />
+            <Text style={styles.runBtnText}>Validate Network</Text>
+          </Pressable>
+
+          {/* Student mode hint */}
+          {isStudent && (
+            <View style={styles.studentHint}>
+              <Info size={13} color={Colors.textMuted} />
+              <Text style={styles.studentHintText}>
+                Tap any finding to see the algorithm that detected it.
+              </Text>
+            </View>
+          )}
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </SafeAreaView>
+    </LinearGradient>
+  )
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.surfaceAlt },
-  configName: {
+  container: { flex: 1 },
+  safe: { flex: 1, backgroundColor: Colors.background },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+
+  headerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── No config ────────────────────────────────────────────────────────────
+  noConfigContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    gap: 12,
+  },
+  noConfigTitle: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 20,
+    color: Colors.textPrimary,
+    marginTop: 8,
+  },
+  noConfigSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 21,
+  },
+  noConfigLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.white,
+  },
+  noConfigLinkText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: Colors.primary,
+  },
+
+  // ── Running ──────────────────────────────────────────────────────────────
+  runningContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  runningCard: {
+    width: '100%',
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: 32,
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.10,
+    shadowRadius: 20,
+    elevation: 6,
+  },
+  runningTitle: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 18,
+    color: Colors.textPrimary,
+    marginTop: 6,
+  },
+  runningSubtitle: {
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
     color: Colors.textMuted,
   },
-  configNameLink: {
-    color: Colors.primary,
-    fontFamily: 'Inter_500Medium',
+
+  // ── Entry state ──────────────────────────────────────────────────────────
+  sectionHeader: {
+    marginBottom: 10,
+    marginTop: 8,
   },
-  content: {
-    padding: 16,
-    gap: 12,
-    paddingBottom: 100,
-  },
-  ringContainer: {
-    paddingTop: 16,
-    alignItems: 'center',
-  },
-  passBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: Colors.successContainer,
-    borderRadius: 14,
-    padding: 16,
-  },
-  passBannerText: {
-    flex: 1,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: Colors.success,
-    lineHeight: 20,
-  },
-  warnBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    backgroundColor: Colors.warningContainer,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: `${Colors.warning}40`,
-  },
-  warnBannerText: {
-    flex: 1,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: Colors.warning,
-    lineHeight: 20,
-  },
-  cards: { gap: 12 },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    padding: 32,
-  },
-  emptyTitle: {
+  sectionLabel: {
     fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+    color: Colors.textMuted,
+    letterSpacing: 0.8,
+  },
+  summaryCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 10,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  summaryCardTitle: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 16,
+    color: Colors.textPrimary,
+  },
+  summaryMetrics: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  summaryMetric: { flex: 1, alignItems: 'center' },
+  summaryValue: {
+    fontFamily: 'Outfit_600SemiBold',
     fontSize: 18,
     color: Colors.textPrimary,
   },
-  emptySubtitle: {
+  summaryMetricLabel: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 14,
+    fontSize: 10,
     color: Colors.textMuted,
-    textAlign: 'center',
-    marginBottom: 8,
+    marginTop: 2,
   },
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 16,
+  summaryDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: Colors.border,
+  },
+  phasesPreviewCard: {
     backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 10,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  phaseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  phaseNumber: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  phaseNumberText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 12,
+    color: Colors.white,
+  },
+  phaseRowLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
+    color: Colors.textPrimary,
+  },
+  runBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
+    paddingVertical: 17,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  runBtnText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 16,
+    color: Colors.white,
+  },
+  studentHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: 10,
+    padding: 12,
+  },
+  studentHintText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textMuted,
+    flex: 1,
+  },
+
+  // ── Results ──────────────────────────────────────────────────────────────
+  rerunBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  rerunText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: Colors.primary,
+  },
+  scoreSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  cleanCard: {
+    backgroundColor: Colors.successContainer,
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: `${Colors.success}30`,
+  },
+  cleanTitle: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 17,
+    color: Colors.success,
+  },
+  cleanSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: Colors.success,
+    textAlign: 'center',
+    opacity: 0.8,
+  },
+  algorithmSummary: {
+    backgroundColor: `${Colors.primary}08`,
+    borderRadius: 12,
+    padding: 14,
+    gap: 6,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}20`,
+  },
+  algorithmSummaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  algorithmSummaryTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
+    color: Colors.primary,
+  },
+  algorithmSummaryText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  findingGroup: {
+    marginBottom: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+    backgroundColor: Colors.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  findingGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  findingGroupDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  findingGroupLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+    letterSpacing: 0.4,
+    flex: 1,
+  },
+  findingGroupCount: {
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    minWidth: 22,
+    alignItems: 'center',
+  },
+  findingGroupCountText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 11,
+  },
+  findingGroupBody: {
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+  },
+  exportCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.white,
+    marginTop: 8,
+  },
+  exportCtaText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: Colors.primary,
   },
 })

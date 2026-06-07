@@ -13,6 +13,7 @@
  */
 
 import React, { useState, useCallback } from 'react'
+import { usePreferencesStore } from '@/stores/usePreferencesStore'
 import {
   View,
   Text,
@@ -50,11 +51,11 @@ function genId() {
   return `req_${Date.now()}_${++_idCounter}`
 }
 
-const QUICK_NETWORKS = [
-  { label: '192.168.1.0/24', desc: '254 hosts' },
-  { label: '10.0.0.0/16', desc: '65,534 hosts' },
-  { label: '172.16.0.0/20', desc: '4,094 hosts' },
-  { label: '10.10.0.0/22', desc: '1,022 hosts' },
+// Legacy fallback presets — only shown when no CIDR history exists
+const DEFAULT_CIDRS = [
+  '192.168.1.0/24',
+  '10.0.0.0/16',
+  '172.16.0.0/20',
 ]
 
 const SUBNET_PALETTE = [
@@ -145,6 +146,7 @@ function DetailRow({
 function ResultCard({ result, index }: { result: SubnetResult; index: number }) {
   const [expanded, setExpanded] = useState(false)
   const color = SUBNET_PALETTE[index % SUBNET_PALETTE.length]
+  const highWastage = result.wastedHosts > result.requiredHosts
 
   return (
     <Pressable
@@ -176,6 +178,16 @@ function ResultCard({ result, index }: { result: SubnetResult; index: number }) 
         />
       </View>
 
+      {/* Wastage warning */}
+      {highWastage && (
+        <View style={sh.wastageRow}>
+          <WarningCircle size={12} color={Colors.warning} weight="fill" />
+          <Text style={sh.wastageText}>
+            {result.wastedHosts} wasted addresses — consider a smaller block
+          </Text>
+        </View>
+      )}
+
       {/* Expanded addressing details */}
       {expanded && (
         <View style={sh.resultDetails}>
@@ -189,7 +201,7 @@ function ResultCard({ result, index }: { result: SubnetResult; index: number }) 
           <DetailRow
             label="Wasted"
             value={`${result.wastedHosts} addresses`}
-            warn={result.wastedHosts > result.requiredHosts}
+            warn={highWastage}
           />
         </View>
       )}
@@ -234,6 +246,9 @@ type Tab = 'configure' | 'results'
 // ── Main Screen ───────────────────────────────────────────────────────────────
 
 export default function SubnetScreen() {
+  const { recentCidrs, addRecentCidr } = usePreferencesStore()
+  const cidrChips = recentCidrs.length > 0 ? recentCidrs : DEFAULT_CIDRS
+
   const [networkCidr, setNetworkCidr] = useState('192.168.1.0/24')
   const [cidrError, setCidrError] = useState('')
   const [requirements, setRequirements] = useState<SubnetRequirement[]>([
@@ -287,6 +302,9 @@ export default function SubnetScreen() {
       return
     }
 
+    // Save to CIDR history
+    addRecentCidr(networkCidr.trim())
+
     setCalculating(true)
     // Defer the heavy calculation to keep the UI thread responsive
     setTimeout(() => {
@@ -295,9 +313,9 @@ export default function SubnetScreen() {
       setActiveTab('results')
       setCalculating(false)
     }, 50)
-  }, [networkCidr, requirements])
+  }, [networkCidr, requirements, addRecentCidr])
 
-  const handleQuickNetwork = (cidr: string) => {
+  const handleSelectCidr = (cidr: string) => {
     setNetworkCidr(cidr)
     setCidrError('')
   }
@@ -378,33 +396,27 @@ export default function SubnetScreen() {
                 </View>
               ) : null}
 
-              {/* Quick-pick presets */}
-              <Text style={s.quickLabel}>Quick select</Text>
+              {/* CIDR history chips (recent CIDRs or defaults) */}
+              <Text style={s.quickLabel}>
+                {recentCidrs.length > 0 ? 'Recent networks' : 'Quick select'}
+              </Text>
               <View style={s.quickRow}>
-                {QUICK_NETWORKS.map((n) => (
+                {cidrChips.map((cidr) => (
                   <Pressable
-                    key={n.label}
+                    key={cidr}
                     style={[
                       s.quickChip,
-                      networkCidr === n.label && s.quickChipActive,
+                      networkCidr === cidr && s.quickChipActive,
                     ]}
-                    onPress={() => handleQuickNetwork(n.label)}
+                    onPress={() => handleSelectCidr(cidr)}
                   >
                     <Text
                       style={[
                         s.quickChipLabel,
-                        networkCidr === n.label && s.quickChipLabelActive,
+                        networkCidr === cidr && s.quickChipLabelActive,
                       ]}
                     >
-                      {n.label}
-                    </Text>
-                    <Text
-                      style={[
-                        s.quickChipDesc,
-                        networkCidr === n.label && { color: Colors.ice },
-                      ]}
-                    >
-                      {n.desc}
+                      {cidr}
                     </Text>
                   </Pressable>
                 ))}
@@ -960,4 +972,24 @@ const sh = StyleSheet.create({
     color: Colors.textPrimary,
   },
   mono: { fontFamily: 'Inter_500Medium' },
+
+  // ── Wastage warning ────────────────────────────────────────────────────
+  wastageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: Colors.warningContainer,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  wastageText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: Colors.warning,
+    flex: 1,
+  },
 })
+

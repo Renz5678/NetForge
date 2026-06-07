@@ -1,7 +1,7 @@
 import React from 'react'
 import { Tabs } from 'expo-router'
 import { StyleSheet, View } from 'react-native'
-import { House, Folders, ShieldCheck, Export, ChartPieSlice } from 'phosphor-react-native'
+import { TreeStructure, ShieldCheck, Export, ChartPieSlice } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
 import { useConfigStore } from '@/stores/useConfigStore'
 
@@ -21,7 +21,6 @@ function TabIconWithBadge({
 }
 
 export default function TabsLayout() {
-  const configsCount = useConfigStore((s) => s.configs.length)
   const hasActiveConfig = useConfigStore((s) => !!s.activeConfig)
 
   return (
@@ -35,37 +34,21 @@ export default function TabsLayout() {
         tabBarShowLabel: true,
       }}
     >
+      {/* ── Tab 1: Canvas ─────────────────────────────────────────────────── */}
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'Canvas',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconWrap}>
               {focused && <View style={styles.indicator} />}
-              <House size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
+              <TreeStructure size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
             </View>
           ),
         }}
       />
-      <Tabs.Screen
-        name="configs"
-        options={{
-          title: 'Configs',
-          tabBarBadge: configsCount > 0 ? configsCount : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: Colors.primary,
-            color: Colors.white,
-            fontSize: 10,
-            lineHeight: 14,
-          },
-          tabBarIcon: ({ color, focused }) => (
-            <View style={styles.iconWrap}>
-              {focused && <View style={styles.indicator} />}
-              <Folders size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
-            </View>
-          ),
-        }}
-      />
+
+      {/* ── Tab 2: Validate ───────────────────────────────────────────────── */}
       <Tabs.Screen
         name="validate"
         options={{
@@ -81,6 +64,8 @@ export default function TabsLayout() {
           ),
         }}
       />
+
+      {/* ── Tab 3: Subnet ─────────────────────────────────────────────────── */}
       <Tabs.Screen
         name="subnet"
         options={{
@@ -93,6 +78,8 @@ export default function TabsLayout() {
           ),
         }}
       />
+
+      {/* ── Tab 4: Export ─────────────────────────────────────────────────── */}
       <Tabs.Screen
         name="export"
         options={{
@@ -108,15 +95,14 @@ export default function TabsLayout() {
           ),
         }}
       />
+
       {/*
-       * The "profile" route is hidden from the tab bar.
+       * The "configs" and "profile" routes are hidden from the tab bar.
+       * Configs management is accessed via the ProjectSwitcherSheet in the Canvas header.
        * Profile settings are accessed via the avatar icon in TopHeader → ProfileSidebar.
-       * We keep href: null so Expo Router doesn't render it as a tab.
        */}
-      <Tabs.Screen
-        name="profile"
-        options={{ href: null }}
-      />
+      <Tabs.Screen name="configs" options={{ href: null }} />
+      <Tabs.Screen name="profile" options={{ href: null }} />
     </Tabs>
   )
 }
@@ -134,7 +120,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginBottom: 2,
   },
-  // Wrapper around each tab icon so the active indicator is positioned relative to it
   iconWrap: {
     alignItems: 'center',
     position: 'relative',
@@ -148,11 +133,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderRadius: 1,
   },
-  // Wrapper used by TabIconWithBadge to anchor the dot
   badgeWrap: {
     position: 'relative',
   },
-  // Amber dot shown on Validate / Export when no config is active
   dot: {
     position: 'absolute',
     top: -2,

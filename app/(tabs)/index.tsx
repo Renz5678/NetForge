@@ -1,123 +1,53 @@
-import React, { useEffect, useMemo } from 'react'
+/**
+ * app/(tabs)/index.tsx  — Canvas tab
+ *
+ * The entry point of the engineer workflow.
+ * Shows the active project with its metadata and provides one-tap navigation
+ * to the Skia canvas (config detail screen).
+ *
+ * Header project name taps open the ProjectSwitcherSheet.
+ * FAB creates a new project and navigates directly to canvas.
+ */
+
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   View,
   Text,
-  FlatList,
-  ScrollView,
   StyleSheet,
   Pressable,
+  ScrollView,
+  FlatList,
   Animated,
-  Image,
-  Modal,
-  ActivityIndicator,
-  Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import {
   Plus,
-  ArrowRight,
   TreeStructure,
+  CaretDown,
+  ShieldCheck,
+  Warning,
+  ArrowRight,
+  Buildings,
+  ChartPieSlice,
   Atom,
   Storefront,
-  Buildings,
   Globe,
   HardDrives,
   Broadcast,
-  DotsThreeVertical,
-  ShieldCheck,
-  ArrowsLeftRight,
-  Folders,
-  ChartPieSlice,
-  Info,
-  ShareNetwork,
 } from 'phosphor-react-native'
 import { LinearGradient } from 'expo-linear-gradient'
-import * as Sharing from 'expo-sharing'
-import { File, Paths } from 'expo-file-system'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useConfigStore } from '@/stores/useConfigStore'
-import { MetricTile } from '@/components/ui/MetricTile'
-import { ActivityItem } from '@/components/ui/ActivityItem'
 import { Colors } from '@/constants/colors'
-import { getGreeting, formatRelativeTime, pluralize } from '@/lib/formatters'
+import { formatRelativeTime, pluralize } from '@/lib/formatters'
 import { useHaptics } from '@/hooks/useHaptics'
 import { NETWORK_TEMPLATES } from '@/lib/templates'
-import { generateFullTopologyConfig } from '@/lib/configGenerator'
-import type { NetworkConfig } from '@/types'
 import { TopHeader } from '@/components/ui/TopHeader'
+import { ProjectSwitcherSheet } from '@/components/ui/ProjectSwitcherSheet'
+import type { NetworkConfig } from '@/types'
 
-// ─── Mini graph thumbnail ────────────────────────────────────────────────────
-
-function MiniGraphThumbnail({ config }: { config: NetworkConfig }) {
-  const depts = config.departments
-  const visibleDepts = depts.slice(0, 6)
-  const remaining = depts.length - 6
-
-  const getDotColor = (type?: string) => {
-    switch (type) {
-      case 'router':
-      case 'firewall':
-      case 'wan':
-        return Colors.primary
-      case 'switch':
-        return Colors.medium
-      case 'department':
-      default:
-        return Colors.pale
-    }
-  }
-
-  return (
-    <View style={thumb.container}>
-      {visibleDepts.map((d) => (
-        <View
-          key={d.id}
-          style={[thumb.dot, { backgroundColor: getDotColor(d.type) }]}
-        />
-      ))}
-      {remaining > 0 && (
-        <Text style={thumb.moreText}>+{remaining}</Text>
-      )}
-      {depts.length === 0 && (
-        <Text style={thumb.emptyText}>Empty</Text>
-      )}
-    </View>
-  )
-}
-
-// ─── Loading skeleton ────────────────────────────────────────────────────────
-
-function HomeSkeleton() {
-  const pulseAnim = React.useRef(new Animated.Value(0.4)).current
-
-  React.useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 0.85, duration: 700, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 0.4, duration: 700, useNativeDriver: true }),
-      ])
-    ).start()
-  }, [pulseAnim])
-
-  return (
-    <Animated.View style={{ opacity: pulseAnim }}>
-      <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, marginBottom: 20 }}>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <View key={i} style={{ flex: 1, height: 90, backgroundColor: Colors.border, borderRadius: 16 }} />
-        ))}
-      </View>
-      <View style={{ height: 20, width: 140, backgroundColor: Colors.border, marginHorizontal: 20, marginBottom: 12, borderRadius: 4 }} />
-      <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 20, marginBottom: 24 }}>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <View key={i} style={{ width: 160, height: 155, backgroundColor: Colors.border, borderRadius: 16 }} />
-        ))}
-      </View>
-    </Animated.View>
-  )
-}
-
-// ─── Template icons map ──────────────────────────────────────────────────────
+// ─── Template icon map ───────────────────────────────────────────────────────
 
 const TEMPLATE_ICONS: Record<string, React.ElementType> = {
   Storefront,
@@ -127,604 +57,434 @@ const TEMPLATE_ICONS: Record<string, React.ElementType> = {
   Broadcast,
 }
 
-// ─── Template card ───────────────────────────────────────────────────────────
+// ─── Mini Topology Thumbnail ─────────────────────────────────────────────────
 
-function TemplateCard({ template, onPress }: { template: typeof NETWORK_TEMPLATES[0], onPress: () => void }) {
-  const Icon = TEMPLATE_ICONS[template.iconName] || Atom
+function MiniTopologyThumbnail({ config }: { config: NetworkConfig }) {
+  const depts = config.departments
+  const visible = depts.slice(0, 8)
+  const remaining = depts.length - 8
+
+  const getDotColor = (type?: string) => {
+    switch (type) {
+      case 'router':
+      case 'firewall':
+      case 'wan':   return Colors.primary
+      case 'switch': return Colors.medium
+      default:       return Colors.pale
+    }
+  }
+
+  return (
+    <View style={thumb.container}>
+      {visible.map((d) => (
+        <View
+          key={d.id}
+          style={[thumb.dot, { backgroundColor: getDotColor(d.type) }]}
+        />
+      ))}
+      {remaining > 0 && (
+        <Text style={thumb.more}>+{remaining}</Text>
+      )}
+      {depts.length === 0 && (
+        <Text style={thumb.empty}>Empty</Text>
+      )}
+    </View>
+  )
+}
+
+const thumb = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+    padding: 8,
+    minHeight: 48,
+    alignContent: 'flex-start',
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  more: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 9,
+    color: Colors.textMuted,
+    alignSelf: 'center',
+  },
+  empty: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 10,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+  },
+})
+
+// ─── Active Project Hero ─────────────────────────────────────────────────────
+
+function ActiveProjectHero({
+  config,
+  onPress,
+}: {
+  config: NetworkConfig
+  onPress: () => void
+}) {
+  const nodeCount = config.departments.length
+  const linkCount = Math.floor(
+    config.departments.reduce((sum, d) => sum + d.peers.length, 0) / 2
+  )
+  const vlanCount = config.departments.filter((d) => d.vlanId !== undefined).length
+
   return (
     <Pressable
-      style={({ pressed }) => [styles.templateCard, pressed && { opacity: 0.82 }]}
+      style={({ pressed }) => [styles.heroCard, pressed && { opacity: 0.93 }]}
       onPress={onPress}
     >
-      <View style={styles.templateIconWrapper}>
-        <Icon size={22} color={Colors.primary} weight="duotone" />
+      {/* Status strip */}
+      <View style={styles.heroStatus}>
+        <View
+          style={[
+            styles.validityDot,
+            { backgroundColor: config.isValid ? Colors.success : Colors.error },
+          ]}
+        />
+        <Text style={styles.heroStatusText}>
+          {config.isValid ? 'Valid topology' : 'Needs attention'}
+        </Text>
+        <Text style={styles.heroTimestamp}>{formatRelativeTime(config.updatedAt)}</Text>
       </View>
-      <View style={styles.templateBody}>
-        <Text style={styles.templateName} numberOfLines={1}>{template.name}</Text>
-        <Text style={styles.templateDesc} numberOfLines={1}>{template.description}</Text>
+
+      {/* Name */}
+      <Text style={styles.heroName} numberOfLines={2}>{config.name}</Text>
+
+      {/* Mini topology */}
+      <MiniTopologyThumbnail config={config} />
+
+      {/* Metrics strip */}
+      <View style={styles.heroMetrics}>
+        <View style={styles.heroMetric}>
+          <Text style={styles.heroMetricValue}>{nodeCount}</Text>
+          <Text style={styles.heroMetricLabel}>Nodes</Text>
+        </View>
+        <View style={styles.heroMetricDivider} />
+        <View style={styles.heroMetric}>
+          <Text style={styles.heroMetricValue}>{linkCount}</Text>
+          <Text style={styles.heroMetricLabel}>Links</Text>
+        </View>
+        <View style={styles.heroMetricDivider} />
+        <View style={styles.heroMetric}>
+          <Text style={styles.heroMetricValue}>{vlanCount}</Text>
+          <Text style={styles.heroMetricLabel}>VLANs</Text>
+        </View>
       </View>
-      <ArrowRight size={14} color={Colors.pale} />
+
+      {/* CTA */}
+      <View style={styles.heroCta}>
+        <TreeStructure size={16} color={Colors.primary} weight="duotone" />
+        <Text style={styles.heroCtaText}>Open in Canvas</Text>
+        <ArrowRight size={14} color={Colors.primary} />
+      </View>
     </Pressable>
   )
 }
 
-// ─── Quick Action Button ─────────────────────────────────────────────────────
+// ─── Empty Project State ─────────────────────────────────────────────────────
 
-function QuickAction({ icon, label, onPress, isPrimary }: { icon: React.ReactNode; label: string; onPress: () => void; isPrimary?: boolean }) {
+function EmptyProjectState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <View style={styles.emptyCard}>
+      <TreeStructure size={44} color={Colors.primary} weight="duotone" />
+      <Text style={styles.emptyTitle}>No active project</Text>
+      <Text style={styles.emptySubtitle}>
+        Create a network topology or start from a scenario template below.
+      </Text>
+      <Pressable
+        style={({ pressed }) => [styles.emptyButton, pressed && { opacity: 0.85 }]}
+        onPress={onCreate}
+      >
+        <Plus size={16} color={Colors.white} weight="bold" />
+        <Text style={styles.emptyButtonText}>New Project</Text>
+      </Pressable>
+    </View>
+  )
+}
+
+// ─── Quick Actions ────────────────────────────────────────────────────────────
+
+function QuickAction({
+  icon,
+  label,
+  onPress,
+  isPrimary,
+}: {
+  icon: React.ReactNode
+  label: string
+  onPress: () => void
+  isPrimary?: boolean
+}) {
   return (
     <Pressable
       style={({ pressed }) => [styles.quickAction, isPrimary && styles.quickActionPrimary, pressed && { opacity: 0.8 }]}
       onPress={onPress}
     >
-      <View style={[styles.quickActionIcon, isPrimary ? styles.quickActionIconPrimary : styles.quickActionIconLight]}>{icon}</View>
-      <Text style={[styles.quickActionLabel, isPrimary && styles.quickActionLabelPrimary]}>{label}</Text>
+      <View style={[styles.quickActionIcon, isPrimary ? styles.quickActionIconPrimary : styles.quickActionIconLight]}>
+        {icon}
+      </View>
+      <Text style={[styles.quickActionLabel, isPrimary && styles.quickActionLabelPrimary]}>
+        {label}
+      </Text>
     </Pressable>
   )
 }
 
-// ─── Template Preview Modal ───────────────────────────────────────────────────
-function TemplatePreviewModal({
-  template,
-  userId,
-  visible,
-  onClose,
-}: {
-  template: typeof NETWORK_TEMPLATES[0] | null
-  userId: string
-  visible: boolean
-  onClose: () => void
-}) {
-  const [sharing, setSharing] = React.useState(false)
-  const router = useRouter()
+// ─── Loading Skeleton ─────────────────────────────────────────────────────────
 
-  if (!template) return null
-
-  const handleShare = async () => {
-    const { getTemplateConfig } = await import('@/lib/templates')
-    const config = getTemplateConfig(template.id, userId)
-    if (!config) return
-    const isSharingAvailable = await Sharing.isAvailableAsync()
-    if (!isSharingAvailable) {
-      Alert.alert('Sharing Unavailable', 'File sharing is not supported on this device.')
-      return
-    }
-    setSharing(true)
-    let file: InstanceType<typeof File> | null = null
-    try {
-      const configText = generateFullTopologyConfig(config)
-      const filename = `${config.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_cisco_ios.txt`
-      file = new File(Paths.cache, filename)
-      file.write(configText)
-      await Sharing.shareAsync(file.uri, {
-        mimeType: 'text/plain',
-        dialogTitle: `Export ${config.name} — Cisco IOS Config`,
-        UTI: 'public.plain-text',
-      })
-    } catch (err) {
-      Alert.alert('Export Failed', 'Could not generate or share the configuration file.')
-    } finally {
-      if (file && file.exists) {
-        try { file.delete() } catch {}
-      }
-      setSharing(false)
-    }
-  }
-
-  const handleViewTopology = async () => {
-    const { getTemplateConfig } = await import('@/lib/templates')
-    const config = getTemplateConfig(template.id, userId)
-    if (!config) return
-    // Temporarily inject into in-memory store only — no AsyncStorage write
-    useConfigStore.setState((state) => ({
-      configs: [config, ...state.configs.filter((c) => c.id !== config.id)],
-    }))
-    useConfigStore.getState().setActiveConfig(config.id)
-    onClose()
-    router.push(`/config/${config.id}`)
-  }
-
-  const Icon = TEMPLATE_ICONS[template.iconName] || Atom
+function Skeleton() {
+  const pulse = React.useRef(new Animated.Value(0.4)).current
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.85, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.4, duration: 700, useNativeDriver: true }),
+      ])
+    ).start()
+  }, [pulse])
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <SafeAreaView style={previewStyles.safe}>
-        {/* Header */}
-        <View style={previewStyles.header}>
-          <View style={previewStyles.iconWrap}>
-            <Icon size={22} color={Colors.primary} weight="duotone" />
-          </View>
-          <Text style={previewStyles.title} numberOfLines={1}>{template.name}</Text>
-          <Pressable onPress={onClose} hitSlop={12} style={previewStyles.closeBtn}>
-            <Text style={previewStyles.closeX}>{String.fromCharCode(215)}</Text>
-          </Pressable>
-        </View>
-
-        <ScrollView contentContainerStyle={previewStyles.body} showsVerticalScrollIndicator={false}>
-          {/* Read-only badge */}
-          <View style={previewStyles.readOnlyBadge}>
-            <Info size={12} color={Colors.textMuted} />
-            <Text style={previewStyles.readOnlyText}>Sample scenario — not saved to your configs</Text>
-          </View>
-
-          <Text style={previewStyles.desc}>{template.description}</Text>
-
-          <View style={previewStyles.section}>
-            <Text style={previewStyles.sectionLabel}>SCENARIO</Text>
-            <Text style={previewStyles.sectionText}>{template.scenario}</Text>
-          </View>
-
-          <View style={previewStyles.section}>
-            <Text style={previewStyles.sectionLabel}>HIGHLIGHTS</Text>
-            {template.highlights.map((h, i) => (
-              <View key={i} style={previewStyles.highlightRow}>
-                <View style={previewStyles.bullet} />
-                <Text style={previewStyles.highlightText}>{h}</Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={previewStyles.section}>
-            <Text style={previewStyles.sectionLabel}>TRY THIS</Text>
-            <Text style={previewStyles.algorithmTeaser}>{template.algorithmTeaser}</Text>
-          </View>
-        </ScrollView>
-
-        {/* Footer action */}
-        <View style={previewStyles.footer}>
-          <Pressable
-            style={previewStyles.viewBtn}
-            onPress={handleViewTopology}
-          >
-            <TreeStructure size={18} color={Colors.primary} />
-            <Text style={previewStyles.viewBtnText}>View Topology</Text>
-          </Pressable>
-          <Pressable
-            style={[previewStyles.shareBtn, sharing && { opacity: 0.6 }]}
-            onPress={handleShare}
-            disabled={sharing}
-          >
-            {sharing
-              ? <ActivityIndicator color={Colors.white} size="small" />
-              : <>
-                  <ShareNetwork size={18} color={Colors.white} />
-                  <Text style={previewStyles.shareBtnText}>Share Cisco Config</Text>
-                </>
-            }
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    </Modal>
+    <Animated.View style={{ opacity: pulse }}>
+      <View style={[styles.heroCard, { height: 220, justifyContent: 'center', alignItems: 'center' }]}>
+        <View style={{ height: 24, width: '60%', backgroundColor: Colors.border, borderRadius: 6 }} />
+      </View>
+    </Animated.View>
   )
 }
 
-const previewStyles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    gap: 10,
-    backgroundColor: Colors.white,
-  },
-  iconWrap: {
-    width: 36, height: 36, borderRadius: 10,
-    backgroundColor: Colors.ice,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  title: {
-    flex: 1,
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
-    color: Colors.textPrimary,
-  },
-  closeBtn: { padding: 4 },
-  closeX: { fontSize: 22, color: Colors.textMuted, lineHeight: 24 },
-  body: { padding: 20, gap: 16, paddingBottom: 40 },
-  readOnlyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: Colors.ice,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  readOnlyText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
-    color: Colors.textMuted,
-    flex: 1,
-  },
-  desc: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 15,
-    color: Colors.textSecondary,
-    lineHeight: 22,
-  },
-  section: { gap: 8 },
-  sectionLabel: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-    color: Colors.textMuted,
-    letterSpacing: 0.8,
-  },
-  sectionText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: Colors.textSecondary,
-    lineHeight: 20,
-  },
-  highlightRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  bullet: { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.primary },
-  highlightText: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  algorithmTeaser: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: Colors.textSecondary,
-    lineHeight: 20,
-    fontStyle: 'italic',
-  },
-  footer: {
-    padding: 16,
-    gap: 10,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    backgroundColor: Colors.white,
-  },
-  viewBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-    borderRadius: 12,
-    paddingVertical: 13,
-    backgroundColor: Colors.white,
-  },
-  viewBtnText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 15,
-    color: Colors.primary,
-  },
-  shareBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-  },
-  shareBtnText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 15,
-    color: Colors.white,
-  },
-})
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 
-// ─── Main Screen ─────────────────────────────────────────────────────────────
-
-export default function HomeScreen() {
+export default function CanvasScreen() {
   const router = useRouter()
   const haptics = useHaptics()
   const user = useAuthStore((s) => s.user)
-  const { configs, loadConfigs, loading, createConfig, setActiveConfig } = useConfigStore()
-  const [previewTemplate, setPreviewTemplate] = React.useState<typeof NETWORK_TEMPLATES[0] | null>(null)
+  const { configs, activeConfig, loading, loadConfigs, createConfig, setActiveConfig } = useConfigStore()
+  const [switcherOpen, setSwitcherOpen] = useState(false)
 
   useEffect(() => {
     if (user?.id) loadConfigs(user.id)
   }, [user?.id])
 
-  const userConfigs = useMemo(() => configs.filter(c => !c.id.startsWith('local_tpl_')), [configs])
-
-  const totalDepts = useMemo(
-    () => userConfigs.reduce((sum, c) => sum + c.departments.length, 0),
-    [userConfigs]
-  )
-  const totalVlans = useMemo(
-    () => userConfigs.reduce(
-      (sum, c) => sum + c.departments.filter((d) => d.vlanId !== undefined).length,
-      0
-    ),
-    [userConfigs]
-  )
-  const validConfigs = useMemo(
-    () => userConfigs.filter((c) => c.isValid === true).length,
-    [userConfigs]
+  const userConfigs = useMemo(
+    () => configs.filter((c) => !c.id.startsWith('local_tpl_')),
+    [configs]
   )
 
-  const recentConfigs = userConfigs.slice(0, 5)
-  const activityItems = [...userConfigs]
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, 5)
+  const recentOthers = useMemo(
+    () => userConfigs.filter((c) => c.id !== activeConfig?.id).slice(0, 4),
+    [userConfigs, activeConfig]
+  )
 
-  const firstName = user?.user_metadata?.full_name?.split(' ')[0] ?? 'there'
-  const greeting = getGreeting()
+  const handleCreate = async () => {
+    if (!user?.id) return
+    haptics.light()
+    const newConfig = await createConfig('New Network', user.id)
+    if (newConfig) {
+      haptics.medium()
+      setActiveConfig(newConfig.id)
+      router.push(`/config/${newConfig.id}`)
+    } else {
+      haptics.error()
+    }
+  }
+
+  const handleOpenCanvas = (config: typeof activeConfig) => {
+    if (!config) return
+    haptics.light()
+    setActiveConfig(config.id)
+    router.push(`/config/${config.id}`)
+  }
 
   return (
     <LinearGradient colors={['#EEF4FF', '#F5F8FF', '#FFFFFF']} style={styles.container}>
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-        <TopHeader />
+
+        {/* ── Header with project switcher trigger ── */}
+        <TopHeader
+          title={activeConfig?.name ?? 'NetForge'}
+          subtitle={
+            <Pressable
+              style={styles.switcherTrigger}
+              onPress={() => setSwitcherOpen(true)}
+              hitSlop={8}
+            >
+              <Text style={styles.switcherLabel}>
+                {userConfigs.length} {pluralize(userConfigs.length, 'project')}
+              </Text>
+              <CaretDown size={11} color={Colors.primary} weight="bold" />
+            </Pressable>
+          }
+        />
 
         <ScrollView
-          style={styles.scrollView}
+          style={styles.scroll}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
-
-          {/* ── Greeting ─────────────────────────────── */}
-          <View style={styles.greetingContainer}>
-            <Text style={styles.greeting}>{greeting}, {firstName}</Text>
-            <Text style={styles.greetingSub}>
-              {userConfigs.length === 0
-                ? 'Ready to design your first network?'
-                : `You have ${pluralize(userConfigs.length, 'configuration')}.`}
-            </Text>
+          {/* ── Active Project ─────────────────────── */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>ACTIVE PROJECT</Text>
           </View>
 
           {loading ? (
-            <HomeSkeleton />
+            <Skeleton />
+          ) : activeConfig ? (
+            <ActiveProjectHero
+              config={activeConfig}
+              onPress={() => handleOpenCanvas(activeConfig)}
+            />
           ) : (
+            <EmptyProjectState onCreate={handleCreate} />
+          )}
+
+          {/* ── Quick Actions ──────────────────────── */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Quick Actions</Text>
+          </View>
+          <View style={styles.quickActionsRow}>
+            <QuickAction
+              isPrimary
+              icon={<Plus size={20} color={Colors.white} weight="bold" />}
+              label="New Project"
+              onPress={handleCreate}
+            />
+            <QuickAction
+              icon={<ShieldCheck size={20} color={Colors.primary} weight="duotone" />}
+              label="Validate"
+              onPress={() => router.push('/(tabs)/validate')}
+            />
+            <QuickAction
+              icon={<ChartPieSlice size={20} color={Colors.primary} weight="duotone" />}
+              label="Subnet"
+              onPress={() => router.push('/(tabs)/subnet')}
+            />
+          </View>
+
+          {/* ── Recent Projects ────────────────────── */}
+          {recentOthers.length > 0 && (
             <>
-              {/* ── Metric Tiles ──────────────────────── */}
-              {userConfigs.length > 0 && (
-                <View style={styles.metricsRow}>
-                  <MetricTile
-                    label="Configs"
-                    value={userConfigs.length}
-                    icon={<Folders size={16} color={Colors.primary} weight="duotone" />}
-                  />
-                  <MetricTile
-                    label="Depts"
-                    value={totalDepts}
-                    icon={<Buildings size={16} color={Colors.medium} weight="duotone" />}
-                  />
-                  <MetricTile
-                    label="VLANs"
-                    value={totalVlans}
-                    icon={<ChartPieSlice size={16} color={Colors.soft} weight="duotone" />}
-                  />
-                </View>
-              )}
-
-              {/* ── Quick Actions ─────────────────────── */}
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Quick Actions</Text>
+                <Text style={styles.sectionTitle}>Recent Projects</Text>
+                <Pressable onPress={() => setSwitcherOpen(true)}>
+                  <Text style={styles.seeAll}>See all</Text>
+                </Pressable>
               </View>
-              <View style={styles.quickActionsRow}>
-                <QuickAction
-                  isPrimary
-                  icon={<Plus size={20} color={Colors.white} weight="bold" />}
-                  label="New Config"
-                  onPress={async () => {
-                    if (!user?.id) return
-                    haptics.light()
-                    const newConfig = await createConfig('New Network', user.id)
-                    if (newConfig) {
-                      haptics.medium()
-                      setActiveConfig(newConfig.id)
-                      router.push(`/config/${newConfig.id}`)
-                    } else {
-                      haptics.error()
-                    }
-                  }}
-                />
-                <QuickAction
-                  icon={<Folders size={20} color={Colors.primary} weight="duotone" />}
-                  label="My Configs"
-                  onPress={() => router.push('/(tabs)/configs')}
-                />
-                <QuickAction
-                  icon={<ShieldCheck size={20} color={Colors.primary} weight="duotone" />}
-                  label="Validate"
-                  onPress={() => router.push('/(tabs)/validate')}
-                />
-                <QuickAction
-                  icon={<ChartPieSlice size={20} color={Colors.primary} weight="duotone" />}
-                  label="Subnet"
-                  onPress={() => router.push('/(tabs)/subnet')}
-                />
-              </View>
-
-              {/* ── Recent Configs ────────────────────── */}
-              {userConfigs.length === 0 ? (
-                <View style={styles.emptyStateCard}>
-                  <TreeStructure size={44} color={Colors.primary} weight="duotone" />
-                  <Text style={styles.emptyStateTitle}>No configurations yet</Text>
-                  <Text style={styles.emptyStateSubtitle}>
-                    Create your first config or pick a template below to get started.
-                  </Text>
+              <FlatList
+                data={recentOthers}
+                keyExtractor={(item) => item.id}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.recentScroll}
+                renderItem={({ item }) => (
                   <Pressable
-                    style={styles.emptyStateButton}
-                    onPress={() => router.push('/(tabs)/configs')}
+                    style={({ pressed }) => [styles.recentCard, pressed && { opacity: 0.85 }]}
+                    onPress={() => handleOpenCanvas(item)}
                   >
-                    <Text style={styles.emptyStateButtonText}>Create your first config</Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>Recent Configs</Text>
-                    <Pressable onPress={() => router.push('/(tabs)/configs')}>
-                      <Text style={styles.viewAll}>View All</Text>
-                    </Pressable>
-                  </View>
-
-                  <FlatList
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    data={recentConfigs}
-                    keyExtractor={(item) => item.id}
-                    contentContainerStyle={styles.configScroll}
-                    renderItem={({ item }) => (
-                      <Pressable
-                        style={({ pressed }) => [styles.configCard, pressed && { opacity: 0.85 }]}
-                        onPress={() => router.push(`/config/${item.id}`)}
-                      >
-                        <View style={styles.cardHeader}>
-                          <View style={styles.cardBadge}>
-                            <Text style={styles.cardBadgeText} numberOfLines={1}>{item.name}</Text>
-                          </View>
-                          <DotsThreeVertical size={15} color={Colors.pale} weight="bold" />
-                        </View>
-
-                        <View style={styles.cardGraphic}>
-                          <MiniGraphThumbnail config={item} />
-                        </View>
-
-                        <View style={styles.cardFooter}>
-                          <View style={[styles.validityDot, { backgroundColor: item.isValid ? Colors.success : Colors.error }]} />
-                          <Text style={styles.configMeta}>
-                            {formatRelativeTime(item.updatedAt)}
-                          </Text>
-                        </View>
-                      </Pressable>
-                    )}
-                  />
-                </>
-              )}
-
-              {/* ── Activity Feed ─────────────────────── */}
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Recent Activity</Text>
-              </View>
-              <View style={styles.activityCard}>
-                {activityItems.length === 0 ? (
-                  <Text style={styles.emptyActivity}>
-                    No recent activity. Create a config to get started.
-                  </Text>
-                ) : (
-                  activityItems.map((config, index) => {
-                    const icons = [
-                      <ShieldCheck size={18} color={Colors.white} weight="fill" />,
-                      <ArrowsLeftRight size={18} color={Colors.white} weight="fill" />,
-                      <TreeStructure size={18} color={Colors.white} weight="fill" />,
-                    ]
-                    const desc = [
-                      `Validation successful\nConfig ${config.name} passed all safety checks.`,
-                      `Updated VLAN mapping\nProduction VLAN range extended.`,
-                      `Config updated\n${config.name} was modified.`,
-                    ]
-                    return (
-                      <ActivityItem
-                        key={config.id}
-                        icon={icons[index % icons.length]}
-                        description={desc[index % desc.length]}
-                        timestamp={config.updatedAt}
-                        showDivider={index < activityItems.length - 1}
+                    <View style={styles.recentCardHeader}>
+                      <Text style={styles.recentCardName} numberOfLines={1}>{item.name}</Text>
+                      <View
+                        style={[
+                          styles.recentValidityDot,
+                          { backgroundColor: item.isValid ? Colors.success : Colors.error },
+                        ]}
                       />
-                    )
-                  })
+                    </View>
+                    <MiniTopologyThumbnail config={item} />
+                    <Text style={styles.recentCardMeta}>{formatRelativeTime(item.updatedAt)}</Text>
+                  </Pressable>
                 )}
-              </View>
-
-              {/* ── Network Scenarios / Templates ──────── */}
-              <View style={styles.sectionHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Atom size={14} color={Colors.textMuted} />
-                  <Text style={styles.sectionLabel}>NETWORK SCENARIOS</Text>
-                </View>
-              </View>
-              <View style={styles.templateList}>
-                {NETWORK_TEMPLATES.map((template) => (
-                  <TemplateCard
-                    key={template.id}
-                    template={template}
-                    onPress={() => {
-                      haptics.light()
-                      setPreviewTemplate(template)
-                    }}
-                  />
-                ))}
-              </View>
+              />
             </>
           )}
+
+          {/* ── Network Scenarios ──────────────────── */}
+          <View style={styles.sectionHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Atom size={13} color={Colors.textMuted} />
+              <Text style={styles.sectionLabel}>SCENARIO TEMPLATES</Text>
+            </View>
+          </View>
+          <View style={styles.templateList}>
+            {NETWORK_TEMPLATES.map((template) => {
+              const Icon = TEMPLATE_ICONS[template.iconName] || Atom
+              return (
+                <Pressable
+                  key={template.id}
+                  style={({ pressed }) => [styles.templateRow, pressed && { opacity: 0.82 }]}
+                  onPress={() => {
+                    haptics.light()
+                    // Navigate to configs to preview (existing behaviour)
+                    router.push('/(tabs)/configs')
+                  }}
+                >
+                  <View style={styles.templateIcon}>
+                    <Icon size={18} color={Colors.primary} weight="duotone" />
+                  </View>
+                  <View style={styles.templateBody}>
+                    <Text style={styles.templateName} numberOfLines={1}>{template.name}</Text>
+                    <Text style={styles.templateDesc} numberOfLines={1}>{template.description}</Text>
+                  </View>
+                  <ArrowRight size={14} color={Colors.pale} />
+                </Pressable>
+              )
+            })}
+          </View>
         </ScrollView>
 
         {/* ── FAB ─────────────────────────────────── */}
         <Pressable
           style={({ pressed }) => [styles.fab, pressed && { opacity: 0.85 }]}
-          onPress={async () => {
-            if (!user?.id) return
-            haptics.light()
-            const newConfig = await createConfig('New Network', user.id)
-            if (newConfig) {
-              haptics.medium()
-              setActiveConfig(newConfig.id)
-              router.push(`/config/${newConfig.id}`)
-            } else {
-              haptics.error()
-            }
-          }}
+          onPress={handleCreate}
         >
           <Plus size={24} color={Colors.white} weight="bold" />
         </Pressable>
-        <TemplatePreviewModal
-          template={previewTemplate}
-          userId={user?.id ?? ''}
-          visible={!!previewTemplate}
-          onClose={() => setPreviewTemplate(null)}
+
+        {/* ── Project Switcher Sheet ───────────────── */}
+        <ProjectSwitcherSheet
+          visible={switcherOpen}
+          onClose={() => setSwitcherOpen(false)}
         />
       </SafeAreaView>
     </LinearGradient>
   )
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safe: { flex: 1 },
-  scrollView: { flex: 1 },
+  scroll: { flex: 1 },
   content: { paddingBottom: 110 },
 
-  // Greeting
-  greetingContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    marginBottom: 24,
-  },
-  greeting: {
-    fontFamily: 'Outfit_600SemiBold',
-    fontSize: 26,
-    color: Colors.textPrimary,
-    marginBottom: 4,
-  },
-  greetingSub: {
-    fontFamily: 'Outfit_400Regular',
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-
-  // Metrics
-  metricsRow: {
+  // Switcher trigger in header
+  switcherTrigger: {
     flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 20,
-    marginBottom: 24,
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 1,
+  },
+  switcherLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    color: Colors.primary,
   },
 
-  // Section header
+  // Section headers
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
+    marginTop: 24,
     marginBottom: 12,
-    marginTop: 8,
   },
   sectionTitle: {
     fontFamily: 'Outfit_600SemiBold',
@@ -737,10 +497,137 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     letterSpacing: 0.8,
   },
-  viewAll: {
+  seeAll: {
     fontFamily: 'Outfit_600SemiBold',
     fontSize: 13,
     color: Colors.primary,
+  },
+
+  // Hero card
+  heroCard: {
+    marginHorizontal: 20,
+    backgroundColor: Colors.white,
+    borderRadius: 18,
+    padding: 18,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  heroStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  validityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  heroStatusText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.textMuted,
+    flex: 1,
+  },
+  heroTimestamp: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  heroName: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 20,
+    color: Colors.textPrimary,
+    lineHeight: 26,
+  },
+  heroMetrics: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  heroMetric: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  heroMetricValue: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 20,
+    color: Colors.textPrimary,
+    lineHeight: 24,
+  },
+  heroMetricLabel: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 10,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  heroMetricDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: Colors.border,
+  },
+  heroCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  heroCtaText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: Colors.primary,
+    flex: 1,
+  },
+
+  // Empty state
+  emptyCard: {
+    marginHorizontal: 20,
+    backgroundColor: Colors.white,
+    borderRadius: 18,
+    padding: 32,
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+  },
+  emptyTitle: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 18,
+    color: Colors.textPrimary,
+    marginTop: 6,
+  },
+  emptySubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  emptyButtonText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: Colors.white,
   },
 
   // Quick actions
@@ -748,7 +635,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 20,
     gap: 10,
-    marginBottom: 28,
   },
   quickAction: {
     flex: 1,
@@ -792,181 +678,94 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
   },
 
-  // Config cards (horizontal scroll)
-  configScroll: {
+  // Recent projects scroll
+  recentScroll: {
     paddingHorizontal: 20,
     gap: 12,
-    paddingBottom: 8,
+    paddingBottom: 4,
   },
-  configCard: {
-    width: 158,
-    height: 155,
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 14,
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: Colors.ice,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardBadge: {
-    backgroundColor: `${Colors.primary}14`,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    maxWidth: 112,
-  },
-  cardBadgeText: {
-    fontFamily: 'Outfit_600SemiBold',
-    fontSize: 11,
-    color: Colors.primary,
-  },
-  cardGraphic: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  validityDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  configMeta: {
-    fontFamily: 'Outfit_400Regular',
-    fontSize: 11,
-    color: Colors.textMuted,
-  },
-
-  // Activity
-  activityCard: {
-    marginHorizontal: 20,
-    backgroundColor: Colors.white,
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: Colors.ice,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-    marginBottom: 8,
-  },
-  emptyActivity: {
-    fontFamily: 'Outfit_400Regular',
-    fontSize: 14,
-    color: Colors.textMuted,
-    paddingVertical: 16,
-    textAlign: 'center',
-  },
-
-  // Empty state
-  emptyStateCard: {
-    marginHorizontal: 20,
-    marginVertical: 12,
-    backgroundColor: Colors.white,
-    borderRadius: 20,
-    padding: 32,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.ice,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 14,
-    elevation: 2,
-    gap: 8,
-  },
-  emptyStateTitle: {
-    fontFamily: 'Outfit_600SemiBold',
-    fontSize: 18,
-    color: Colors.textPrimary,
-    marginTop: 12,
-  },
-  emptyStateSubtitle: {
-    fontFamily: 'Outfit_400Regular',
-    fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  emptyStateButton: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 10,
-  },
-  emptyStateButtonText: {
-    fontFamily: 'Outfit_600SemiBold',
-    fontSize: 14,
-    color: Colors.white,
-  },
-
-  // Templates
-  templateList: {
-    paddingHorizontal: 20,
-    gap: 10,
-    marginBottom: 40,
-  },
-  templateCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  recentCard: {
+    width: 160,
     backgroundColor: Colors.white,
     borderRadius: 14,
-    padding: 14,
-    gap: 14,
     borderWidth: 1,
-    borderColor: Colors.ice,
+    borderColor: Colors.border,
+    padding: 12,
+    gap: 6,
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
-    elevation: 1,
+    elevation: 2,
   },
-  templateIconWrapper: {
-    width: 42,
-    height: 42,
-    borderRadius: 11,
-    backgroundColor: `${Colors.primary}12`,
+  recentCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  recentCardName: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  recentValidityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  recentCardMeta: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 10,
+    color: Colors.textMuted,
+  },
+
+  // Templates
+  templateList: {
+    marginHorizontal: 20,
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+  },
+  templateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  templateIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: Colors.ice,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
   },
   templateBody: {
     flex: 1,
-    gap: 3,
   },
   templateName: {
-    fontFamily: 'Outfit_600SemiBold',
+    fontFamily: 'Inter_500Medium',
     fontSize: 14,
     color: Colors.textPrimary,
   },
   templateDesc: {
-    fontFamily: 'Outfit_400Regular',
-    fontSize: 12,
-    color: Colors.textSecondary,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: Colors.textMuted,
+    marginTop: 2,
   },
 
   // FAB
   fab: {
     position: 'absolute',
-    bottom: 24,
-    right: 24,
+    bottom: 90,
+    right: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -975,15 +774,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
     elevation: 8,
   },
-})
-
-const thumb = StyleSheet.create({
-  container: { flexDirection: 'row', gap: 5, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' },
-  dot: { width: 11, height: 11, borderRadius: 6 },
-  moreText: { fontFamily: 'Outfit_500Medium', fontSize: 11, color: Colors.textMuted },
-  emptyText: { fontFamily: 'Outfit_400Regular', fontSize: 11, color: Colors.textMuted },
 })

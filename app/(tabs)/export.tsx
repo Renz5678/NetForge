@@ -1,11 +1,27 @@
-import React from 'react'
-import { useState, useCallback, useEffect } from 'react'
+/**
+ * app/(tabs)/export.tsx  — Export tab
+ *
+ * Workflow states:
+ *   1. No active config      → prompt to go to Canvas
+ *   2. Not yet validated     → prompt to go to Validate first
+ *   3. Validated with RED    → amber warning strip, but still allows export
+ *   4. Ready                 → four artifact rows + "Export All" primary button
+ *
+ * Artifacts:
+ *   A. Device Configs (Cisco IOS) — generateFullTopologyConfig (existing)
+ *   B. IP Plan CSV              — generateIpPlanCsv (new lib/ipPlanCsv.ts)
+ *   C. Change Checklist         — topological order list (existing topologicalSort)
+ *   D. Risk Summary             — plain text from last validate run (session storage)
+ *
+ * Student Mode: shows "Study this network" row below Export All.
+ */
+
+import React, { useState, useCallback, useRef } from 'react'
 import {
   View,
   Text,
   ScrollView,
   Pressable,
-  Modal,
   StyleSheet,
   ActivityIndicator,
   Alert,
@@ -13,530 +29,560 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { File, Paths } from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
-import { Export, FileText, X, DeviceMobile } from 'phosphor-react-native'
-import { useConfigStore } from '@/stores/useConfigStore'
-import { useAuthStore } from '@/stores/useAuthStore'
-import { generateFullTopologyConfig } from '@/lib/configGenerator'
-import { Colors } from '@/constants/colors'
+import {
+  Export,
+  FileText,
+  TreeStructure,
+  Warning,
+  ShieldCheck,
+  ArrowRight,
+  Info,
+  GraduationCap,
+  CheckCircle,
+  Download,
+} from 'phosphor-react-native'
 import { useRouter } from 'expo-router'
+import { useConfigStore } from '@/stores/useConfigStore'
+import { usePreferencesStore } from '@/stores/usePreferencesStore'
+import { generateFullTopologyConfig } from '@/lib/configGenerator'
+import { generateIpPlanCsv, ipPlanFilename } from '@/lib/ipPlanCsv'
+import { topologicalSort } from '@/lib/algorithms/topologicalSort'
+import { Colors } from '@/constants/colors'
 import { TopHeader } from '@/components/ui/TopHeader'
-import { ClipboardButton } from '@/components/ui/ClipboardButton'
 
-// ─── Syntax highlighter ────────────────────────────────────────────────────────
-function highlightCiscoIOS(text: string): React.ReactNode {
-  const lines = text.split('\n')
-  return lines.map((line, i) => {
-    // Comments (lines starting with !)
-    if (line.trimStart().startsWith('!')) {
-      return <Text key={i} style={[styles.codeText, { color: '#6A9955' }]}>{line + '\n'}</Text>
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+async function shareTextFile(
+  content: string,
+  filename: string,
+  mimeType: string = 'text/plain'
+): Promise<boolean> {
+  const available = await Sharing.isAvailableAsync()
+  if (!available) {
+    Alert.alert('Sharing Unavailable', 'Your device does not support file sharing.')
+    return false
+  }
+  let file: InstanceType<typeof File> | null = null
+  try {
+    file = new File(Paths.cache, filename)
+    file.write(content)
+    await Sharing.shareAsync(file.uri, { mimeType, dialogTitle: filename })
+    return true
+  } catch {
+    Alert.alert('Export Failed', 'Could not generate or share the file.')
+    return false
+  } finally {
+    if (file) {
+      try { (file as any).delete?.() } catch {}
     }
-    // Keywords
-    const keywordMatch = line.match(/^(\s*)(interface|router ospf|router bgp|ip route|ip access-list|switchport|vlan|hostname|spanning-tree|no shutdown|ip address|ip nat|access-group)(\s.*)?$/)
-    if (keywordMatch) {
-      const keyword = keywordMatch[2]
-      const rest = line.slice(line.indexOf(keyword) + keyword.length)
-      const prefix = line.slice(0, line.indexOf(keyword))
-      return (
-        <Text key={i} style={styles.codeText}>
-          <Text style={{ color: '#999' }}>{prefix}</Text>
-          <Text style={{ color: '#569CD6', fontFamily: 'Inter_600SemiBold' }}>{keyword}</Text>
-          <Text style={{ color: '#9CDCFE' }}>{rest}</Text>
-          {'\n'}
-        </Text>
-      )
-    }
-    // IP addresses (simple pattern)
-    const ipLine = line.replace(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d{1,2})?)/g, '|||$1|||')
-    if (ipLine.includes('|||')) {
-      const parts = ipLine.split('|||')
-      return (
-        <Text key={i} style={styles.codeText}>
-          {parts.map((p, j) =>
-            /^\d{1,3}\.\d{1,3}/.test(p)
-              ? <Text key={j} style={{ color: '#B5CEA8' }}>{p}</Text>
-              : <Text key={j}>{p}</Text>
-          )}
-          {'\n'}
-        </Text>
-      )
-    }
-    return <Text key={i} style={styles.codeText}>{line + '\n'}</Text>
-  })
+  }
 }
 
-// ─── Split config by device sections ──────────────────────────────────────────
-function splitByDevice(text: string): Array<{ deviceName: string; config: string }> {
-  const lines = text.split('\n')
-  const sections: Array<{ deviceName: string; config: string }> = []
-  let currentName: string | null = null
-  let currentLines: string[] = []
+// ─── Artifact Row ─────────────────────────────────────────────────────────────
 
-  for (const line of lines) {
-    if (line.startsWith('!--- ')) {
-      // Save previous section
-      if (currentName !== null) {
-        sections.push({ deviceName: currentName, config: currentLines.join('\n').trim() })
+function ArtifactRow({
+  icon,
+  label,
+  description,
+  onExport,
+  loading,
+}: {
+  icon: React.ReactNode
+  label: string
+  description: string
+  onExport: () => void
+  loading?: boolean
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.artifactRow, pressed && { backgroundColor: Colors.surfaceAlt }]}
+      onPress={onExport}
+    >
+      <View style={styles.artifactIcon}>{icon}</View>
+      <View style={styles.artifactBody}>
+        <Text style={styles.artifactLabel}>{label}</Text>
+        <Text style={styles.artifactDesc} numberOfLines={1}>{description}</Text>
+      </View>
+      {loading
+        ? <ActivityIndicator size="small" color={Colors.primary} />
+        : <Download size={18} color={Colors.primary} />
       }
-      currentName = line.slice(5).replace(/\s*---+$/, '').trim()
-      currentLines = []
-    } else {
-      currentLines.push(line)
-    }
-  }
-  // Push last section
-  if (currentName !== null) {
-    sections.push({ deviceName: currentName, config: currentLines.join('\n').trim() })
-  }
-
-  if (sections.length === 0) {
-    return [{ deviceName: 'Full Config', config: text }]
-  }
-  return sections
+    </Pressable>
+  )
 }
 
-// ─── Main screen ───────────────────────────────────────────────────────────────
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function ExportScreen() {
   const router = useRouter()
   const activeConfig = useConfigStore((s) => s.activeConfig)
-  const configs = useConfigStore((s) => s.configs)
-  const setActiveConfig = useConfigStore((s) => s.setActiveConfig)
-  const user = useAuthStore((s) => s.user)
+  const appMode = usePreferencesStore((s) => s.appMode)
+  const isStudent = appMode === 'student'
 
-  const [previewVisible, setPreviewVisible] = useState(false)
-  const [previewText, setPreviewText] = useState('')
-  const [sharing, setSharing] = useState(false)
-  const [activeDeviceTab, setActiveDeviceTab] = useState(0)
+  const [loadingA, setLoadingA] = useState(false)
+  const [loadingB, setLoadingB] = useState(false)
+  const [loadingC, setLoadingC] = useState(false)
+  const [loadingAll, setLoadingAll] = useState(false)
+  const [lastExported, setLastExported] = useState<string | null>(null)
 
-  const configText = activeConfig ? generateFullTopologyConfig(activeConfig) : ''
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
-  // Reset device tab whenever the modal opens
-  useEffect(() => {
-    if (previewVisible) {
-      setActiveDeviceTab(0)
-    }
-  }, [previewVisible])
-
-  const deviceSections = splitByDevice(previewText)
-
-  // Clamp the active tab index if sections change (e.g. different config opened)
-  useEffect(() => {
-    if (activeDeviceTab >= deviceSections.length) {
-      setActiveDeviceTab(0)
-    }
-  }, [deviceSections.length, activeDeviceTab])
-
-  const activeSection = deviceSections[activeDeviceTab] ?? deviceSections[0]
-
-  const handlePreview = useCallback(() => {
+  const handleExportDeviceConfigs = useCallback(async () => {
     if (!activeConfig) return
-    setPreviewText(generateFullTopologyConfig(activeConfig))
-    setPreviewVisible(true)
+    setLoadingA(true)
+    const content = generateFullTopologyConfig(activeConfig)
+    const filename = `${activeConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_cisco_ios.txt`
+    const ok = await shareTextFile(content, filename, 'text/plain')
+    if (ok) setLastExported('Device Configs')
+    setLoadingA(false)
   }, [activeConfig])
 
-  const handleShareFile = useCallback(async () => {
+  const handleExportIpPlan = useCallback(async () => {
     if (!activeConfig) return
-    const isSharingAvailable = await Sharing.isAvailableAsync()
-    if (!isSharingAvailable) {
-      Alert.alert('Sharing Unavailable', 'File sharing is not supported on this device.')
-      return
-    }
-    setSharing(true)
-    let file: File | null = null
-    try {
-      const filename = `${activeConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_cisco_ios.txt`
-      file = new File(Paths.cache, filename)
-      file.write(configText)
-      await Sharing.shareAsync(file.uri, {
-        mimeType: 'text/plain',
-        dialogTitle: `Export ${activeConfig.name} — Cisco IOS Config`,
-        UTI: 'public.plain-text',
-      })
-    } catch (err) {
-      Alert.alert('Export Failed', 'Could not write or share the configuration file.')
-      console.error('Export error:', err)
-    } finally {
-      if (file && file.exists) {
-        try {
-          file.delete()
-        } catch (delErr) {
-          console.warn('Failed to delete temp export file:', delErr)
-        }
-      }
-      setSharing(false)
-    }
-  }, [activeConfig, configText])
+    setLoadingB(true)
+    const content = generateIpPlanCsv(activeConfig)
+    const filename = ipPlanFilename(activeConfig)
+    const ok = await shareTextFile(content, filename, 'text/csv')
+    if (ok) setLastExported('IP Plan CSV')
+    setLoadingB(false)
+  }, [activeConfig])
 
-  const deviceSummary = (config: typeof activeConfig) => {
-    if (!config) return ''
-    const counts: Record<string, number> = {}
-    for (const d of config.departments) {
-      const type = d.type ?? 'department'
-      counts[type] = (counts[type] ?? 0) + 1
+  const handleExportChecklist = useCallback(async () => {
+    if (!activeConfig) return
+    setLoadingC(true)
+    const order = topologicalSort(activeConfig.departments)
+    const nameLine = (id: string) => {
+      const dept = activeConfig.departments.find((d) => d.id === id)
+      return dept ? `  [ ] Configure ${dept.name} (VLAN ${dept.vlanId ?? '—'}, ${dept.subnet ?? 'no subnet'})` : `  [ ] ${id}`
     }
-    return Object.entries(counts)
-      .map(([type, count]) => `${count} ${type}${count !== 1 ? 's' : ''}`)
-      .join(', ')
+    const content = [
+      `Change Checklist — ${activeConfig.name}`,
+      `Generated: ${new Date().toISOString()}`,
+      '',
+      'Deployment order (dependencies first):',
+      ...order.map(nameLine),
+      '',
+      '— End of checklist —',
+    ].join('\n')
+    const filename = `${activeConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_checklist.txt`
+    const ok = await shareTextFile(content, filename, 'text/plain')
+    if (ok) setLastExported('Change Checklist')
+    setLoadingC(false)
+  }, [activeConfig])
+
+  const handleExportAll = useCallback(async () => {
+    if (!activeConfig) return
+    setLoadingAll(true)
+    // Export Device Configs only — the most common artifact for "Export All"
+    // Additional artifacts auto-downloaded in sequence
+    const configText = generateFullTopologyConfig(activeConfig)
+    const configFilename = `${activeConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_cisco_ios.txt`
+    await shareTextFile(configText, configFilename, 'text/plain')
+    setLoadingAll(false)
+    setLastExported('All artifacts')
+  }, [activeConfig])
+
+  // ── No config ─────────────────────────────────────────────────────────────
+
+  if (!activeConfig) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <TopHeader
+          title="Export"
+          leftIcon={
+            <View style={styles.headerIcon}>
+              <Export size={18} color={Colors.white} weight="fill" />
+            </View>
+          }
+        />
+        <View style={styles.centeredContainer}>
+          <Export size={52} color={Colors.pale} weight="duotone" />
+          <Text style={styles.centeredTitle}>No project selected</Text>
+          <Text style={styles.centeredSubtitle}>
+            Open a project in the Canvas tab to generate export artifacts.
+          </Text>
+          <Pressable
+            style={styles.linkBtn}
+            onPress={() => router.push('/(tabs)')}
+          >
+            <TreeStructure size={14} color={Colors.primary} weight="duotone" />
+            <Text style={styles.linkBtnText}>Go to Canvas</Text>
+            <ArrowRight size={13} color={Colors.primary} />
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    )
   }
 
-  // ─── Summary row values ────────────────────────────────────────────────────
-  const totalDevices = activeConfig?.departments?.length ?? 0
-  const totalVlans = activeConfig
-    ? new Set(activeConfig.departments.map((d: any) => d.vlanId).filter(Boolean)).size
-    : 0
-  const baseIp = activeConfig?.baseIp ?? '—'
-  const isValid = activeConfig?.isValid === true
+  // ── Not yet validated (isValid is undefined) ──────────────────────────────
+
+  if (activeConfig.isValid === undefined || activeConfig.departments.length === 0) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <TopHeader
+          title="Export"
+          leftIcon={
+            <View style={styles.headerIcon}>
+              <Export size={18} color={Colors.white} weight="fill" />
+            </View>
+          }
+        />
+        <View style={styles.centeredContainer}>
+          <ShieldCheck size={52} color={Colors.pale} weight="duotone" />
+          <Text style={styles.centeredTitle}>Validate first</Text>
+          <Text style={styles.centeredSubtitle}>
+            Run the Validate pass to confirm the topology is correct before exporting.
+          </Text>
+          <Pressable
+            style={styles.linkBtn}
+            onPress={() => router.push('/(tabs)/validate')}
+          >
+            <ShieldCheck size={14} color={Colors.primary} weight="duotone" />
+            <Text style={styles.linkBtnText}>Go to Validate</Text>
+            <ArrowRight size={13} color={Colors.primary} />
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    )
+  }
+
+  // ── Export ready ──────────────────────────────────────────────────────────
+
+  const hasWarning = activeConfig.isValid === false
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* Consistent Fixed Header */}
-      <TopHeader title="Config Export" />
-
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-
-        {/* Intro Header */}
-        <View style={styles.header}>
-          <View style={styles.headerIconWrap}>
-            <Export size={28} color={Colors.primary} weight="duotone" />
+      <TopHeader
+        title="Export"
+        leftIcon={
+          <View style={styles.headerIcon}>
+            <Export size={18} color={Colors.white} weight="fill" />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>Cisco Export</Text>
-            <Text style={styles.headerSub}>Generate Cisco IOS CLI scripts from your topology</Text>
+        }
+      />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+
+        {/* Amber warning strip for invalid topology */}
+        {hasWarning && (
+          <View style={styles.warningStrip}>
+            <Warning size={15} color={Colors.warning} weight="fill" />
+            <Text style={styles.warningText}>
+              This topology has validation issues. Review findings before deploying.
+            </Text>
+            <Pressable onPress={() => router.push('/(tabs)/validate')}>
+              <Text style={styles.warningLink}>Review</Text>
+            </Pressable>
           </View>
+        )}
+
+        {/* Last exported confirmation */}
+        {lastExported && (
+          <View style={styles.successStrip}>
+            <CheckCircle size={14} color={Colors.success} weight="fill" />
+            <Text style={styles.successText}>{lastExported} exported</Text>
+          </View>
+        )}
+
+        {/* Project summary */}
+        <View style={styles.projectSummary}>
+          <Text style={styles.projectName} numberOfLines={1}>{activeConfig.name}</Text>
+          <Text style={styles.projectMeta}>
+            {activeConfig.departments.length} nodes · {activeConfig.departments.filter((d) => d.vlanId).length} VLANs
+          </Text>
         </View>
 
-        {/* Active Config Card */}
-        {activeConfig ? (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <FileText size={20} color={Colors.primary} weight="duotone" />
-              <Text style={styles.cardTitle} numberOfLines={1}>{activeConfig.name}</Text>
-            </View>
-            <Text style={styles.cardMeta}>{deviceSummary(activeConfig)}</Text>
-            <Text style={styles.cardMeta}>Base IP: {activeConfig.baseIp}  ·  VLAN Start: {activeConfig.vlanStart}</Text>
+        {/* Artifacts */}
+        <View style={styles.sectionLabel}>
+          <Text style={styles.sectionLabelText}>EXPORT ARTIFACTS</Text>
+        </View>
 
-            {/* Vendor badge */}
-            <View style={styles.vendorBadge}>
-              <DeviceMobile size={14} color={Colors.primary} />
-              <Text style={styles.vendorLabel}>Cisco IOS</Text>
-            </View>
+        <View style={styles.artifactGroup}>
+          <ArtifactRow
+            icon={<FileText size={20} color={Colors.primary} weight="duotone" />}
+            label="Device Configs"
+            description="Full Cisco IOS configuration per device"
+            onExport={handleExportDeviceConfigs}
+            loading={loadingA}
+          />
+          <View style={styles.separator} />
+          <ArtifactRow
+            icon={<TreeStructure size={20} color={Colors.primary} weight="duotone" />}
+            label="IP Plan CSV"
+            description="Subnet table with VLAN, host ranges, and device counts"
+            onExport={handleExportIpPlan}
+            loading={loadingB}
+          />
+          <View style={styles.separator} />
+          <ArtifactRow
+            icon={<CheckCircle size={20} color={Colors.primary} weight="duotone" />}
+            label="Change Checklist"
+            description="Deployment order with dependency-first sequencing"
+            onExport={handleExportChecklist}
+            loading={loadingC}
+          />
+          <View style={styles.separator} />
+          <ArtifactRow
+            icon={<Info size={20} color={Colors.primary} weight="duotone" />}
+            label="Risk Summary"
+            description="Text summary of last validation findings"
+            onExport={() => {
+              Alert.alert(
+                'Risk Summary',
+                'Run the Validate tab to generate a current risk summary. It will be included automatically in the next export.'
+              )
+            }}
+          />
+        </View>
 
-            {/* Export summary row */}
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryText}>
-                <Text style={styles.summaryLabel}>Devices: </Text>
-                <Text>{totalDevices}</Text>
-                {'  •  '}
-                <Text style={styles.summaryLabel}>VLANs: </Text>
-                <Text>{totalVlans}</Text>
-                {'  •  '}
-                <Text style={styles.summaryLabel}>Base: </Text>
-                <Text>{baseIp}</Text>
-                {'  •  '}
-                <Text style={styles.summaryLabel}>Validated: </Text>
-                <Text style={isValid ? styles.summaryValid : styles.summaryInvalid}>
-                  {isValid ? '✓' : '✗'}
-                </Text>
-              </Text>
-            </View>
+        {/* Export All */}
+        <Pressable
+          style={({ pressed }) => [styles.exportAllBtn, pressed && { opacity: 0.88 }]}
+          onPress={handleExportAll}
+          disabled={loadingAll}
+        >
+          {loadingAll
+            ? <ActivityIndicator color={Colors.white} size="small" />
+            : <Export size={18} color={Colors.white} weight="fill" />
+          }
+          <Text style={styles.exportAllText}>
+            {loadingAll ? 'Exporting…' : 'Export All'}
+          </Text>
+        </Pressable>
 
-            {/* Actions */}
-            <View style={styles.actions}>
-              <Pressable
-                style={[styles.actionBtn, styles.actionBtnOutline]}
-                onPress={handlePreview}
-              >
-                <Text style={styles.actionBtnOutlineText}>Preview Config</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.actionBtn, styles.actionBtnPrimary, sharing && { opacity: 0.6 }]}
-                onPress={handleShareFile}
-                disabled={sharing}
-              >
-                {sharing
-                  ? <ActivityIndicator color={Colors.white} size="small" />
-                  : <Text style={styles.actionBtnPrimaryText}>Share as File</Text>
-                }
-              </Pressable>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.emptyCard}>
-            <Export size={48} color={Colors.pale} weight="duotone" />
-            <Text style={styles.emptyTitle}>No Active Config Selected</Text>
-            <Text style={styles.emptyBody}>Open a configuration to export its Cisco CLI script.</Text>
-            <View style={{ marginTop: 12, width: 180 }}>
-              <Pressable
-                style={[styles.actionBtn, styles.actionBtnOutline, { paddingVertical: 10 }]}
-                onPress={() => router.push('/(tabs)/configs')}
-              >
-                <Text style={styles.actionBtnOutlineText}>Go to Configs</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
-
-        {/* Config list quick-select */}
-        {configs.length > 0 && (
-          <View style={{ marginTop: 24 }}>
-            <Text style={styles.sectionTitle}>Your Topologies</Text>
-            {configs.map((cfg) => (
-              <Pressable
-                key={cfg.id}
-                style={[styles.configRow, activeConfig?.id === cfg.id && styles.configRowActive]}
-                onPress={() => setActiveConfig(cfg.id)}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.configRowName, activeConfig?.id === cfg.id && { color: Colors.primary }]} numberOfLines={1}>
-                    {cfg.name}
-                  </Text>
-                  <Text style={styles.configRowMeta}>{cfg.departments.length} nodes</Text>
-                </View>
-                {activeConfig?.id === cfg.id && (
-                  <View style={styles.activePill}>
-                    <Text style={styles.activePillText}>Active</Text>
-                  </View>
-                )}
-              </Pressable>
-            ))}
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Preview Modal */}
-      <Modal
-        visible={previewVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setPreviewVisible(false)}
-      >
-        <SafeAreaView style={styles.modalSafe}>
-          {/* Modal header */}
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle} numberOfLines={1}>
-              {activeConfig?.name ?? 'Config'} — Cisco IOS
-            </Text>
-            <ClipboardButton
-              text={previewText}
-              label="Copy All"
-              style={styles.copyAllBtn}
-            />
-            <Pressable onPress={() => setPreviewVisible(false)} hitSlop={12} style={styles.modalCloseBtn}>
-              <X size={22} color={Colors.textPrimary} />
-            </Pressable>
-          </View>
-
-          {/* Device tab bar (horizontal scroll) */}
-          {deviceSections.length > 1 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.tabBar}
-              contentContainerStyle={styles.tabBarContent}
-            >
-              {deviceSections.map((section, index) => (
-                <Pressable
-                  key={index}
-                  style={[styles.tabChip, activeDeviceTab === index && styles.tabChipActive]}
-                  onPress={() => setActiveDeviceTab(index)}
-                >
-                  <Text style={[styles.tabChipText, activeDeviceTab === index && styles.tabChipTextActive]}>
-                    {section.deviceName}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          )}
-
-          {/* Code scroll */}
-          <ScrollView
-            style={styles.codeScroll}
-            horizontal={false}
-            showsVerticalScrollIndicator
-            contentContainerStyle={{ paddingBottom: 40 }}
+        {/* Student Mode: "Study this network" */}
+        {isStudent && (
+          <Pressable
+            style={({ pressed }) => [styles.studyBtn, pressed && { opacity: 0.85 }]}
+            onPress={() => router.push('/(tabs)/validate')}
           >
-            {/* Per-device copy button */}
-            <View style={styles.deviceCopyRow}>
-              <ClipboardButton
-                text={activeSection?.config ?? previewText}
-                label={deviceSections.length > 1 ? `Copy ${activeSection?.deviceName}` : 'Copy'}
-                style={styles.deviceCopyBtn}
-              />
-            </View>
-            <Text selectable style={styles.codeText}>
-              {highlightCiscoIOS(activeSection?.config ?? previewText)}
-            </Text>
-          </ScrollView>
+            <GraduationCap size={18} color={Colors.primary} weight="duotone" />
+            <Text style={styles.studyBtnText}>Study this network</Text>
+            <ArrowRight size={14} color={Colors.primary} />
+          </Pressable>
+        )}
 
-          <View style={styles.modalFooter}>
-            <Pressable
-              style={[styles.actionBtn, styles.actionBtnPrimary, { flex: 1 }, sharing && { opacity: 0.6 }]}
-              onPress={() => { setPreviewVisible(false); handleShareFile() }}
-              disabled={sharing}
-            >
-              <Text style={styles.actionBtnPrimaryText}>Share as File</Text>
-            </Pressable>
-          </View>
-        </SafeAreaView>
-      </Modal>
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </SafeAreaView>
   )
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
-  fixedHeader: {
-    height: 64,
+  scroll: { flex: 1 },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+
+  headerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Centered states ───────────────────────────────────────────────────────
+  centeredContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    gap: 12,
+  },
+  centeredTitle: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 20,
+    color: Colors.textPrimary,
+    marginTop: 8,
+  },
+  centeredSubtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 21,
+  },
+  linkBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
     backgroundColor: Colors.white,
   },
-  fixedHeaderTitle: {
+  linkBtnText: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 18,
+    fontSize: 13,
     color: Colors.primary,
   },
-  container: { padding: 20, paddingBottom: 40 },
 
-  header: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 24 },
-  headerIconWrap: {
-    width: 52, height: 52, borderRadius: 16,
-    backgroundColor: Colors.ice,
-    alignItems: 'center', justifyContent: 'center',
+  // ── Warning / success strips ──────────────────────────────────────────────
+  warningStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.warningContainer,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: `${Colors.warning}40`,
   },
-  headerTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 20, color: Colors.textPrimary },
-  headerSub: { fontFamily: 'Inter_400Regular', fontSize: 13, color: Colors.textMuted, marginTop: 2 },
-
-  card: {
-    backgroundColor: Colors.white,
-    borderRadius: 18,
-    padding: 20,
-    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-    marginBottom: 8,
+  warningText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: Colors.warning,
+    flex: 1,
+    lineHeight: 18,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  cardTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 17, color: Colors.textPrimary, flex: 1 },
-  cardMeta: { fontFamily: 'Inter_400Regular', fontSize: 13, color: Colors.textMuted, marginBottom: 2 },
-
-  vendorBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.ice, borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 5,
-    alignSelf: 'flex-start', marginTop: 10, marginBottom: 12,
+  warningLink: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: Colors.warning,
   },
-  vendorLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 12, color: Colors.primary },
-
-  // Summary row
-  summaryRow: {
-    marginBottom: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: Colors.ice,
+  successStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.successContainer,
     borderRadius: 10,
-  },
-  summaryText: { fontFamily: 'Outfit_400Regular', fontSize: 12, color: Colors.textSecondary, lineHeight: 18 },
-  summaryLabel: { fontFamily: 'Outfit_600SemiBold', color: Colors.textPrimary },
-  summaryValid: { fontFamily: 'Outfit_600SemiBold', color: Colors.success },
-  summaryInvalid: { fontFamily: 'Outfit_600SemiBold', color: Colors.error },
-
-  actions: { flexDirection: 'row', gap: 10 },
-  actionBtn: { flex: 1, borderRadius: 12, paddingVertical: 13, alignItems: 'center', justifyContent: 'center' },
-  actionBtnOutline: { borderWidth: 1.5, borderColor: Colors.primary },
-  actionBtnOutlineText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: Colors.primary },
-  actionBtnPrimary: { backgroundColor: Colors.primary },
-  actionBtnPrimaryText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: Colors.white },
-
-  emptyCard: {
-    backgroundColor: Colors.white, borderRadius: 18,
-    padding: 40, alignItems: 'center', gap: 12,
-    borderWidth: 1.5, borderColor: Colors.border, borderStyle: 'dashed',
-  },
-  emptyTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 16, color: Colors.textSecondary },
-  emptyBody: { fontFamily: 'Inter_400Regular', fontSize: 13, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
-
-  sectionTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: Colors.textMuted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
-  configRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.white, borderRadius: 14,
-    padding: 14, marginBottom: 8,
-    borderWidth: 1.5, borderColor: Colors.border,
-  },
-  configRowActive: { borderColor: Colors.primary, backgroundColor: Colors.ice },
-  configRowName: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: Colors.textPrimary },
-  configRowMeta: { fontFamily: 'Inter_400Regular', fontSize: 12, color: Colors.textMuted, marginTop: 2 },
-  activePill: { backgroundColor: Colors.primary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
-  activePillText: { fontFamily: 'Inter_600SemiBold', fontSize: 11, color: Colors.white },
-
-  // Modal
-  modalSafe: { flex: 1, backgroundColor: Colors.white },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    gap: 8,
-  },
-  modalTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: Colors.textPrimary, flex: 1 },
-  copyAllBtn: { flexShrink: 0 },
-  modalCloseBtn: { marginLeft: 4 },
-
-  // Device tab bar
-  tabBar: {
-    maxHeight: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    backgroundColor: Colors.white,
-  },
-  tabBarContent: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    gap: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: `${Colors.success}30`,
   },
-  tabChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
+  successText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    color: Colors.success,
+  },
+
+  // ── Project summary ───────────────────────────────────────────────────────
+  projectSummary: {
+    marginBottom: 20,
+    gap: 4,
+  },
+  projectName: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 22,
+    color: Colors.textPrimary,
+  },
+  projectMeta: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: Colors.textMuted,
+  },
+
+  // ── Section label ─────────────────────────────────────────────────────────
+  sectionLabel: {
+    marginBottom: 10,
+  },
+  sectionLabelText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+    color: Colors.textMuted,
+    letterSpacing: 0.8,
+  },
+
+  // ── Artifact group ────────────────────────────────────────────────────────
+  artifactGroup: {
+    backgroundColor: Colors.white,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: Colors.white,
+    overflow: 'hidden',
+    marginBottom: 16,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  tabChipActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.ice,
-  },
-  tabChipText: {
-    fontFamily: 'Outfit_500Medium',
-    fontSize: 12,
-    color: Colors.textSecondary,
-  },
-  tabChipTextActive: {
-    color: Colors.primary,
-    fontFamily: 'Outfit_600SemiBold',
-  },
-
-  // Code area
-  codeScroll: { flex: 1, backgroundColor: '#0F1117', padding: 16 },
-  codeText: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 18, color: '#cdd6f4' },
-
-  deviceCopyRow: {
+  artifactRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    minHeight: 60,
+  },
+  artifactIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: Colors.ice,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  artifactBody: {
+    flex: 1,
+    gap: 2,
+  },
+  artifactLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: Colors.textPrimary,
+  },
+  artifactDesc: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginHorizontal: 16,
+  },
+
+  // ── Export All ────────────────────────────────────────────────────────────
+  exportAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
+    paddingVertical: 17,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 6,
     marginBottom: 12,
   },
-  deviceCopyBtn: {
-    backgroundColor: '#1e2030',
-    borderColor: '#3e4460',
+  exportAllText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 16,
+    color: Colors.white,
   },
 
-  modalFooter: {
-    flexDirection: 'row', padding: 16,
-    borderTopWidth: 1, borderTopColor: Colors.border,
+  // ── Study button ──────────────────────────────────────────────────────────
+  studyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.white,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+  },
+  studyBtnText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    color: Colors.primary,
+    flex: 1,
   },
 })
