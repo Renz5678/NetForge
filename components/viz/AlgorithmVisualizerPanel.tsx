@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors } from '@/constants/colors'
 import { useVisualizationStore, SPEED_MS } from '@/stores/useVisualizationStore'
 import { DataStructureDisplay } from './DataStructureDisplay'
+import { AlgorithmInsightSheet } from './AlgorithmInsightSheet'
 import { useHaptics } from '@/hooks/useHaptics'
 import type { Department } from '@/types'
 import {
@@ -130,7 +131,9 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
   const translateY = useRef(new Animated.Value(PANEL_HEIGHT)).current
   const [showHint, setShowHint] = useState(false)
   const [showTechDetails, setShowTechDetails] = useState(false)
+  const [showInsight, setShowInsight] = useState(false)
   const hasHapticsOnComplete = useRef(false)
+  const hasShownInsight = useRef(false)
 
   const isActive = useVisualizationStore((s) => s.isActive)
   const algorithm = useVisualizationStore((s) => s.algorithm)
@@ -208,12 +211,20 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
     } else {
       haptics.success()
     }
+
+    // Auto-show insight sheet 600ms after completion
+    if (!hasShownInsight.current) {
+      hasShownInsight.current = true
+      setTimeout(() => setShowInsight(true), 600)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCompleted, isActive, currentStep])
 
-  // Reset completion haptic flag when algorithm resets
+  // Reset completion haptic + insight flags when algorithm resets
   useEffect(() => {
     hasHapticsOnComplete.current = false
+    hasShownInsight.current = false
+    setShowInsight(false)
   }, [algorithm, isActive])
 
   // Reset hint state on step change
@@ -743,10 +754,11 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
   }
 
   return (
-    <Animated.View
-      style={[
-        styles.panel,
-        {
+    <>
+      <Animated.View
+        style={[
+          styles.panel,
+          {
           height: currentPanelHeight,
           transform: [{ translateY }],
           paddingBottom: insets.bottom + 8,
@@ -936,6 +948,23 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
         )
       )}
     </Animated.View>
+
+      <AlgorithmInsightSheet
+        visible={showInsight}
+        onClose={() => setShowInsight(false)}
+        onReplay={() => {
+          setIsExpanded(true)
+          setShowSteps(true)
+          setShowInsight(false)
+        }}
+        algorithm={algorithm as any}
+        currentStep={currentStep}
+        departments={departments}
+        sourceId={sourceId}
+        targetId={targetId}
+        totalSteps={totalSteps}
+      />
+    </>
   )
 }
 
