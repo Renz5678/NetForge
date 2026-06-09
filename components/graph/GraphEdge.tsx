@@ -79,6 +79,8 @@ type GraphEdgeProps = {
   vizEdgeState?: EdgeVizState
   parallelIndex?: number
   parallelTotal?: number
+  /** When true, renders a subtle backbone glow indicating this edge is in the Prim's MST */
+  isMstEdge?: boolean
 }
 
 /**
@@ -160,6 +162,7 @@ export function GraphEdgeComponent({
   vizEdgeState,
   parallelIndex = 0,
   parallelTotal = 1,
+  isMstEdge = false,
 }: GraphEdgeProps) {
   const source = nodes.find((n) => n.id === edge.source)
   const target = nodes.find((n) => n.id === edge.target)
@@ -257,6 +260,16 @@ export function GraphEdgeComponent({
 
   return (
     <>
+      {/* Passive MST backbone glow — visible only when not in viz mode */}
+      {isMstEdge && (
+        <Path
+          path={geom.linePath}
+          color="rgba(99,132,255,0.22)"
+          style="stroke"
+          strokeWidth={strokeWidth + 10}
+        />
+      )}
+
       {/* Glow halo beneath edge */}
       <Path
         path={geom.linePath}

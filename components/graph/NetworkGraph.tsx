@@ -43,7 +43,9 @@ import { Colors } from '@/constants/colors'
 import { useGraphLayout } from '@/hooks/useGraphLayout'
 import { findShortestPath } from '@/lib/algorithms/dijkstra'
 import { validateConnectivity } from '@/lib/algorithms/bfsValidator'
+import { detectCycles } from '@/lib/algorithms/cycleDetection'
 import { useVisualizationStore, SPEED_MS } from '@/stores/useVisualizationStore'
+import { useConfigStore } from '@/stores/useConfigStore'
 import { GraphNodeComponent, NODE_WIDTH, NODE_HEIGHT } from './GraphNode'
 import { GraphEdgeComponent } from './GraphEdge'
 import { PathOverlay } from './PathOverlay'
@@ -110,6 +112,15 @@ export function NetworkGraph({
   const [tooltipNodeId, setTooltipNodeId] = useState<string | null>(null)
   // Screen-space position captured at tap time (reading .value during render is not allowed)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number; nodeH: number } | null>(null)
+
+  // Passive algorithm outputs from config store
+  const activeMstEdges   = useConfigStore((s) => s.activeMstEdges)
+  const activeMstCost    = useConfigStore((s) => s.activeMstCost)
+  const activeHasCycle   = useConfigStore((s) => s.activeHasCycle)
+
+  // Persist last Dijkstra result for status bar replay
+  const lastPathHopsRef  = useRef<number | null>(null)
+  const lastPathNodesRef = useRef<[string, string] | null>(null)
 
   const [showCoachMark, setShowCoachMark] = useState(false)
   const [showAlgoHint, setShowAlgoHint] = useState(true)
@@ -291,8 +302,8 @@ export function NetworkGraph({
           return
         }
 
-        const srcId      = prev[0]
-        const tgtId      = tappedId
+        const srcId       = prev[0]
+        const tgtId       = tappedId
         const newSelected = [srcId, tgtId]
         selectedNodesRef.current = newSelected
         setSelectedNodes(newSelected)
@@ -301,9 +312,39 @@ export function NetworkGraph({
         setShowAlgoHint(false)
         setSessionHasSelectedTwoNodes(true)
 
+        // ── Cycle gate: if a loop exists, Dijkstra cannot safely route ────────
+        // DFS cycle detection is cheap (O(V+E)) and runs synchronously here.
+        const cycleCheck = detectCycles(departments)
+        if (cycleCheck.hasCycle) {
+          setPathResult(null)
+          onPathFound?.(null, newSelected)
+          setToast({
+            label: "Can't route — routing loop detected. Tap to see where.",
+            success: false,
+            onReplay: () => {
+              import('@/lib/algorithms/cycleDetectionVisualizer').then(
+                ({ buildCycleDetectionSteps }) => {
+                  const vizResult = buildCycleDetectionSteps(departments)
+                  startVisualization('cycleDetection', vizResult.steps, { showSteps: true })
+                  setIsExpanded(true)
+                  setShowSteps(true)
+                  setToast(null)
+                }
+              )
+            },
+          })
+          return
+        }
+
         const pathFindResult = findShortestPath(departments, srcId, tgtId)
         setPathResult(pathFindResult)
         onPathFound?.(pathFindResult, newSelected)
+
+        // Persist for status bar
+        if (pathFindResult) {
+          lastPathHopsRef.current  = pathFindResult.hops
+          lastPathNodesRef.current = [srcId, tgtId]
+        }
 
         // Auto-trigger Dijkstra viz
         import('@/lib/algorithms/dijkstraVisualizer').then(({ buildDijkstraSteps }) => {
@@ -322,9 +363,10 @@ export function NetworkGraph({
             const srcName = departments.find((d) => d.id === srcId)?.name ?? srcId
             const tgtName = departments.find((d) => d.id === tgtId)?.name ?? tgtId
             setTimeout(() => {
+              // Change 3: results-first copy, algorithm as attribution not headline
               const toastLabel = pathFindResult
-                ? `${srcName} → ${tgtName} · ${hops} hop${hops !== 1 ? 's' : ''} · Shortest Route Analysis`
-                : `No route found between ${srcName} and ${tgtName}`
+                ? `${hops} hop${hops !== 1 ? 's' : ''}: ${srcName} → ${tgtName}`
+                : `No route — ${srcName} and ${tgtName} are not connected`
               setToast({
                 label: toastLabel,
                 success: !!pathFindResult,
@@ -466,8 +508,59 @@ export function NetworkGraph({
     return currentStep.edgeStates[key] ?? currentStep.edgeStates[revKey]
   }
 
-  const mstEdges     = vizActive && vizAlgorithm === 'prims' ? (currentStep?.mstEdges ?? []) : []
+  const mstEdges      = vizActive && vizAlgorithm === 'prims' ? (currentStep?.mstEdges ?? []) : []
   const candidateEdge = vizActive && vizAlgorithm === 'prims' ? currentStep?.currentEdge : null
+
+  // Passive MST edge lookup — for always-on backbone highlight
+  const mstEdgeSet = useMemo(() => {
+    const s = new Set<string>()
+    for (const e of activeMstEdges) {
+      s.add([e.source, e.target].sort().join('|'))
+    }
+    return s
+  }, [activeMstEdges])
+
+  // Status bar tap handlers
+  const handleCycleStatusTap = useCallback(() => {
+    if (vizActive) return
+    import('@/lib/algorithms/cycleDetectionVisualizer').then(
+      ({ buildCycleDetectionSteps }) => {
+        const vizResult = buildCycleDetectionSteps(departments)
+        startVisualization('cycleDetection', vizResult.steps, { showSteps: true })
+        setIsExpanded(true)
+        setShowSteps(true)
+      }
+    )
+  }, [vizActive, departments, startVisualization, setIsExpanded, setShowSteps])
+
+  const handleMstStatusTap = useCallback(() => {
+    if (vizActive || activeMstEdges.length === 0) return
+    import('@/lib/algorithms/primsVisualizer').then(({ buildPrimsSteps }) => {
+      const rootNode =
+        departments.find((d) => d.type === 'wan') ??
+        departments.find((d) => d.type === 'router') ??
+        departments[0]
+      if (!rootNode) return
+      const vizResult = buildPrimsSteps(departments, rootNode.id)
+      startVisualization('prims', vizResult.steps, { rootId: rootNode.id, showSteps: true })
+      setIsExpanded(true)
+      setShowSteps(true)
+    })
+  }, [vizActive, activeMstEdges, departments, startVisualization, setIsExpanded, setShowSteps])
+
+  const handlePathStatusTap = useCallback(() => {
+    const nodes = lastPathNodesRef.current
+    if (vizActive || !nodes) return
+    const [srcId, tgtId] = nodes
+    import('@/lib/algorithms/dijkstraVisualizer').then(({ buildDijkstraSteps }) => {
+      const vizResult = buildDijkstraSteps(departments, srcId, tgtId)
+      if (vizResult.steps.length > 0) {
+        startVisualization('dijkstra', vizResult.steps, { sourceId: srcId, targetId: tgtId, showSteps: true })
+        setIsExpanded(true)
+        setShowSteps(true)
+      }
+    })
+  }, [vizActive, departments, startVisualization, setIsExpanded, setShowSteps])
 
   const failedNode      = failedNodeId ? departments.find((d) => d.id === failedNodeId) : null
   const isolatedNodeIds = failureSimResult?.isolatedNodes ?? []
@@ -604,6 +697,34 @@ export function NetworkGraph({
         </Pressable>
       )}
 
+      {/* Live-metrics status bar — always shows state of all 4 algorithms */}
+      {!vizActive && departments.length >= 2 && (
+        <View style={styles.statusBar}>
+          <Pressable onPress={handleCycleStatusTap} hitSlop={6}>
+            <Text style={[
+              styles.statusItem,
+              activeHasCycle ? styles.statusItemWarn : styles.statusItemOk,
+            ]}>
+              {activeHasCycle ? '⚠ Loop' : '● Acyclic'}
+            </Text>
+          </Pressable>
+          <Text style={styles.statusDot}>·</Text>
+          <Pressable onPress={handleMstStatusTap} hitSlop={6}>
+            <Text style={styles.statusItem}>
+              {activeMstEdges.length > 0 ? `Backbone ${activeMstCost}` : 'Backbone —'}
+            </Text>
+          </Pressable>
+          <Text style={styles.statusDot}>·</Text>
+          <Pressable onPress={handlePathStatusTap} hitSlop={6}>
+            <Text style={styles.statusItem}>
+              {lastPathHopsRef.current != null
+                ? `${lastPathHopsRef.current} hop${lastPathHopsRef.current !== 1 ? 's' : ''}`
+                : 'No path yet'}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
       {/* Hint banner */}
       {!vizActive && departments.length >= 2 && !sessionHasSelectedTwoNodes && showAlgoHint && (
         <View style={styles.hintBanner}>
@@ -643,6 +764,7 @@ export function NetworkGraph({
             {/* Edges */}
             {edges.map((edge, i) => {
               const { idx, total } = edgeParallelInfo[i] ?? { idx: 0, total: 1 }
+              const edgeKey = [edge.source, edge.target].sort().join('|')
               return (
                 <GraphEdgeComponent
                   key={`edge-${i}`}
@@ -653,6 +775,7 @@ export function NetworkGraph({
                   vizEdgeState={getEdgeVizState(edge.source, edge.target)}
                   parallelIndex={idx}
                   parallelTotal={total}
+                  isMstEdge={!vizActive && mstEdgeSet.has(edgeKey)}
                 />
               )
             })}
@@ -976,6 +1099,40 @@ const styles = StyleSheet.create({
   validationBadgeText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 11,
+  },
+
+  // ── Live-metrics status bar ────────────────────────────────────────────────
+  statusBar: {
+    position: 'absolute',
+    top: 36,
+    left: 12,
+    zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(13,17,23,0.72)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(99,132,255,0.12)',
+  },
+  statusItem: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 10,
+    color: 'rgba(147,197,253,0.75)',
+  },
+  statusItemOk: {
+    color: 'rgba(52,211,153,0.85)',
+  },
+  statusItemWarn: {
+    color: 'rgba(245,158,11,0.9)',
+  },
+  statusDot: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 10,
+    color: 'rgba(99,132,255,0.4)',
+    marginHorizontal: 1,
   },
 
   // ── Hint banner ────────────────────────────────────────────────────────────

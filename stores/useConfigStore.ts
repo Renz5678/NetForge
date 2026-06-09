@@ -5,9 +5,11 @@ import { supabase } from '@/lib/supabase'
 import { detectCycles } from '@/lib/algorithms/cycleDetection'
 import { topologicalSort } from '@/lib/algorithms/topologicalSort'
 import { allocateSubnets } from '@/lib/algorithms/subnetAllocator'
+import { findMinimumSpanningTree } from '@/lib/algorithms/prims'
+import { getEdgeWeight } from '@/lib/algorithms/edgeWeights'
 import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
 import { DepartmentSchema } from '@/lib/validators'
-import type { Department, NetworkConfig, NetworkInsight } from '@/types'
+import type { Department, NetworkConfig, NetworkInsight, MSTEdge } from '@/types'
 import { useAuthStore } from '@/stores/useAuthStore'
 
 const LOCAL_CONFIGS_KEY = '@netforge_configs'
@@ -27,6 +29,13 @@ type ConfigStore = {
   pendingOps: PendingOp[]
   syncing: boolean
   conflictConfig: { local: NetworkConfig; remote: NetworkConfig } | null
+
+  // ── Passive algorithm outputs (always up-to-date) ──────────────────────────
+  // Prim's MST — recomputed on every topology change
+  activeMstEdges: MSTEdge[]
+  activeMstCost: number
+  // Cycle detection result — recomputed on every topology change
+  activeHasCycle: boolean
 
   // Explain Mode: when true, algorithm decisions become visible
   explainMode: boolean
@@ -354,6 +363,10 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   pendingOps: [],
   syncing: false,
   conflictConfig: null,
+  // Passive algorithm outputs — empty until first runAllocation()
+  activeMstEdges: [],
+  activeMstCost: 0,
+  activeHasCycle: false,
   explainMode: false,
   insights: [],
 
@@ -662,7 +675,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
 
     if (departments.length === 0) {
       const result: NetworkConfig = { ...activeConfig, isValid: true }
-      set({ activeConfig: result })
+      set({ activeConfig: result, activeMstEdges: [], activeMstCost: 0, activeHasCycle: false })
       return result
     }
 
@@ -681,7 +694,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         departments: cleared,
         isValid: false,
       }
-      set({ activeConfig: result })
+      set({ activeConfig: result, activeMstEdges: [], activeMstCost: 0, activeHasCycle: true })
       return result
     }
 
@@ -701,11 +714,43 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         departments: allocated,
         isValid: true,
       }
-      set({ activeConfig: result })
+
+      // ── Prim's MST: compute backbone for passive overlay ───────────────────
+      // Pick the root: first WAN node, then first router, then first node.
+      const rootNode =
+        allocated.find((d) => d.type === 'wan') ??
+        allocated.find((d) => d.type === 'router') ??
+        allocated[0]
+
+      let activeMstEdges: MSTEdge[] = []
+      let activeMstCost = 0
+
+      if (rootNode && allocated.length >= 2) {
+        // Build edge-weight map keyed as "srcId→tgtId"
+        const edgeWeightMap = new Map<string, number>()
+        const idSet = new Set(allocated.map((d) => d.id))
+        for (const dept of allocated) {
+          for (const peerId of dept.peers) {
+            if (!idSet.has(peerId)) continue
+            const peer = allocated.find((d) => d.id === peerId)
+            if (!peer) continue
+            const w = getEdgeWeight(dept, peer)
+            edgeWeightMap.set(`${dept.id}→${peerId}`, w)
+            edgeWeightMap.set(`${peerId}→${dept.id}`, w)
+          }
+        }
+        const mstResult = findMinimumSpanningTree(allocated, rootNode.id, edgeWeightMap)
+        if (mstResult) {
+          activeMstEdges = mstResult.mstEdges
+          activeMstCost = mstResult.totalCost
+        }
+      }
+
+      set({ activeConfig: result, activeMstEdges, activeMstCost, activeHasCycle: false })
       return result
     } catch {
       const result: NetworkConfig = { ...activeConfig, isValid: false }
-      set({ activeConfig: result })
+      set({ activeConfig: result, activeMstEdges: [], activeMstCost: 0, activeHasCycle: false })
       return result
     }
   },

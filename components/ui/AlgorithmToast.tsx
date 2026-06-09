@@ -64,7 +64,7 @@ export function AlgorithmToast({ toast, onDismiss }: Props) {
       </Text>
       {toast.onReplay && (
         <Pressable onPress={toast.onReplay} style={styles.replayBtn} hitSlop={8}>
-          <Text style={[styles.replayText, { color: textColor }]}>Step-by-step ›</Text>
+          <Text style={[styles.replayText, { color: textColor }]}>via Dijkstra ›</Text>
         </Pressable>
       )}
     </Animated.View>
