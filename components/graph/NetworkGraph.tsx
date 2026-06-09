@@ -322,6 +322,7 @@ export function NetworkGraph({
           setToast({
             label: "Can't route — routing loop detected. Tap to see where.",
             success: false,
+            insight: 'Loops cause broadcast storms — packets circulate endlessly and can overload every device in the loop.',
             onReplay: () => {
               import('@/lib/algorithms/cycleDetectionVisualizer').then(
                 ({ buildCycleDetectionSteps }) => {
@@ -368,9 +369,13 @@ export function NetworkGraph({
               const toastLabel = pathFindResult
                 ? `${hops} hop${hops !== 1 ? 's' : ''}: ${srcName} → ${tgtName}`
                 : `No route — ${srcName} and ${tgtName} are not connected`
+              const toastInsight = pathFindResult
+                ? `Each hop is a device that processes your traffic. Fewer hops = lower latency.`
+                : `These two devices have no path between them. Check that all intermediate devices are peered correctly.`
               setToast({
                 label: toastLabel,
                 success: !!pathFindResult,
+                insight: toastInsight,
                 onReplay: () => {
                   startVisualization('dijkstra', steps, {
                     sourceId: srcId,
@@ -536,18 +541,26 @@ export function NetworkGraph({
 
   const handleMstStatusTap = useCallback(() => {
     if (vizActive || activeMstEdges.length === 0) return
-    import('@/lib/algorithms/primsVisualizer').then(({ buildPrimsSteps }) => {
-      const rootNode =
-        departments.find((d) => d.type === 'wan') ??
-        departments.find((d) => d.type === 'router') ??
-        departments[0]
-      if (!rootNode) return
-      const vizResult = buildPrimsSteps(departments, rootNode.id)
-      startVisualization('prims', vizResult.steps, { rootId: rootNode.id, showSteps: true })
-      setIsExpanded(true)
-      setShowSteps(true)
+    setToast({
+      label: `Backbone: ${activeMstEdges.length} cables, cost ${activeMstCost}`,
+      success: true,
+      insight: `This is the minimum cabling needed to keep all devices connected. Any extra cable is redundant for basic connectivity.`,
+      onReplay: () => {
+        import('@/lib/algorithms/primsVisualizer').then(({ buildPrimsSteps }) => {
+          const rootNode =
+            departments.find((d) => d.type === 'wan') ??
+            departments.find((d) => d.type === 'router') ??
+            departments[0]
+          if (!rootNode) return
+          const vizResult = buildPrimsSteps(departments, rootNode.id)
+          startVisualization('prims', vizResult.steps, { rootId: rootNode.id, showSteps: true })
+          setIsExpanded(true)
+          setShowSteps(true)
+          setToast(null)
+        })
+      },
     })
-  }, [vizActive, activeMstEdges, departments, startVisualization, setIsExpanded, setShowSteps])
+  }, [vizActive, activeMstEdges, activeMstCost, departments, startVisualization, setIsExpanded, setShowSteps, setToast])
 
   const handlePathStatusTap = useCallback(() => {
     const nodes = lastPathNodesRef.current

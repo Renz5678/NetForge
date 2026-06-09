@@ -42,7 +42,7 @@ import { useConfigStore } from '@/stores/useConfigStore'
 import { Colors } from '@/constants/colors'
 import { formatRelativeTime, pluralize } from '@/lib/formatters'
 import { useHaptics } from '@/hooks/useHaptics'
-import { NETWORK_TEMPLATES } from '@/lib/templates'
+import { NETWORK_TEMPLATES, getTemplateConfig } from '@/lib/templates'
 import { TopHeader } from '@/components/ui/TopHeader'
 import { ProjectSwitcherSheet } from '@/components/ui/ProjectSwitcherSheet'
 import type { NetworkConfig } from '@/types'
@@ -419,9 +419,19 @@ export default function CanvasScreen() {
                   key={template.id}
                   style={({ pressed }) => [styles.templateRow, pressed && { opacity: 0.82 }]}
                   onPress={() => {
+                    if (!user?.id) return
                     haptics.light()
-                    // Navigate to configs to preview (existing behaviour)
-                    router.push('/(tabs)/configs')
+                    const config = getTemplateConfig(template.id, user.id)
+                    if (!config) return
+                    // Inject the template config into the store in-memory if not already present
+                    const store = useConfigStore.getState()
+                    const existing = store.configs.find((c) => c.id === config.id)
+                    if (!existing) {
+                      useConfigStore.setState({ configs: [config, ...store.configs] })
+                    }
+                    store.setActiveConfig(config.id)
+                    haptics.medium()
+                    router.push(`/config/${config.id}`)
                   }}
                 >
                   <View style={styles.templateIcon}>

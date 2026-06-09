@@ -8,8 +8,9 @@ import { View, Text, StyleSheet, Pressable, Animated } from 'react-native'
 import { Colors } from '@/constants/colors'
 
 export type ToastData = {
-  label: string        // e.g. "Shortest path · Dijkstra · 3 hops"
+  label: string        // e.g. "3 hops: Staff → Servers"
   success: boolean     // green vs amber
+  insight?: string     // plain-language explanation of what the result means
   onReplay?: () => void // tap to open step-by-step panel
 }
 
@@ -54,18 +55,24 @@ export function AlgorithmToast({ toast, onDismiss }: Props) {
     <Animated.View
       style={[
         styles.container,
+        toast.insight && styles.containerWide,
         { backgroundColor: bg, borderColor: border, opacity, transform: [{ translateY }] },
       ]}
       pointerEvents="box-none"
     >
-      <View style={[styles.dot, { backgroundColor: dot }]} />
-      <Text style={[styles.label, { color: textColor }]} numberOfLines={1}>
-        {toast.label}
-      </Text>
-      {toast.onReplay && (
-        <Pressable onPress={toast.onReplay} style={styles.replayBtn} hitSlop={8}>
-          <Text style={[styles.replayText, { color: textColor }]}>via Dijkstra ›</Text>
-        </Pressable>
+      <View style={styles.topRow}>
+        <View style={[styles.dot, { backgroundColor: dot }]} />
+        <Text style={[styles.label, { color: textColor }]} numberOfLines={1}>
+          {toast.label}
+        </Text>
+        {toast.onReplay && (
+          <Pressable onPress={toast.onReplay} style={styles.replayBtn} hitSlop={8}>
+            <Text style={[styles.replayText, { color: textColor }]}>via Dijkstra ›</Text>
+          </Pressable>
+        )}
+      </View>
+      {toast.insight && (
+        <Text style={[styles.insight, { color: textColor }]}>{toast.insight}</Text>
       )}
     </Animated.View>
   )
@@ -76,12 +83,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 54,
     alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: 16,
     borderWidth: 1,
     zIndex: 20,
     shadowColor: '#000',
@@ -89,11 +93,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 8,
     elevation: 6,
+    maxWidth: 320,
+  },
+  containerWide: {
+    borderRadius: 14,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   dot: {
     width: 7,
     height: 7,
     borderRadius: 4,
+    flexShrink: 0,
   },
   label: {
     fontFamily: 'Inter_600SemiBold',
@@ -106,5 +120,13 @@ const styles = StyleSheet.create({
   replayText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 11,
+  },
+  insight: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    marginTop: 5,
+    paddingLeft: 15,   // aligns under label (past the dot)
+    opacity: 0.78,
+    lineHeight: 16,
   },
 })
