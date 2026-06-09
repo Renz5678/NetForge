@@ -64,7 +64,28 @@ export default function LoginScreen() {
     setLoading(false)
 
     if (error) {
-      setGeneralError(error)
+      // Friendly handling for unconfirmed email
+      const isUnconfirmed =
+        error.toLowerCase().includes('email not confirmed') ||
+        error.toLowerCase().includes('not confirmed')
+      if (isUnconfirmed) {
+        Alert.alert(
+          'Confirm your email first',
+          'We sent a confirmation link to ' + email.trim() + '. Open it, then come back and log in.',
+          [
+            {
+              text: 'Resend email',
+              onPress: async () => {
+                await supabase.auth.resend({ type: 'signup', email: email.trim() })
+                Alert.alert('Sent!', 'Check your inbox for a new confirmation link.')
+              },
+            },
+            { text: 'OK', style: 'cancel' },
+          ]
+        )
+      } else {
+        setGeneralError(error)
+      }
     } else {
       router.replace('/(tabs)')
     }
