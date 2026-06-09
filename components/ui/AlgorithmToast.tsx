@@ -11,6 +11,7 @@ export type ToastData = {
   label: string        // e.g. "3 hops: Staff → Servers"
   success: boolean     // green vs amber
   insight?: string     // plain-language explanation of what the result means
+  replayLabel?: string // e.g. "via Dijkstra ›", "via Prim's ›", "via DFS ›"
   onReplay?: () => void // tap to open step-by-step panel
 }
 
@@ -67,7 +68,9 @@ export function AlgorithmToast({ toast, onDismiss }: Props) {
         </Text>
         {toast.onReplay && (
           <Pressable onPress={toast.onReplay} style={styles.replayBtn} hitSlop={8}>
-            <Text style={[styles.replayText, { color: textColor }]}>via Dijkstra ›</Text>
+            <Text style={[styles.replayText, { color: textColor }]}>
+              {toast.replayLabel ?? 'See how ›'}
+            </Text>
           </Pressable>
         )}
       </View>

@@ -323,6 +323,7 @@ export function NetworkGraph({
             label: "Can't route — routing loop detected. Tap to see where.",
             success: false,
             insight: 'Loops cause broadcast storms — packets circulate endlessly and can overload every device in the loop.',
+            replayLabel: 'via DFS ›',
             onReplay: () => {
               import('@/lib/algorithms/cycleDetectionVisualizer').then(
                 ({ buildCycleDetectionSteps }) => {
@@ -376,6 +377,7 @@ export function NetworkGraph({
                 label: toastLabel,
                 success: !!pathFindResult,
                 insight: toastInsight,
+                replayLabel: 'via Dijkstra ›',
                 onReplay: () => {
                   startVisualization('dijkstra', steps, {
                     sourceId: srcId,
@@ -545,6 +547,7 @@ export function NetworkGraph({
       label: `Backbone: ${activeMstEdges.length} cables, cost ${activeMstCost}`,
       success: true,
       insight: `This is the minimum cabling needed to keep all devices connected. Any extra cable is redundant for basic connectivity.`,
+      replayLabel: "via Prim's ›",
       onReplay: () => {
         import('@/lib/algorithms/primsVisualizer').then(({ buildPrimsSteps }) => {
           const rootNode =
