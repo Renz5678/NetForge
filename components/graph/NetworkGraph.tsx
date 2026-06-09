@@ -63,6 +63,7 @@ import {
   Warning,
   X,
   Gauge,
+  ChartBar,
 } from 'phosphor-react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { CoachMark } from '@/components/ui/CoachMark'
@@ -687,52 +688,46 @@ export function NetworkGraph({
       {/* Algorithm toast */}
       <AlgorithmToast toast={toast} onDismiss={() => setToast(null)} />
 
-      {/* Validation badge */}
-      {hasBadge && !vizActive && selectedNodes.length === 0 && (
-        <Pressable
-          style={[styles.validationBadge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}
-          onPress={validationPassed ? undefined : onWarningPress}
-        >
-          <Text style={[styles.validationBadgeText, { color: badgeColor }]}>{badgeLabel}</Text>
-        </Pressable>
-      )}
-
-      {/* Live-metrics status bar — always shows state of all 4 algorithms */}
-      {!vizActive && departments.length >= 2 && selectedNodes.length === 0 && (
-        <View style={styles.statusBar}>
-          <Pressable onPress={handleCycleStatusTap} hitSlop={6}>
-            <Text style={[
-              styles.statusItem,
-              activeHasCycle ? styles.statusItemWarn : styles.statusItemOk,
-            ]}>
-              {activeHasCycle ? '⚠ Loop' : '● Acyclic'}
-            </Text>
-          </Pressable>
-          <Text style={styles.statusDot}>·</Text>
-          <Pressable onPress={handleMstStatusTap} hitSlop={6}>
-            <Text style={styles.statusItem}>
-              {activeMstEdges.length > 0 ? `Backbone ${activeMstCost}` : 'Backbone —'}
-            </Text>
-          </Pressable>
-          <Text style={styles.statusDot}>·</Text>
-          <Pressable onPress={handlePathStatusTap} hitSlop={6}>
-            <Text style={styles.statusItem}>
-              {lastPathHopsRef.current != null
-                ? `${lastPathHopsRef.current} hop${lastPathHopsRef.current !== 1 ? 's' : ''}`
-                : 'No path yet'}
-            </Text>
-          </Pressable>
+      {/* Merged validation + algorithm status pill */}
+      {!vizActive && departments.length > 0 && selectedNodes.length === 0 && (
+        <View style={styles.statusPill}>
+          {hasBadge && (
+            <Pressable onPress={validationPassed ? undefined : onWarningPress} hitSlop={4}>
+              <Text style={[styles.statusPillBadge, { color: badgeColor }]}>{badgeLabel}</Text>
+            </Pressable>
+          )}
+          {departments.length >= 2 && (
+            <>
+              {hasBadge && <View style={styles.statusPillDivider} />}
+              <Pressable onPress={handleCycleStatusTap} hitSlop={4}>
+                <Text style={[
+                  styles.statusPillItem,
+                  activeHasCycle ? styles.statusItemWarn : styles.statusItemOk,
+                ]}>
+                  {activeHasCycle ? '⚠ Loop' : '● Acyclic'}
+                </Text>
+              </Pressable>
+              <Text style={styles.statusDot}>·</Text>
+              <Pressable onPress={handleMstStatusTap} hitSlop={4}>
+                <Text style={styles.statusPillItem}>
+                  {activeMstEdges.length > 0 ? `MST ${activeMstCost}` : 'MST —'}
+                </Text>
+              </Pressable>
+              {lastPathHopsRef.current != null && (
+                <>
+                  <Text style={styles.statusDot}>·</Text>
+                  <Pressable onPress={handlePathStatusTap} hitSlop={4}>
+                    <Text style={styles.statusPillItem}>
+                      {lastPathHopsRef.current} hop{lastPathHopsRef.current !== 1 ? 's' : ''}
+                    </Text>
+                  </Pressable>
+                </>
+              )}
+            </>
+          )}
         </View>
       )}
 
-      {/* Hint banner */}
-      {!vizActive && departments.length >= 2 && !sessionHasSelectedTwoNodes && showAlgoHint && (
-        <View style={styles.hintBanner}>
-          <Text style={styles.hintBannerText}>
-            Tap two devices to find the best route, or run a full network analysis.
-          </Text>
-        </View>
-      )}
 
       {/* Canvas */}
       <GestureDetector gesture={composedGesture}>
@@ -849,56 +844,48 @@ export function NetworkGraph({
         />
       )}
 
-      {/* Floating pill zoom controls */}
-      <View style={styles.zoomControls}>
-        <Pressable
-          style={styles.zoomButton}
-          onPress={() => { scale.value = withSpring(Math.min(scale.value * 1.3, 5)) }}
-        >
-          <MagnifyingGlassPlus size={18} color="#E2E8F0" />
-        </Pressable>
-        <View style={styles.zoomDivider} />
-        <Pressable
-          style={styles.zoomButton}
-          onPress={() => { scale.value = withSpring(Math.max(scale.value / 1.3, 0.3)) }}
-        >
-          <MagnifyingGlassMinus size={18} color="#E2E8F0" />
-        </Pressable>
-        <View style={styles.zoomDivider} />
-        <Pressable
-          style={styles.zoomButton}
-          onPress={() => {
-            scale.value      = withSpring(1)
-            translateX.value = withSpring(0)
-            translateY.value = withSpring(0)
-          }}
-        >
-          <CornersOut size={18} color="#E2E8F0" />
-        </Pressable>
+      {/* Bottom controls — zoom + analyze, grouped bottom-right */}
+      <View style={styles.bottomControls}>
+        {!vizActive && onVisualize && (
+          <Pressable
+            style={styles.analyzeCompact}
+            onPress={() => {
+              setShowAlgoHint(false)
+              setSessionHasSelectedTwoNodes(true)
+              onVisualize()
+            }}
+          >
+            <ChartBar size={15} color={Colors.white} weight="fill" />
+            <Text style={styles.analyzeCompactText}>Analyze</Text>
+          </Pressable>
+        )}
+        <View style={styles.zoomControls}>
+          <Pressable
+            style={styles.zoomButton}
+            onPress={() => { scale.value = withSpring(Math.min(scale.value * 1.3, 5)) }}
+          >
+            <MagnifyingGlassPlus size={18} color="#E2E8F0" />
+          </Pressable>
+          <View style={styles.zoomDivider} />
+          <Pressable
+            style={styles.zoomButton}
+            onPress={() => { scale.value = withSpring(Math.max(scale.value / 1.3, 0.3)) }}
+          >
+            <MagnifyingGlassMinus size={18} color="#E2E8F0" />
+          </Pressable>
+          <View style={styles.zoomDivider} />
+          <Pressable
+            style={styles.zoomButton}
+            onPress={() => {
+              scale.value      = withSpring(1)
+              translateX.value = withSpring(0)
+              translateY.value = withSpring(0)
+            }}
+          >
+            <CornersOut size={18} color="#E2E8F0" />
+          </Pressable>
+        </View>
       </View>
-
-      {/* Analyze Network button */}
-      {!vizActive && departments.length >= 2 && onVisualize && (
-        <Pressable
-          style={({ pressed }) => [styles.exploreLink, pressed && { opacity: 0.85 }]}
-          onPress={() => {
-            setShowLegend(true)
-            setShowAlgoHint(false)
-            setSessionHasSelectedTwoNodes(true)
-            onVisualize()
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Analyze Network"
-        >
-          <Play size={16} color={Colors.white} weight="fill" />
-          <Text style={styles.exploreLinkText}>Analyze Network</Text>
-        </Pressable>
-      )}
-
-      {/* Explain Mode Toggle */}
-      {departments.length >= 1 && (
-        <ExplainModeToggle style={styles.explainToggle} />
-      )}
 
       <CoachMark
         visible={showCoachMark}
@@ -1085,39 +1072,33 @@ const styles = StyleSheet.create({
     color: '#93C5FD',
   },
 
-  // ── Validation badge ───────────────────────────────────────────────────────
-  validationBadge: {
+  // ── Merged validation + algorithm status pill ──────────────────────────────
+  statusPill: {
     position: 'absolute',
     top: 10,
     left: 12,
     zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(13,17,23,0.80)',
     borderRadius: 999,
-    paddingHorizontal: 12,
+    paddingHorizontal: 11,
     paddingVertical: 5,
     borderWidth: 1,
+    borderColor: 'rgba(99,132,255,0.15)',
   },
-  validationBadgeText: {
+  statusPillBadge: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 11,
   },
-
-  // ── Live-metrics status bar ────────────────────────────────────────────────
-  statusBar: {
-    position: 'absolute',
-    top: 36,
-    left: 12,
-    zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(13,17,23,0.72)',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(99,132,255,0.12)',
+  statusPillDivider: {
+    width: 1,
+    height: 10,
+    backgroundColor: 'rgba(99,132,255,0.25)',
+    marginHorizontal: 2,
   },
-  statusItem: {
+  statusPillItem: {
     fontFamily: 'Inter_500Medium',
     fontSize: 10,
     color: 'rgba(147,197,253,0.75)',
@@ -1135,30 +1116,38 @@ const styles = StyleSheet.create({
     marginHorizontal: 1,
   },
 
-  // ── Hint banner ────────────────────────────────────────────────────────────
-  hintBanner: {
+  // ── Bottom controls row (analyze + zoom) ──────────────────────────────────
+  bottomControls: {
     position: 'absolute',
-    top: 52,
-    alignSelf: 'center',
+    bottom: 28,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     zIndex: 10,
-    backgroundColor: 'rgba(13,17,23,0.88)',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(99,132,255,0.22)',
   },
-  hintBannerText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-    color: '#93C5FD',
+  analyzeCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  analyzeCompactText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: Colors.white,
   },
 
-  // ── Floating pill zoom controls ────────────────────────────────────────────
+  // ── Zoom controls pill ─────────────────────────────────────────────────────
   zoomControls: {
-    position: 'absolute',
-    bottom: 100,
-    right: 16,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(13,17,23,0.88)',
@@ -1166,7 +1155,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(99,132,255,0.18)',
     overflow: 'hidden',
-    zIndex: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
@@ -1183,32 +1171,6 @@ const styles = StyleSheet.create({
     width: 1,
     height: 24,
     backgroundColor: 'rgba(99,132,255,0.18)',
-  },
-
-  // ── Analyze Network button ─────────────────────────────────────────────────
-  exploreLink: {
-    position: 'absolute',
-    bottom: 28,
-    left: 16,
-    zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    minHeight: 44,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  exploreLinkText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
-    color: Colors.white,
   },
 
   // ── Explain toggle ─────────────────────────────────────────────────────────

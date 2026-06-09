@@ -253,10 +253,10 @@ export function GraphEdgeComponent({
   const weightText = String(edgeWeight)
   const weightW    = weightFont.measureText(weightText).width
 
-  // Link type label (shown when NOT in viz mode and NOT showing port labels)
-  const showLinkLabel = !vizActive && !showPorts && linkType !== 'access'
-  const linkLabelText = LINK_LABEL[linkType] ?? ''
-  const linkLabelW    = linkTypeFont ? linkTypeFont.measureText(linkLabelText).width : 0
+  // Link type label intentionally hidden — edge thickness + color already communicates type
+  const showLinkLabel = false
+  const linkLabelText = ''
+  const linkLabelW    = 0
 
   return (
     <>
@@ -264,9 +264,9 @@ export function GraphEdgeComponent({
       {isMstEdge && (
         <Path
           path={geom.linePath}
-          color="rgba(99,132,255,0.22)"
+          color="rgba(99,132,255,0.14)"
           style="stroke"
-          strokeWidth={strokeWidth + 10}
+          strokeWidth={strokeWidth + 5}
         />
       )}
 
