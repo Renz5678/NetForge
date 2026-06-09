@@ -53,22 +53,22 @@ type Props = {
 
 function algorithmLabel(alg: Algorithm): string {
   switch (alg) {
-    case 'dijkstra':   return "Dijkstra's Shortest Path"
-    case 'aStar':      return 'A* Heuristic Search'
-    case 'prims':      return "Prim's Minimum Spanning Tree"
-    case 'cycleDetection':   return 'DFS Cycle Detection'
-    case 'topologicalSort':  return 'Topological Sort'
-    default: return alg
+    case 'dijkstra':
+    case 'aStar':          return 'Shortest Route'
+    case 'prims':          return 'Minimum Cabling'
+    case 'cycleDetection': return 'Loop Check'
+    case 'topologicalSort': return 'Startup Order'
+    default: return 'Network Analysis'
   }
 }
 
 function phaseTag(alg: Algorithm): string {
   switch (alg) {
     case 'dijkstra':
-    case 'aStar':             return 'ROUTING'
-    case 'prims':             return 'CABLING'
-    case 'cycleDetection':    return 'CORRECTNESS'
-    case 'topologicalSort':   return 'SEQUENCING'
+    case 'aStar':          return 'ROUTING'
+    case 'prims':          return 'CABLING'
+    case 'cycleDetection': return 'HEALTH'
+    case 'topologicalSort': return 'STARTUP'
     default: return 'ANALYSIS'
   }
 }
@@ -251,11 +251,10 @@ function DijkstraContent({
       {showTech && (
         <View style={styles.techCard}>
           <Text style={styles.techText}>
-            Algorithm: Dijkstra's SPF (Shortest Path First){'\n'}
-            Total steps: {totalSteps}{'\n'}
-            Nodes evaluated: {settled}{'\n'}
-            Complexity: O(E log V) with a binary min-heap priority queue{'\n'}
-            Each edge relaxation updates a tentative distance if a shorter route is found.
+            {'Method: lowest-cost graph traversal\n'}
+            {'Total steps: '}{totalSteps}{'\n'}
+            {'Nodes checked: '}{settled}{'\n'}
+            {'Each link is evaluated only once — the cheapest path to each device is locked in before moving forward.'}
           </Text>
         </View>
       )}
@@ -343,11 +342,9 @@ function PrimsContent({
       {showTech && (
         <View style={styles.techCard}>
           <Text style={styles.techText}>
-            Algorithm: Prim's Minimum Spanning Tree{'\n'}
-            Total steps: {totalSteps}{'\n'}
-            MST cost: {cost} | MST edges: {edgeCount}{'\n'}
-            Complexity: O(E log V) with a binary min-heap{'\n'}
-            At each step, the cheapest edge crossing from the visited set to an unvisited node is added.
+            {'Method: minimum spanning tree from a starting node\n'}
+            {'MST cost: '}{cost}{' | MST cables: '}{edgeCount}{'\n'}
+            {'At each step, the cheapest link crossing from the connected set to an unconnected device is chosen.'}
           </Text>
         </View>
       )}
@@ -424,10 +421,9 @@ function CycleContent({
       {showTech && (
         <View style={styles.techCard}>
           <Text style={styles.techText}>
-            Algorithm: DFS with node colouring (white / gray / black){'\n'}
-            Total steps: {totalSteps}{'\n'}
-            A back-edge — an edge from a gray node to another gray ancestor — indicates a cycle.{'\n'}
-            Complexity: O(V + E)
+            {'Method: depth-first path tracing with state marking\n'}
+            {'Total steps: '}{totalSteps}{'\n'}
+            {'A loop is confirmed when a path trace reaches a device that is already being traced in the current session.'}
           </Text>
         </View>
       )}
@@ -509,10 +505,9 @@ function TopoContent({
       {showTech && (
         <View style={styles.techCard}>
           <Text style={styles.techText}>
-            Algorithm: Kahn's Topological Sort{'\n'}
-            Total steps: {totalSteps}{'\n'}
-            Nodes with in-degree 0 are enqueued first, then their outgoing edges are removed and the process repeats.{'\n'}
-            Complexity: O(V + E)
+            {'Method: dependency-order traversal\n'}
+            {'Total steps: '}{totalSteps}{'\n'}
+            {'Devices with no pending dependencies are started first. Their removal unlocks the next tier, and the process repeats until all devices are ordered.'}
           </Text>
         </View>
       )}

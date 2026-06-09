@@ -234,6 +234,25 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
 
   if (!isActive || !algorithm) return null
 
+  // Shared sheet element — rendered in ALL return paths that can follow completion
+  const insightSheetEl = (
+    <AlgorithmInsightSheet
+      visible={showInsight}
+      onClose={() => setShowInsight(false)}
+      onReplay={() => {
+        setIsExpanded(true)
+        setShowSteps(true)
+        setShowInsight(false)
+      }}
+      algorithm={algorithm as any}
+      currentStep={currentStep}
+      departments={departments}
+      sourceId={sourceId}
+      targetId={targetId}
+      totalSteps={totalSteps}
+    />
+  )
+
   // ── Pathfinding Comparison — static result card (no step animation) ──────────
   if (algorithm === 'pathfindingComparison' && comparisonResult) {
     const srcName = departments.find((d) => d.id === comparisonResult.sourceId)?.name ?? comparisonResult.sourceId
@@ -250,11 +269,12 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
     const getName = (id: string) => departments.find((d) => d.id === id)?.name ?? id
 
     return (
-      <Animated.View
-        style={[
-          styles.comparisonPanel,
-          { transform: [{ translateY }], paddingBottom: insets.bottom + 8 },
-        ]}
+      <>
+        <Animated.View
+          style={[
+            styles.comparisonPanel,
+            { transform: [{ translateY }], paddingBottom: insets.bottom + 8 },
+          ]}
       >
         {/* Header */}
         <View style={styles.comparisonHeader}>
@@ -356,7 +376,9 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
             )}
           </View>
         </View>
-      </Animated.View>
+        </Animated.View>
+        {insightSheetEl}
+      </>
     )
   }
 
@@ -370,14 +392,15 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
   // Render a minimal floating bar if showSteps is disabled
   if (!showSteps) {
     return (
-      <Animated.View
-        style={[
-          styles.miniPanel,
-          {
-            height: 72,
-            transform: [{ translateY }],
-          },
-        ]}
+      <>
+        <Animated.View
+          style={[
+            styles.miniPanel,
+            {
+              height: 72,
+              transform: [{ translateY }],
+            },
+          ]}
       >
         <View style={styles.miniContainer}>
           <View style={styles.miniTextSection}>
@@ -429,7 +452,9 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
             </Pressable>
           </View>
         </View>
-      </Animated.View>
+        </Animated.View>
+        {insightSheetEl}
+      </>
     )
   }
 
