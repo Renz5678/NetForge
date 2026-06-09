@@ -1,16 +1,8 @@
 /**
  * components/viz/AlgorithmInsightSheet.tsx
  *
- * Slides up automatically when an algorithm visualization completes.
- * Shows a structured result: what happened, what it means, key metrics,
- * and the path or sequence involved.
- *
- * Design rules:
- *  - No emojis, no gradients
- *  - Inter / Outfit type system
- *  - Colors constants only
- *  - Section labels: 10px, Inter_600SemiBold, all-caps, textMuted
- *  - Body: 14px Inter_400Regular, textSecondary, lineHeight 21
+ * Auto-slides up when an algorithm visualization completes.
+ * Theme: Inter/Outfit, Colors constants, no emojis, no gradients.
  */
 
 import React, { useState } from 'react'
@@ -51,25 +43,25 @@ type Props = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function algorithmLabel(alg: Algorithm): string {
+function analysisLabel(alg: Algorithm): string {
   switch (alg) {
     case 'dijkstra':
-    case 'aStar':          return 'Shortest Route'
-    case 'prims':          return 'Minimum Cabling'
-    case 'cycleDetection': return 'Loop Check'
+    case 'aStar':           return 'Shortest Route'
+    case 'prims':           return 'Minimum Cabling'
+    case 'cycleDetection':  return 'Loop Check'
     case 'topologicalSort': return 'Startup Order'
-    default: return 'Network Analysis'
+    default:                return 'Network Analysis'
   }
 }
 
 function phaseTag(alg: Algorithm): string {
   switch (alg) {
     case 'dijkstra':
-    case 'aStar':          return 'ROUTING'
-    case 'prims':          return 'CABLING'
-    case 'cycleDetection': return 'HEALTH'
+    case 'aStar':           return 'ROUTING'
+    case 'prims':           return 'CABLING'
+    case 'cycleDetection':  return 'HEALTH'
     case 'topologicalSort': return 'STARTUP'
-    default: return 'ANALYSIS'
+    default:                return 'ANALYSIS'
   }
 }
 
@@ -88,15 +80,15 @@ function tracePath(
 
   const path: string[] = [sourceId]
   let current = sourceId
-  const visited = new Set<string>([sourceId])
+  const seen = new Set<string>([sourceId])
 
   while (current !== targetId) {
     const dept = departments.find((d) => d.id === current)
     if (!dept) break
-    const next = dept.peers.find((p) => pathSet.has(p) && !visited.has(p))
+    const next = dept.peers.find((p) => pathSet.has(p) && !seen.has(p))
     if (!next) {
       const rev = departments.find(
-        (d) => d.peers.includes(current) && pathSet.has(d.id) && !visited.has(d.id)
+        (d) => d.peers.includes(current) && pathSet.has(d.id) && !seen.has(d.id)
       )
       if (!rev) break
       current = rev.id
@@ -104,65 +96,64 @@ function tracePath(
       current = next
     }
     path.push(current)
-    visited.add(current)
+    seen.add(current)
     if (path.length > 50) break
   }
   return path
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Primitives ───────────────────────────────────────────────────────────────
 
 function MetricBlock({ value, label }: { value: string | number; label: string }) {
   return (
-    <View style={metric.block}>
-      <Text style={metric.value}>{value}</Text>
-      <Text style={metric.label}>{label}</Text>
+    <View style={s.metricBlock}>
+      <Text style={s.metricValue}>{value}</Text>
+      <Text style={s.metricLabel}>{label}</Text>
     </View>
   )
-}
-
-const metric = StyleSheet.create({
-  block: { alignItems: 'center', minWidth: 72 },
-  value: {
-    fontFamily: 'Outfit_600SemiBold',
-    fontSize: 28,
-    color: Colors.textPrimary,
-    lineHeight: 34,
-  },
-  label: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 11,
-    color: Colors.textMuted,
-    marginTop: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-})
-
-function Divider() {
-  return <View style={{ height: 1, backgroundColor: Colors.border, marginVertical: 4 }} />
 }
 
 function SectionLabel({ text }: { text: string }) {
-  return <Text style={styles.sectionLabel}>{text}</Text>
+  return <Text style={s.sectionLabel}>{text}</Text>
 }
 
-function NodeChip({ name, color }: { name: string; color?: string }) {
+function Rule() {
+  return <View style={s.rule} />
+}
+
+function TechToggle({
+  open,
+  onPress,
+}: {
+  open: boolean
+  onPress: () => void
+}) {
   return (
-    <View style={[styles.chip, color ? { borderColor: color + '40', backgroundColor: color + '0C' } : null]}>
-      <Text style={[styles.chipText, color ? { color } : null]}>{name}</Text>
+    <Pressable style={s.techToggle} onPress={onPress}>
+      <Text style={s.techToggleText}>Technical details</Text>
+      <CaretDown
+        size={12}
+        color={Colors.textMuted}
+        style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}
+      />
+    </Pressable>
+  )
+}
+
+function TechCard({ lines }: { lines: string[] }) {
+  return (
+    <View style={s.techCard}>
+      {lines.map((l, i) => (
+        <Text key={i} style={s.techLine}>{l}</Text>
+      ))}
     </View>
   )
 }
 
-// ─── Main content builders ────────────────────────────────────────────────────
+// ─── Algorithm content panels ─────────────────────────────────────────────────
 
 function DijkstraContent({
-  step,
-  departments,
-  sourceId,
-  targetId,
-  totalSteps,
+  step, departments, sourceId, targetId, totalSteps,
 }: {
   step: VisualizationStep
   departments: Department[]
@@ -170,307 +161,271 @@ function DijkstraContent({
   targetId: string | null
   totalSteps: number
 }) {
-  const [showTech, setShowTech] = useState(false)
-  const path = tracePath(sourceId, targetId, step.nodeStates, departments)
-  const hops = path.length > 1 ? path.length - 1 : 0
-  const cost = step.distances && targetId ? step.distances[targetId] : null
-  const costDisplay = cost !== null && cost !== Infinity ? cost : '—'
-  const settled = Object.values(step.nodeStates).filter((s) => s === 'settled' || s === 'path').length
-
-  const srcName = departments.find((d) => d.id === sourceId)?.name ?? 'Source'
-  const tgtName = departments.find((d) => d.id === targetId)?.name ?? 'Target'
-  const found   = path.length > 1
+  const [open, setOpen] = useState(false)
+  const path     = tracePath(sourceId, targetId, step.nodeStates, departments)
+  const hops     = path.length > 1 ? path.length - 1 : 0
+  const rawCost  = step.distances && targetId ? step.distances[targetId] : null
+  const cost     = rawCost !== null && rawCost !== Infinity ? rawCost : '—'
+  const checked  = Object.values(step.nodeStates).filter(
+    (v) => v === 'settled' || v === 'path'
+  ).length
+  const srcName  = departments.find((d) => d.id === sourceId)?.name ?? 'Source'
+  const tgtName  = departments.find((d) => d.id === targetId)?.name ?? 'Target'
+  const found    = path.length > 1
 
   return (
     <>
-      {/* Headline */}
-      <Text style={styles.headline}>
-        {found ? `${hops} hop${hops !== 1 ? 's' : ''} to ${tgtName}` : `No route to ${tgtName}`}
+      <Text style={s.headline}>
+        {found
+          ? `${hops} hop${hops !== 1 ? 's' : ''} to ${tgtName}`
+          : `No route to ${tgtName}`}
       </Text>
 
-      {/* Metrics */}
-      <View style={styles.metricsRow}>
-        <MetricBlock value={hops}        label="Hops" />
-        <View style={styles.metricDivider} />
-        <MetricBlock value={costDisplay} label="Path cost" />
-        <View style={styles.metricDivider} />
-        <MetricBlock value={settled}     label="Nodes checked" />
+      <View style={s.metricsRow}>
+        <MetricBlock value={hops}    label="Hops" />
+        <View style={s.metricSep} />
+        <MetricBlock value={cost}    label="Path cost" />
+        <View style={s.metricSep} />
+        <MetricBlock value={checked} label="Checked" />
       </View>
 
-      <Divider />
-
-      {/* Path */}
       {found && (
-        <View style={styles.section}>
-          <SectionLabel text="ROUTE" />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.pathRow}>
-              {path.map((id, i) => {
-                const name = departments.find((d) => d.id === id)?.name ?? id
-                return (
-                  <React.Fragment key={id}>
-                    <NodeChip name={name} color={Colors.primary} />
-                    {i < path.length - 1 && (
-                      <ArrowRight size={12} color={Colors.pale} style={{ marginHorizontal: 2 }} />
-                    )}
-                  </React.Fragment>
-                )
-              })}
-            </View>
-          </ScrollView>
-        </View>
+        <>
+          <Rule />
+          <View style={s.section}>
+            <SectionLabel text="ROUTE" />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={s.pathRow}>
+                {path.map((id, i) => {
+                  const name = departments.find((d) => d.id === id)?.name ?? id
+                  return (
+                    <React.Fragment key={id}>
+                      <View style={[s.chip, s.chipPrimary]}>
+                        <Text style={[s.chipText, { color: Colors.primary }]}>{name}</Text>
+                      </View>
+                      {i < path.length - 1 && (
+                        <ArrowRight size={11} color={Colors.pale} style={s.pathArrow} />
+                      )}
+                    </React.Fragment>
+                  )
+                })}
+              </View>
+            </ScrollView>
+          </View>
+        </>
       )}
 
-      <Divider />
+      <Rule />
 
-      {/* Networking insight */}
-      <View style={styles.section}>
+      <View style={s.section}>
         <SectionLabel text="WHAT THIS MEANS" />
-        <Text style={styles.insight}>
+        <Text style={s.body}>
           {found
-            ? `Traffic from ${srcName} to ${tgtName} traverses ${hops} device${hops !== 1 ? 's' : ''}. Every hop adds processing latency — typically 0.1–5ms per switch or router in a real deployment. This path has the lowest total cost in the current topology.`
-            : `There is no route between ${srcName} and ${tgtName} in this topology. The two segments are either not peered, or an intermediate link is missing. Check the Departments tab and verify peer connections.`}
+            ? `Traffic from ${srcName} to ${tgtName} crosses ${hops} device${hops !== 1 ? 's' : ''}. Every hop adds forwarding latency. This is the lowest-cost path through the current topology.`
+            : `No route exists between ${srcName} and ${tgtName}. The segments are not peered, or an intermediate link is missing. Open the Departments tab and verify peer connections.`}
         </Text>
       </View>
 
-      {/* Technical toggle */}
-      <Pressable
-        style={styles.techToggle}
-        onPress={() => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-          setShowTech((v) => !v)
-        }}
-      >
-        <Text style={styles.techToggleText}>Technical details</Text>
-        <CaretDown
-          size={13}
-          color={Colors.textMuted}
-          style={{ transform: [{ rotate: showTech ? '180deg' : '0deg' }] }}
-        />
-      </Pressable>
-      {showTech && (
-        <View style={styles.techCard}>
-          <Text style={styles.techText}>
-            {'Method: lowest-cost graph traversal\n'}
-            {'Total steps: '}{totalSteps}{'\n'}
-            {'Nodes checked: '}{settled}{'\n'}
-            {'Each link is evaluated only once — the cheapest path to each device is locked in before moving forward.'}
-          </Text>
-        </View>
+      <TechToggle open={open} onPress={() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+        setOpen(v => !v)
+      }} />
+      {open && (
+        <TechCard lines={[
+          'Method: lowest-cost graph traversal',
+          `Total steps: ${totalSteps}   ·   Nodes checked: ${checked}`,
+          'Each link is evaluated once. The cheapest path to each device is locked in before the search continues.',
+        ]} />
       )}
     </>
   )
 }
 
 function PrimsContent({
-  step,
-  departments,
-  totalSteps,
+  step, departments, totalSteps,
 }: {
   step: VisualizationStep
   departments: Department[]
   totalSteps: number
 }) {
-  const [showTech, setShowTech] = useState(false)
-  const edgeCount = step.mstEdges?.length ?? 0
-  const cost      = step.mstCost ?? 0
+  const [open, setOpen] = useState(false)
+  const edgeCount  = step.mstEdges?.length ?? 0
+  const cost       = step.mstCost ?? 0
   const totalLinks = Math.floor(
-    departments.reduce((s, d) => s + d.peers.length, 0) / 2
+    departments.reduce((sum, d) => sum + d.peers.length, 0) / 2
   )
-  const redundant = Math.max(0, totalLinks - edgeCount)
+  const redundant  = Math.max(0, totalLinks - edgeCount)
 
   return (
     <>
-      <Text style={styles.headline}>
+      <Text style={s.headline}>
         {edgeCount} cable{edgeCount !== 1 ? 's' : ''} — minimum backbone
       </Text>
 
-      <View style={styles.metricsRow}>
-        <MetricBlock value={edgeCount}  label="MST cables" />
-        <View style={styles.metricDivider} />
-        <MetricBlock value={cost}       label="Total cost" />
-        <View style={styles.metricDivider} />
-        <MetricBlock value={redundant}  label="Redundant links" />
+      <View style={s.metricsRow}>
+        <MetricBlock value={edgeCount} label="Cables" />
+        <View style={s.metricSep} />
+        <MetricBlock value={cost}      label="Total cost" />
+        <View style={s.metricSep} />
+        <MetricBlock value={redundant} label="Redundant" />
       </View>
 
-      <Divider />
+      <Rule />
 
-      <View style={styles.section}>
+      <View style={s.section}>
         <SectionLabel text="WHAT THIS MEANS" />
-        <Text style={styles.insight}>
-          {`These ${edgeCount} cable${edgeCount !== 1 ? 's' : ''} are the minimum needed to keep every device in your topology connected. `}
+        <Text style={s.body}>
+          {`These ${edgeCount} cable${edgeCount !== 1 ? 's' : ''} are the minimum needed to keep every device connected. `}
           {redundant > 0
-            ? `The remaining ${redundant} link${redundant !== 1 ? 's' : ''} do not contribute to basic connectivity — they provide redundancy or load sharing, but could be removed without isolating any device.`
-            : `Every link in your topology is load-bearing — removing any one of them would disconnect at least one device.`}
+            ? `The other ${redundant} link${redundant !== 1 ? 's' : ''} are redundant for basic connectivity — useful for failover, but not required.`
+            : `Every link is load-bearing. Removing any one of them would disconnect at least one device.`}
         </Text>
       </View>
 
-      <Divider />
+      <Rule />
 
-      <View style={styles.section}>
-        <SectionLabel text="MST EDGES" />
-        <View style={styles.chipWrap}>
+      <View style={s.section}>
+        <SectionLabel text="BACKBONE LINKS" />
+        <View style={s.chipWrap}>
           {(step.mstEdges ?? []).map((e) => {
             const a = departments.find((d) => d.id === e.source)?.name ?? e.source
             const b = departments.find((d) => d.id === e.target)?.name ?? e.target
             return (
-              <View key={`${e.source}→${e.target}`} style={styles.edgePill}>
-                <Text style={styles.edgePillText}>{a}</Text>
-                <ArrowRight size={10} color={Colors.textMuted} />
-                <Text style={styles.edgePillText}>{b}</Text>
-                <Text style={styles.edgePillCost}>w={e.weight}</Text>
+              <View key={`${e.source}→${e.target}`} style={s.edgePill}>
+                <Text style={s.edgePillText}>{a}</Text>
+                <ArrowRight size={9} color={Colors.textMuted} />
+                <Text style={s.edgePillText}>{b}</Text>
+                <Text style={s.edgeCost}>w{e.weight}</Text>
               </View>
             )
           })}
         </View>
       </View>
 
-      <Pressable
-        style={styles.techToggle}
-        onPress={() => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-          setShowTech((v) => !v)
-        }}
-      >
-        <Text style={styles.techToggleText}>Technical details</Text>
-        <CaretDown
-          size={13}
-          color={Colors.textMuted}
-          style={{ transform: [{ rotate: showTech ? '180deg' : '0deg' }] }}
-        />
-      </Pressable>
-      {showTech && (
-        <View style={styles.techCard}>
-          <Text style={styles.techText}>
-            {'Method: minimum spanning tree from a starting node\n'}
-            {'MST cost: '}{cost}{' | MST cables: '}{edgeCount}{'\n'}
-            {'At each step, the cheapest link crossing from the connected set to an unconnected device is chosen.'}
-          </Text>
-        </View>
+      <TechToggle open={open} onPress={() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+        setOpen(v => !v)
+      }} />
+      {open && (
+        <TechCard lines={[
+          'Method: minimum spanning tree from a root node',
+          `Cost: ${cost}   ·   Backbone cables: ${edgeCount}`,
+          'At each step, the cheapest link to an unconnected device is chosen and added to the tree.',
+        ]} />
       )}
     </>
   )
 }
 
 function CycleContent({
-  step,
-  departments,
-  totalSteps,
+  step, departments, totalSteps,
 }: {
   step: VisualizationStep
   departments: Department[]
   totalSteps: number
 }) {
-  const [showTech, setShowTech] = useState(false)
-  const cycleNodes = Object.keys(step.nodeStates).filter(
-    (id) => step.nodeStates[id] === 'cycle'
-  )
-  const hasCycle = cycleNodes.length > 0
+  const [open, setOpen] = useState(false)
+  const cycleIds  = Object.keys(step.nodeStates).filter((id) => step.nodeStates[id] === 'cycle')
+  const hasCycle  = cycleIds.length > 0
+  const accentCol = hasCycle ? Colors.error : Colors.success
 
   return (
     <>
-      <Text style={[styles.headline, { color: hasCycle ? Colors.error : Colors.success }]}>
+      <Text style={[s.headline, { color: accentCol }]}>
         {hasCycle ? 'Routing loop found' : 'No loops detected'}
       </Text>
 
-      <View style={styles.metricsRow}>
-        <MetricBlock value={cycleNodes.length} label="Nodes in loop" />
-        <View style={styles.metricDivider} />
-        <MetricBlock value={totalSteps}        label="Paths traced" />
-        <View style={styles.metricDivider} />
+      <View style={s.metricsRow}>
+        <MetricBlock value={cycleIds.length} label="Devices in loop" />
+        <View style={s.metricSep} />
+        <MetricBlock value={totalSteps}      label="Paths traced" />
+        <View style={s.metricSep} />
         <MetricBlock value={hasCycle ? 'Fail' : 'Pass'} label="Status" />
       </View>
 
-      <Divider />
-
       {hasCycle && (
-        <View style={styles.section}>
-          <SectionLabel text="DEVICES IN LOOP" />
-          <View style={styles.chipWrap}>
-            {cycleNodes.map((id) => {
-              const name = departments.find((d) => d.id === id)?.name ?? id
-              return <NodeChip key={id} name={name} color={Colors.error} />
-            })}
+        <>
+          <Rule />
+          <View style={s.section}>
+            <SectionLabel text="LOOP INVOLVES" />
+            <View style={s.chipWrap}>
+              {cycleIds.map((id) => {
+                const name = departments.find((d) => d.id === id)?.name ?? id
+                return (
+                  <View key={id} style={[s.chip, { borderColor: Colors.error + '40', backgroundColor: Colors.error + '0C' }]}>
+                    <Text style={[s.chipText, { color: Colors.error }]}>{name}</Text>
+                  </View>
+                )
+              })}
+            </View>
           </View>
-        </View>
+        </>
       )}
 
-      <View style={styles.section}>
+      <Rule />
+
+      <View style={s.section}>
         <SectionLabel text="WHAT THIS MEANS" />
-        <Text style={styles.insight}>
+        <Text style={s.body}>
           {hasCycle
-            ? `A routing loop exists between the devices above. When a broadcast or unknown-destination frame enters this loop, it circulates indefinitely — each device forwards it to the next, and no TTL mechanism at Layer 2 stops it. This causes broadcast storms that saturate all links in the loop and can bring down the entire segment. Remove the back-edge link or enable Spanning Tree Protocol to break the loop.`
-            : `No routing loops were found. The topology is directed-acyclic in its logical forwarding path, which means packets will always make forward progress toward their destination without circling back. This topology is safe to deploy without STP at the routing layer.`}
+            ? `A loop exists between the devices above. Any broadcast frame entering this loop circulates without stopping — no Layer 2 TTL mechanism prevents it. This causes broadcast storms that can saturate all links. Remove the link that closes the loop, or enable Spanning Tree Protocol.`
+            : `No loops found. Packets will always make forward progress toward their destination. This topology is safe to deploy without loop-prevention protocols at the routing layer.`}
         </Text>
       </View>
 
-      <Pressable
-        style={styles.techToggle}
-        onPress={() => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-          setShowTech((v) => !v)
-        }}
-      >
-        <Text style={styles.techToggleText}>Technical details</Text>
-        <CaretDown
-          size={13}
-          color={Colors.textMuted}
-          style={{ transform: [{ rotate: showTech ? '180deg' : '0deg' }] }}
-        />
-      </Pressable>
-      {showTech && (
-        <View style={styles.techCard}>
-          <Text style={styles.techText}>
-            {'Method: depth-first path tracing with state marking\n'}
-            {'Total steps: '}{totalSteps}{'\n'}
-            {'A loop is confirmed when a path trace reaches a device that is already being traced in the current session.'}
-          </Text>
-        </View>
+      <TechToggle open={open} onPress={() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+        setOpen(v => !v)
+      }} />
+      {open && (
+        <TechCard lines={[
+          'Method: depth-first path tracing with state marking',
+          `Total steps: ${totalSteps}`,
+          'A loop is confirmed when a trace reaches a device that is already part of the current active trace path.',
+        ]} />
       )}
     </>
   )
 }
 
 function TopoContent({
-  step,
-  departments,
-  totalSteps,
+  step, departments, totalSteps,
 }: {
   step: VisualizationStep
   departments: Department[]
   totalSteps: number
 }) {
-  const [showTech, setShowTech] = useState(false)
+  const [open, setOpen] = useState(false)
   const sorted = step.sortedResult ?? []
 
   return (
     <>
-      <Text style={styles.headline}>
-        {sorted.length} device{sorted.length !== 1 ? 's' : ''} — startup sequence ready
+      <Text style={s.headline}>
+        {sorted.length} device{sorted.length !== 1 ? 's' : ''} — startup order ready
       </Text>
 
-      <View style={styles.metricsRow}>
-        <MetricBlock value={sorted.length} label="Devices ordered" />
-        <View style={styles.metricDivider} />
+      <View style={s.metricsRow}>
+        <MetricBlock value={sorted.length} label="Ordered" />
+        <View style={s.metricSep} />
         <MetricBlock value={totalSteps}    label="Steps" />
       </View>
 
-      <Divider />
+      <Rule />
 
-      <View style={styles.section}>
-        <SectionLabel text="STARTUP ORDER" />
+      <View style={s.section}>
+        <SectionLabel text="BRING UP IN THIS ORDER" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.pathRow}>
+          <View style={s.pathRow}>
             {sorted.map((id, i) => {
               const name = departments.find((d) => d.id === id)?.name ?? id
               return (
                 <React.Fragment key={id}>
-                  <View style={styles.topoChip}>
-                    <Text style={styles.topoChipNum}>{i + 1}</Text>
-                    <Text style={styles.topoChipName}>{name}</Text>
+                  <View style={s.topoChip}>
+                    <Text style={s.topoNum}>{i + 1}</Text>
+                    <Text style={s.topoName}>{name}</Text>
                   </View>
                   {i < sorted.length - 1 && (
-                    <ArrowRight size={12} color={Colors.pale} style={{ marginHorizontal: 2 }} />
+                    <ArrowRight size={11} color={Colors.pale} style={s.pathArrow} />
                   )}
                 </React.Fragment>
               )
@@ -479,134 +434,89 @@ function TopoContent({
         </ScrollView>
       </View>
 
-      <Divider />
+      <Rule />
 
-      <View style={styles.section}>
+      <View style={s.section}>
         <SectionLabel text="WHAT THIS MEANS" />
-        <Text style={styles.insight}>
-          {`Bring devices online in the numbered order above. Each device's upstream dependencies — routers, switches, or DHCP servers it relies on — will already be running before it initialises. Powering up out of order risks configuration failures, interface errors, and dropped adjacencies that are difficult to diagnose in production.`}
+        <Text style={s.body}>
+          Bring devices online in the numbered order above. Each device's upstream dependencies — routers, switches, or DHCP servers — will already be running before it initialises. Powering up out of order risks missed adjacencies and configuration errors.
         </Text>
       </View>
 
-      <Pressable
-        style={styles.techToggle}
-        onPress={() => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
-          setShowTech((v) => !v)
-        }}
-      >
-        <Text style={styles.techToggleText}>Technical details</Text>
-        <CaretDown
-          size={13}
-          color={Colors.textMuted}
-          style={{ transform: [{ rotate: showTech ? '180deg' : '0deg' }] }}
-        />
-      </Pressable>
-      {showTech && (
-        <View style={styles.techCard}>
-          <Text style={styles.techText}>
-            {'Method: dependency-order traversal\n'}
-            {'Total steps: '}{totalSteps}{'\n'}
-            {'Devices with no pending dependencies are started first. Their removal unlocks the next tier, and the process repeats until all devices are ordered.'}
-          </Text>
-        </View>
+      <TechToggle open={open} onPress={() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+        setOpen(v => !v)
+      }} />
+      {open && (
+        <TechCard lines={[
+          'Method: dependency-order traversal',
+          `Total steps: ${totalSteps}`,
+          'Devices with no pending dependencies are started first. Their removal unlocks the next tier, repeating until all devices are ordered.',
+        ]} />
       )}
     </>
   )
 }
 
-// ─── Main Sheet ───────────────────────────────────────────────────────────────
+// ─── Root sheet ───────────────────────────────────────────────────────────────
 
 export function AlgorithmInsightSheet({
-  visible,
-  onClose,
-  onReplay,
-  algorithm,
-  currentStep,
-  departments,
-  sourceId,
-  targetId,
-  totalSteps,
+  visible, onClose, onReplay,
+  algorithm, currentStep, departments,
+  sourceId, targetId, totalSteps,
 }: Props) {
   if (!algorithm || !currentStep) return null
 
-  const tag = phaseTag(algorithm as Algorithm)
-
-  function renderContent() {
+  function body() {
     if (!currentStep || !algorithm) return null
     switch (algorithm) {
       case 'dijkstra':
       case 'aStar':
-        return (
-          <DijkstraContent
-            step={currentStep}
-            departments={departments}
-            sourceId={sourceId}
-            targetId={targetId}
-            totalSteps={totalSteps}
-          />
-        )
+        return <DijkstraContent step={currentStep} departments={departments} sourceId={sourceId} targetId={targetId} totalSteps={totalSteps} />
       case 'prims':
-        return (
-          <PrimsContent
-            step={currentStep}
-            departments={departments}
-            totalSteps={totalSteps}
-          />
-        )
+        return <PrimsContent step={currentStep} departments={departments} totalSteps={totalSteps} />
       case 'cycleDetection':
-        return (
-          <CycleContent
-            step={currentStep}
-            departments={departments}
-            totalSteps={totalSteps}
-          />
-        )
+        return <CycleContent step={currentStep} departments={departments} totalSteps={totalSteps} />
       case 'topologicalSort':
-        return (
-          <TopoContent
-            step={currentStep}
-            departments={departments}
-            totalSteps={totalSteps}
-          />
-        )
+        return <TopoContent step={currentStep} departments={departments} totalSteps={totalSteps} />
       default:
         return null
     }
   }
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} snapHeight={600}>
+    <BottomSheet visible={visible} onClose={onClose} snapHeight={580}>
+      {/* Fixed header — outside ScrollView so it stays pinned */}
+      <View style={s.header}>
+        <View style={s.headerMeta}>
+          <View style={s.tag}>
+            <Text style={s.tagText}>{phaseTag(algorithm as Algorithm)}</Text>
+          </View>
+          <Text style={s.headerTitle}>{analysisLabel(algorithm as Algorithm)}</Text>
+        </View>
+        <Pressable onPress={onClose} hitSlop={12} style={s.closeBtn}>
+          <X size={15} color={Colors.textMuted} />
+        </Pressable>
+      </View>
+
+      <View style={s.headerRule} />
+
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={s.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header row */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={styles.tagPill}>
-              <Text style={styles.tagText}>{tag}</Text>
-            </View>
-            <Text style={styles.algorithmName}>{algorithmLabel(algorithm as Algorithm)}</Text>
-          </View>
-          <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
-            <X size={16} color={Colors.textMuted} />
-          </Pressable>
-        </View>
+        {body()}
 
-        <View style={styles.dividerTop} />
+        <Rule />
 
-        {/* Dynamic content per algorithm */}
-        {renderContent()}
-
-        {/* CTA: replay */}
+        {/* CTA */}
         <Pressable
-          style={({ pressed }) => [styles.replayBtn, pressed && { opacity: 0.82 }]}
+          style={({ pressed }) => [s.replayBtn, pressed && { opacity: 0.8 }]}
           onPress={() => { onReplay(); onClose() }}
         >
-          <Text style={styles.replayBtnText}>Step through replay</Text>
-          <ArrowRight size={15} color={Colors.primary} />
+          <Text style={s.replayText}>Step through replay</Text>
+          <ArrowRight size={14} color={Colors.primary} />
         </Pressable>
       </ScrollView>
     </BottomSheet>
@@ -615,29 +525,26 @@ export function AlgorithmInsightSheet({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  content: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    gap: 14,
-  },
-
-  // Header
+const s = StyleSheet.create({
+  // Header (outside scroll)
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 20,
     paddingTop: 4,
+    paddingBottom: 12,
   },
-  headerLeft: {
+  headerMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     flex: 1,
-    gap: 6,
   },
-  tagPill: {
-    alignSelf: 'flex-start',
+  tag: {
     backgroundColor: Colors.ice,
-    borderRadius: 6,
-    paddingHorizontal: 8,
+    borderRadius: 5,
+    paddingHorizontal: 7,
     paddingVertical: 3,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -646,104 +553,162 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     fontSize: 9,
     color: Colors.textMuted,
-    letterSpacing: 0.8,
+    letterSpacing: 0.7,
   },
-  algorithmName: {
+  headerTitle: {
     fontFamily: 'Outfit_600SemiBold',
-    fontSize: 13,
-    color: Colors.textSecondary,
+    fontSize: 15,
+    color: Colors.textPrimary,
   },
   closeBtn: {
     padding: 4,
   },
-  dividerTop: {
+  headerRule: {
     height: 1,
     backgroundColor: Colors.border,
-    marginTop: 2,
-    marginBottom: 2,
+    marginHorizontal: 20,
+    marginBottom: 4,
+  },
+
+  // Scroll body
+  scroll: {
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 20,
+    gap: 14,
   },
 
   // Headline
   headline: {
     fontFamily: 'Outfit_600SemiBold',
-    fontSize: 22,
+    fontSize: 21,
     color: Colors.textPrimary,
-    lineHeight: 29,
+    lineHeight: 27,
   },
 
-  // Metrics row
+  // Metrics row — 3 equal columns separated by 1px rules
   metricsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surfaceAlt,
     borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: 'hidden',
   },
-  metricDivider: {
+  metricBlock: {
     flex: 1,
-    height: 28,
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  metricValue: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 26,
+    color: Colors.textPrimary,
+    lineHeight: 32,
+  },
+  metricLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 10,
+    color: Colors.textMuted,
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  metricSep: {
     width: 1,
+    height: 40,
     backgroundColor: Colors.border,
-    maxWidth: 1,
   },
 
-  // Section
-  section: {
-    gap: 8,
+  // Horizontal rule between sections
+  rule: {
+    height: 1,
+    backgroundColor: Colors.border,
   },
+
+  // Section block
+  section: { gap: 8 },
   sectionLabel: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 10,
     color: Colors.textMuted,
-    letterSpacing: 0.8,
+    letterSpacing: 0.7,
   },
 
-  // Insight text
-  insight: {
+  // Body text
+  body: {
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
     color: Colors.textSecondary,
     lineHeight: 20,
   },
 
-  // Path chips
+  // Path / sequence row
   pathRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'nowrap',
   },
+  pathArrow: { marginHorizontal: 4 },
+
+  // Chips
   chip: {
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: 8,
+    borderRadius: 7,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    backgroundColor: Colors.surfaceAlt,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  chipPrimary: {
+    borderColor: Colors.primary + '40',
+    backgroundColor: Colors.primary + '0C',
   },
   chipText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
     color: Colors.textPrimary,
   },
-
-  // Chip wrap (for multi-row)
   chipWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
   },
 
-  // Edge pill (Prim's)
+  // Topo numbered chip
+  topoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surfaceAlt,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  topoNum: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 10,
+    color: Colors.primary,
+  },
+  topoName: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    color: Colors.textPrimary,
+  },
+
+  // Edge pill (Prim's backbone links)
   edgePill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: 8,
+    borderRadius: 7,
     borderWidth: 1,
     borderColor: Colors.border,
-    paddingHorizontal: 9,
+    backgroundColor: Colors.surfaceAlt,
+    paddingHorizontal: 8,
     paddingVertical: 4,
   },
   edgePillText: {
@@ -751,42 +716,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textPrimary,
   },
-  edgePillCost: {
+  edgeCost: {
     fontFamily: 'Inter_400Regular',
     fontSize: 10,
     color: Colors.textMuted,
     marginLeft: 2,
   },
 
-  // Topo chips
-  topoChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  topoChipNum: {
-    fontFamily: 'Inter_700Bold',
-    fontSize: 10,
-    color: Colors.primary,
-  },
-  topoChipName: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 11,
-    color: Colors.textPrimary,
-  },
-
-  // Technical toggle
+  // Technical details
   techToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 4,
+    gap: 5,
+    paddingVertical: 2,
   },
   techToggleText: {
     fontFamily: 'Inter_500Medium',
@@ -796,16 +738,16 @@ const styles = StyleSheet.create({
   techCard: {
     backgroundColor: Colors.ice,
     borderRadius: 10,
-    padding: 12,
     borderWidth: 1,
     borderColor: Colors.border,
+    padding: 12,
+    gap: 4,
   },
-  techText: {
+  techLine: {
     fontFamily: 'Inter_400Regular',
     fontSize: 12,
     color: Colors.textSecondary,
-    lineHeight: 20,
-    fontVariant: ['tabular-nums'],
+    lineHeight: 18,
   },
 
   // Replay CTA
@@ -813,16 +755,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 13,
-    borderRadius: 12,
+    gap: 7,
+    paddingVertical: 12,
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: Colors.primary,
-    marginTop: 4,
   },
-  replayBtnText: {
+  replayText: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.primary,
   },
 })
