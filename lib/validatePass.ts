@@ -50,6 +50,7 @@ export type Finding = {
   severity: FindingSeverity
   title: string          // one line, plain English, no algorithm names
   detail: string         // one sentence explanation
+  fixSteps: string[]     // ordered list of actionable remediation steps
   affected: string[]     // node names or subnet strings
   algorithm: AlgorithmKey
   stepIndex: number      // step number where this finding was produced
@@ -82,6 +83,11 @@ export function checkConnectivity(config: NetworkConfig): Finding[] {
       severity: 'red',
       title: 'Network is not fully connected',
       detail: 'These devices have no path to the rest of the network.',
+      fixSteps: [
+        'Open the Departments tab and select each isolated device shown below.',
+        'Add at least one peer connection to a device that is already part of the main topology (a router or core switch works best).',
+        'Re-run validation to confirm all nodes are reachable.',
+      ],
       affected: isolated,
       algorithm: 'bfsValidator',
       stepIndex: 0,
@@ -107,6 +113,11 @@ export function checkAddressing(config: NetworkConfig): Finding[] {
         severity: 'red',
         title: `Address conflict between ${conflict.replace(' ↔ ', ' and ')}`,
         detail: 'These two subnets share overlapping IP address ranges. Devices would be unreachable.',
+        fixSteps: [
+          `Open the Departments tab and select one of the two conflicting segments.`,
+          'Change its Base IP or CIDR prefix so the address ranges no longer overlap (e.g. move one segment from 10.0.0.0/24 to 10.0.1.0/24).',
+          'Tap Allocate in the Canvas tab to recalculate subnets, then re-run validation.',
+        ],
         affected: conflict.split(' ↔ '),
         algorithm: 'vlsmCalculator',
         stepIndex: 0,
@@ -124,6 +135,11 @@ export function checkAddressing(config: NetworkConfig): Finding[] {
       severity: 'yellow',
       title: `${unassigned.length} device${unassigned.length !== 1 ? 's have' : ' has'} no IP address assigned`,
       detail: 'Run the allocation pass or manually assign a CIDR prefix to all devices before deploying.',
+      fixSteps: [
+        'Go to the Canvas tab and tap the Allocate button to auto-assign subnets to all unaddressed devices.',
+        'If you prefer manual assignment, open each device in the Departments tab and set a CIDR prefix (e.g. /24, /26).',
+        'Every device must have a unique, non-overlapping subnet before the topology can be deployed.',
+      ],
       affected: unassigned.map((d) => d.name),
       algorithm: 'vlsmCalculator',
       stepIndex: 0,
@@ -149,6 +165,11 @@ export function checkAddressing(config: NetworkConfig): Finding[] {
           severity: 'yellow',
           title: 'Address space is nearly full',
           detail: `Allocated subnets consume over 90% of the parent address block. Adding new devices may fail.`,
+          fixSteps: [
+            'Consider switching to a larger parent block — for example, use a /15 instead of /16 to double the available space.',
+            'Alternatively, split your network into multiple non-overlapping address spaces (e.g. 10.0.0.0/16 and 10.1.0.0/16).',
+            'Reserve at least 20% headroom for future growth before deploying.',
+          ],
           affected: [],
           algorithm: 'vlsmCalculator',
           stepIndex: 0,
@@ -220,6 +241,11 @@ export function checkResilience(config: NetworkConfig): Finding[] {
       severity: 'yellow',
       title: `${apName} is a single point of failure`,
       detail: `Removing it would isolate ${isolatedHostCount} hosts across ${isolatedNodes.length} department${isolatedNodes.length !== 1 ? 's' : ''}.`,
+      fixSteps: [
+        `Add a second uplink from the downstream devices to a different router or switch that bypasses ${apName}.`,
+        `Alternatively, add a direct peer link between ${apName}'s downstream neighbours so they can reach each other without going through it.`,
+        'Once a redundant path exists, re-run validation — this warning should disappear.',
+      ],
       affected: [apName, ...isolatedNodes.map((d) => d.name)],
       algorithm: 'articulationPoints',
       stepIndex: result.articulationPoints.indexOf(apId),
@@ -245,6 +271,12 @@ export function checkCorrectness(config: NetworkConfig): Finding[] {
       severity: 'red',
       title: 'Routing loop detected',
       detail: 'Packets would circulate indefinitely between these devices.',
+      fixSteps: [
+        'Open the Departments tab and identify the peer links between the devices listed below.',
+        'Remove the link that closes the loop — this is the "back edge": the connection that points from a downstream device back up to an ancestor.',
+        'If you need redundancy here, use a separate switch with Spanning Tree Protocol (STP) enabled instead of a direct back-link.',
+        'Re-run validation to confirm the loop is resolved.',
+      ],
       affected: cycleResult.cycle,
       algorithm: 'cycleDetection',
       stepIndex: 0,
@@ -288,6 +320,12 @@ export function checkCorrectness(config: NetworkConfig): Finding[] {
           severity: 'yellow',
           title: `ACL on ${dept.name} may block traffic to ${peerName}`,
           detail: `Rule ${ruleSeq} denies TCP from ${dept.subnet} to ${peer.subnet}.`,
+          fixSteps: [
+            `Open ${dept.name} in the Departments tab and review its ACL rules.`,
+            `Find rule ${ruleSeq} (the deny rule) and either delete it or move it below a new \`permit tcp any\` rule that allows traffic to ${peer.subnet}.`,
+            'In a real ACL, the first matching rule wins — make sure a permit appears before any broad deny.',
+            'Re-run validation to confirm traffic between these segments is now allowed.',
+          ],
           affected: [dept.name, peerName],
           algorithm: 'aclEngine',
           stepIndex: matchingRule ? dept.aclRules.findIndex((r) => r.id === matchingRule.id) : 0,
@@ -354,6 +392,11 @@ export function checkOptimization(config: NetworkConfig, resilienceFindings: Fin
           severity: 'blue',
           title: `Link between ${nameA} and ${nameB} may be redundant`,
           detail: 'This connection is not required for full connectivity.',
+          fixSteps: [
+            'This is informational — the link is safe to keep if you need failover or higher throughput (link aggregation).',
+            `If cable or port cost matters, you can safely remove the link between ${nameA} and ${nameB} — all devices will remain connected.`,
+            'If you keep it, enable Spanning Tree Protocol (STP) on the connecting switch to prevent broadcast loops from forming.',
+          ],
           affected: [nameA, nameB],
           algorithm: 'prims',
           stepIndex: mstResult.mstEdges.length,
@@ -382,6 +425,11 @@ export function checkOptimization(config: NetworkConfig, resilienceFindings: Fin
         severity: 'blue',
         title: `No redundant path exists for ${apName}`,
         detail: 'Adding a second uplink would eliminate this single point of failure.',
+        fixSteps: [
+          `In the Departments tab, open ${apName} and add a peer connection to a second router or switch on a different path.`,
+          'This gives traffic an alternative route if the primary link goes down.',
+          'After adding the uplink, re-run validation — the resilience warning for this device should also clear.',
+        ],
         affected: [apName],
         algorithm: 'prims',
         stepIndex: mstResult.mstEdges.length,

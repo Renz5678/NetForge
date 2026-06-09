@@ -122,7 +122,7 @@ export function AlgorithmDrillDown({ finding, visible, onClose }: Props) {
   const severityStr = severityText(finding.severity)
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} snapHeight={480}>
+    <BottomSheet visible={visible} onClose={onClose} snapHeight={580}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.content}
@@ -142,6 +142,23 @@ export function AlgorithmDrillDown({ finding, visible, onClose }: Props) {
 
         {/* Detail sentence */}
         <Text style={styles.detail}>{finding.detail}</Text>
+
+        {/* Fix steps — shown for all users */}
+        {finding.fixSteps && finding.fixSteps.length > 0 && (
+          <View style={styles.fixSection}>
+            <Text style={styles.sectionLabel}>HOW TO FIX</Text>
+            <View style={[styles.fixCard, { borderLeftColor: color }]}>
+              {finding.fixSteps.map((step, i) => (
+                <View key={i} style={styles.fixStep}>
+                  <View style={[styles.fixStepNum, { backgroundColor: color + '20' }]}>
+                    <Text style={[styles.fixStepNumText, { color }]}>{i + 1}</Text>
+                  </View>
+                  <Text style={styles.fixStepText}>{step}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Affected list */}
         {finding.affected.length > 0 && (
@@ -290,5 +307,43 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textPrimary,
     fontVariant: ['tabular-nums'],
+  },
+  // ── Fix steps ───────────────────────────────────────────────────────────
+  fixSection: {
+    gap: 8,
+    marginTop: 4,
+  },
+  fixCard: {
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  fixStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  fixStepNum: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 1,
+  },
+  fixStepNumText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 11,
+  },
+  fixStepText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 19,
+    flex: 1,
   },
 })
