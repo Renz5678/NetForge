@@ -54,6 +54,7 @@ export default function SignupScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [generalError, setGeneralError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [confirmationPending, setConfirmationPending] = useState(false)
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {}
@@ -99,7 +100,15 @@ export default function SignupScreen() {
     if (error) {
       setGeneralError(error)
     } else {
-      router.replace('/(tabs)')
+      // Supabase returns session=null when email confirmation is required.
+      // In that case show an inline "check your email" screen instead of
+      // navigating to tabs (which would just bounce back to intro).
+      const session = useAuthStore.getState().session
+      if (session) {
+        router.replace('/(tabs)')
+      } else {
+        setConfirmationPending(true)
+      }
     }
   }
 
@@ -109,6 +118,30 @@ export default function SignupScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.kav}
       >
+        {/* ── Confirmation pending screen ─────────────────────────────── */}
+        {confirmationPending ? (
+          <View style={styles.confirmContainer}>
+            <Text style={styles.confirmIcon}>✉️</Text>
+            <Text style={styles.confirmTitle}>Check your inbox</Text>
+            <Text style={styles.confirmBody}>
+              We sent a confirmation link to{' '}
+              <Text style={styles.confirmEmail}>{email.trim()}</Text>.{'\n'}
+              Open it to activate your account, then come back and log in.
+            </Text>
+            <Pressable
+              style={styles.confirmBtn}
+              onPress={() => router.replace('/(auth)/login')}
+            >
+              <Text style={styles.confirmBtnText}>Go to Login →</Text>
+            </Pressable>
+            <Pressable
+              style={styles.confirmResend}
+              onPress={() => router.push('/(auth)/signup')}
+            >
+              <Text style={styles.confirmResendText}>Used a wrong email? Start over</Text>
+            </Pressable>
+          </View>
+        ) : (
         <ScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
@@ -218,6 +251,7 @@ export default function SignupScreen() {
             </Pressable>
           </View>
         </ScrollView>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   )
@@ -327,5 +361,60 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
     color: Colors.primary,
+  },
+
+  // ── Confirmation pending ───────────────────────────────────────────────────
+  confirmContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 16,
+  },
+  confirmIcon: {
+    fontSize: 56,
+    marginBottom: 8,
+  },
+  confirmTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 24,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  confirmBody: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 15,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  confirmEmail: {
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.primary,
+  },
+  confirmBtn: {
+    marginTop: 8,
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    alignSelf: 'stretch',
+  },
+  confirmBtnText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    color: Colors.white,
+  },
+  confirmResend: {
+    marginTop: 4,
+    padding: 8,
+  },
+  confirmResendText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: Colors.textMuted,
+    textDecorationLine: 'underline',
   },
 })

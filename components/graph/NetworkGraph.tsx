@@ -698,7 +698,7 @@ export function NetworkGraph({
       )}
 
       {/* Live-metrics status bar — always shows state of all 4 algorithms */}
-      {!vizActive && departments.length >= 2 && (
+      {!vizActive && departments.length >= 2 && selectedNodes.length === 0 && (
         <View style={styles.statusBar}>
           <Pressable onPress={handleCycleStatusTap} hitSlop={6}>
             <Text style={[
