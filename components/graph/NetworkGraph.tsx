@@ -68,7 +68,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { CoachMark } from '@/components/ui/CoachMark'
 import { ExplainModeToggle } from '@/components/ui/ExplainModeToggle'
-import type { Department, PathResult } from '@/types'
+import type { Department, PathResult, ValidationResult } from '@/types'
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
 const CANVAS_HEIGHT = SCREEN_HEIGHT - 200
@@ -95,6 +95,7 @@ type NetworkGraphProps = {
   onWarningPress?:    () => void
   validationWarnings?: number
   validationPassed?:  boolean
+  validationResult?:  ValidationResult   // full validation — drives auto-diagnostic
 }
 
 export function NetworkGraph({
@@ -104,6 +105,7 @@ export function NetworkGraph({
   onWarningPress,
   validationWarnings = 0,
   validationPassed,
+  validationResult,
 }: NetworkGraphProps) {
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])
   const [pathResult, setPathResult] = useState<PathResult | null>(null)
@@ -186,8 +188,23 @@ export function NetworkGraph({
     if (vizActive) setShowAlgoHint(false)
   }, [vizActive])
 
+  // Cleanup: stop any active viz when the user leaves the graph tab
+  const stopVizRef = useRef(stopVisualization)
+  const clearFailRef = useRef(clearFailureSim)
+  useEffect(() => { stopVizRef.current = stopVisualization }, [stopVisualization])
+  useEffect(() => { clearFailRef.current = clearFailureSim }, [clearFailureSim])
+  useEffect(() => {
+    return () => {
+      stopVizRef.current()
+      clearFailRef.current()
+    }
+  }, [])
+
   const autoVizRef     = useRef(false)
   const prevIsPlaying  = useRef(isPlaying)
+  // Track whether we've already fired the auto-diagnostic for this mount
+  const autoDiagFiredRef = useRef(false)
+
   React.useEffect(() => {
     if (autoVizRef.current && prevIsPlaying.current && !isPlaying && vizActive) {
       stopVisualization()
@@ -195,6 +212,99 @@ export function NetworkGraph({
     }
     prevIsPlaying.current = isPlaying
   }, [isPlaying, vizActive])
+
+  // ── Auto-diagnostic: runs once on mount when the topology is invalid ─────
+  // Priority: cycle > isolated nodes > (subnet/VLAN: static, no step-by-step)
+  React.useEffect(() => {
+    if (
+      validationPassed !== false ||
+      vizActive ||
+      autoDiagFiredRef.current ||
+      departments.length < 2
+    ) return
+
+    autoDiagFiredRef.current = true
+
+    // Small delay so the canvas layout settles before the viz kicks in
+    const timer = setTimeout(() => {
+      // 1. Cycle detected
+      if (validationResult && !validationResult.cycleCheck.passed) {
+        import('@/lib/algorithms/cycleDetectionVisualizer').then(
+          ({ buildCycleDetectionSteps }) => {
+            const result = buildCycleDetectionSteps(departments)
+            autoVizRef.current = true
+            startVisualization('cycleDetection', result.steps, {
+              showSteps: true,
+            })
+            setIsExpanded(true)
+            setShowSteps(true)
+            setSpeed('normal')
+            setToast({
+              label: `Routing loop detected — watch the cycle unfold`,
+              success: false,
+              insight: validationResult.cycleCheck.message,
+              replayLabel: 'Replay ›',
+              onReplay: () => {
+                const r2 = buildCycleDetectionSteps(departments)
+                startVisualization('cycleDetection', r2.steps, { showSteps: true })
+                setIsExpanded(true)
+                setShowSteps(true)
+                setToast(null)
+              },
+            })
+          }
+        )
+        return
+      }
+
+      // 2. Isolated / unreachable nodes
+      if (validationResult && !validationResult.connectivityCheck.passed) {
+        import('@/lib/algorithms/isolationVisualizer').then(
+          ({ buildIsolationSteps }) => {
+            const result = buildIsolationSteps(departments)
+            autoVizRef.current = true
+            startVisualization('cycleDetection', result.steps, {
+              showSteps: true,
+            })
+            setIsExpanded(true)
+            setShowSteps(true)
+            setSpeed('normal')
+            setToast({
+              label: `Isolated node${result.isolatedNodeIds.length !== 1 ? 's' : ''} detected — watch the BFS sweep`,
+              success: false,
+              insight: validationResult.connectivityCheck.message,
+              replayLabel: 'Replay ›',
+              onReplay: () => {
+                const r2 = buildIsolationSteps(departments)
+                startVisualization('cycleDetection', r2.steps, { showSteps: true })
+                setIsExpanded(true)
+                setShowSteps(true)
+                setToast(null)
+              },
+            })
+          }
+        )
+        return
+      }
+
+      // 3. Subnet / VLAN conflict — no step-by-step, just a toast
+      const failedCheck =
+        !validationResult?.allocationCheck.passed ? validationResult?.allocationCheck
+        : !validationResult?.vlanCheck.passed     ? validationResult?.vlanCheck
+        : null
+      if (failedCheck) {
+        setToast({
+          label: 'Configuration conflict detected',
+          success: false,
+          insight: failedCheck.message,
+        })
+      }
+    }, 600)
+
+    return () => clearTimeout(timer)
+  // We intentionally only run on mount (graph tab open). deps = stable refs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Camera auto-adjust during viz
   React.useEffect(() => {

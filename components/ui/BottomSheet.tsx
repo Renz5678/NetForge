@@ -24,12 +24,27 @@ type BottomSheetProps = {
 
 export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }: BottomSheetProps) {
   const insets = useSafeAreaInsets()
-  const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current
-  const opacity = useRef(new Animated.Value(0)).current
-  // Keep a ref to the latest onClose so the PanResponder (created once)
-  // always calls the current prop and never captures a stale closure.
+  const translateY   = useRef(new Animated.Value(SCREEN_HEIGHT)).current
+  const opacity      = useRef(new Animated.Value(0)).current
+  const handleScale  = useRef(new Animated.Value(1)).current
+  const handleOpacity = useRef(new Animated.Value(0.4)).current
+
   const onCloseRef = useRef(onClose)
   useEffect(() => { onCloseRef.current = onClose }, [onClose])
+
+  // Animate handle hint on open
+  const pulseHandle = () => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(handleScale,   { toValue: 1.35, duration: 260, useNativeDriver: true }),
+        Animated.timing(handleOpacity, { toValue: 1,    duration: 260, useNativeDriver: true }),
+      ]),
+      Animated.parallel([
+        Animated.timing(handleScale,   { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(handleOpacity, { toValue: 0.4, duration: 300, useNativeDriver: true }),
+      ]),
+    ]).start()
+  }
 
   useEffect(() => {
     if (visible) {
@@ -37,30 +52,33 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
         Animated.spring(translateY, {
           toValue: 0,
           useNativeDriver: true,
-          tension: 100,
-          friction: 12,
+          damping: 22,
+          stiffness: 220,
+          mass: 0.8,
         }),
         Animated.timing(opacity, {
           toValue: 1,
-          duration: 200,
+          duration: 180,
           useNativeDriver: true,
         }),
-      ]).start()
+      ]).start(() => pulseHandle())
     } else {
       Animated.parallel([
         Animated.timing(translateY, {
           toValue: SCREEN_HEIGHT,
-          duration: 240,
+          duration: 220,
           useNativeDriver: true,
         }),
         Animated.timing(opacity, {
           toValue: 0,
-          duration: 200,
+          duration: 180,
           useNativeDriver: true,
         }),
       ]).start()
+      handleScale.setValue(1)
+      handleOpacity.setValue(0.4)
     }
-  }, [visible, translateY, opacity])
+  }, [visible])
 
   const panResponder = useRef(
     PanResponder.create({
@@ -91,16 +109,16 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
           Animated.spring(translateY, {
             toValue: 0,
             useNativeDriver: true,
-            tension: 100,
-            friction: 12,
+            damping: 22,
+            stiffness: 220,
+            mass: 0.8,
           }).start()
         }
       },
     })
   ).current
 
-  const sheetHeight =
-    snapHeight === 'auto' ? undefined : snapHeight
+  const sheetHeight = snapHeight === 'auto' ? undefined : snapHeight
 
   return (
     <Modal
@@ -111,25 +129,35 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
       statusBarTranslucent
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior="height"
         style={styles.overlay}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        keyboardVerticalOffset={0}
       >
         <Animated.View style={[styles.backdrop, { opacity }]} accessibilityViewIsModal={true}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
+
         <Animated.View
           style={[
             styles.sheet,
             { transform: [{ translateY }] },
             sheetHeight !== undefined ? { height: sheetHeight } : null,
-            { paddingBottom: insets.bottom + 16 },
+            { paddingBottom: insets.bottom + 16, maxHeight: SCREEN_HEIGHT * 0.90 },
           ]}
         >
-          {/* Handle bar with PanResponder */}
+          {/* Animated handle bar */}
           <View style={styles.handleContainer} {...panResponder.panHandlers}>
-            <View style={styles.handle} />
+            <Animated.View
+              style={[
+                styles.handle,
+                {
+                  transform: [{ scaleX: handleScale }],
+                  opacity: handleOpacity,
+                },
+              ]}
+            />
           </View>
+
           {children}
         </Animated.View>
       </KeyboardAvoidingView>
@@ -148,30 +176,30 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 26, 65, 0.4)',
+    backgroundColor: 'rgba(0, 26, 65, 0.45)',
   },
   sheet: {
     backgroundColor: Colors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
     paddingHorizontal: 16,
     paddingTop: 8,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 16,
+        shadowOffset: { width: 0, height: -6 },
+        shadowOpacity: 0.10,
+        shadowRadius: 20,
       },
       android: {
-        elevation: 16,
+        elevation: 20,
       },
     }),
   },
   handleContainer: {
     alignItems: 'center',
-    paddingVertical: 8,
-    marginBottom: 8,
+    paddingVertical: 10,
+    marginBottom: 6,
   },
   handle: {
     width: 40,

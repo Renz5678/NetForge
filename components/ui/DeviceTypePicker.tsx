@@ -1,18 +1,19 @@
 /**
  * components/ui/DeviceTypePicker.tsx
  *
- * Icon-grid device type selector.
- * Shows 5 device types as interactive tiles (icon + label + short description).
- * Selected state is highlighted with the app's primary color palette.
+ * Icon-grid device type selector with spring-animated tile selection.
  */
 
-import React from 'react'
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-} from 'react-native'
+import React, { useEffect } from 'react'
+import { View, Text, Pressable, StyleSheet } from 'react-native'
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  interpolate,
+  Extrapolation,
+} from 'react-native-reanimated'
 import { Colors } from '@/constants/colors'
 import {
   RouterIcon,
@@ -22,8 +23,6 @@ import {
   DepartmentIcon,
 } from '@/components/ui/DeviceIcons'
 import type { DeviceType } from '@/types'
-
-// ── Device option definitions ─────────────────────────────────────────────────
 
 type DeviceOption = {
   type: DeviceType
@@ -71,8 +70,6 @@ const DEVICE_OPTIONS: DeviceOption[] = [
   },
 ]
 
-// ── Icon renderer ─────────────────────────────────────────────────────────────
-
 function DeviceOptionIcon({
   type,
   size,
@@ -84,16 +81,97 @@ function DeviceOptionIcon({
 }) {
   const color = isSelected ? '#FFFFFF' : Colors.textMuted
   switch (type) {
-    case 'router':     return <RouterIcon     size={size} color={color} />
-    case 'switch':     return <SwitchIcon     size={size} color={color} />
-    case 'firewall':   return <FirewallIcon   size={size} color={color} />
-    case 'wan':        return <WanIcon        size={size} color={color} />
-    default:           return <DepartmentIcon size={size} color={color} />
+    case 'router':   return <RouterIcon     size={size} color={color} />
+    case 'switch':   return <SwitchIcon     size={size} color={color} />
+    case 'firewall': return <FirewallIcon   size={size} color={color} />
+    case 'wan':      return <WanIcon        size={size} color={color} />
+    default:         return <DepartmentIcon size={size} color={color} />
   }
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Animated tile ─────────────────────────────────────────────────────────────
+function DeviceTile({
+  opt,
+  isSelected,
+  onPress,
+}: {
+  opt: DeviceOption
+  isSelected: boolean
+  onPress: () => void
+}) {
+  const scale      = useSharedValue(1)
+  const selected   = useSharedValue(isSelected ? 1 : 0)
 
+  useEffect(() => {
+    selected.value = withSpring(isSelected ? 1 : 0, {
+      damping: 14,
+      stiffness: 180,
+    })
+    if (isSelected) {
+      // Pop: scale up then settle
+      scale.value = withSpring(1.06, { damping: 6, stiffness: 300 }, () => {
+        scale.value = withSpring(1, { damping: 12, stiffness: 220 })
+      })
+    }
+  }, [isSelected])
+
+  const tileAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }))
+
+  const dotOpacityStyle = useAnimatedStyle(() => ({
+    opacity: selected.value,
+    transform: [
+      {
+        scale: interpolate(selected.value, [0, 1], [0.4, 1], Extrapolation.CLAMP),
+      },
+    ],
+  }))
+
+  return (
+    <Animated.View style={[styles.tileWrapper, tileAnimStyle]}>
+      <Pressable
+        style={({ pressed }) => [
+          styles.tile,
+          isSelected && { backgroundColor: opt.activeBg, borderColor: opt.activeColor },
+          pressed && !isSelected && styles.tilePressed,
+        ]}
+        onPress={onPress}
+        accessibilityLabel={`Select ${opt.label}`}
+        accessibilityRole="radio"
+        accessibilityState={{ selected: isSelected }}
+      >
+        {/* Icon */}
+        <View style={[styles.iconWrap, isSelected && { backgroundColor: opt.activeColor + '30' }]}>
+          <DeviceOptionIcon type={opt.type} size={28} isSelected={isSelected} />
+        </View>
+
+        {/* Label */}
+        <Text
+          style={[styles.tileLabel, isSelected && { color: Colors.white }]}
+          numberOfLines={1}
+        >
+          {opt.label}
+        </Text>
+
+        {/* Description */}
+        <Text
+          style={[styles.tileDesc, isSelected && { color: 'rgba(255,255,255,0.60)' }]}
+          numberOfLines={2}
+        >
+          {opt.description}
+        </Text>
+
+        {/* Animated selection dot */}
+        <Animated.View
+          style={[styles.selectedDot, { backgroundColor: opt.activeColor }, dotOpacityStyle]}
+        />
+      </Pressable>
+    </Animated.View>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 type Props = {
   value: DeviceType
   onChange: (type: DeviceType) => void
@@ -102,71 +180,29 @@ type Props = {
 export function DeviceTypePicker({ value, onChange }: Props) {
   return (
     <View style={styles.grid}>
-      {DEVICE_OPTIONS.map((opt) => {
-        const isSelected = value === opt.type
-        return (
-          <Pressable
-            key={opt.type}
-            style={({ pressed }) => [
-              styles.tile,
-              isSelected && { backgroundColor: opt.activeBg, borderColor: opt.activeColor },
-              pressed && !isSelected && styles.tilePressed,
-            ]}
-            onPress={() => onChange(opt.type)}
-            accessibilityLabel={`Select ${opt.label}`}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: isSelected }}
-          >
-            {/* Icon */}
-            <View style={[styles.iconWrap, isSelected && { backgroundColor: opt.activeColor + '30' }]}>
-              <DeviceOptionIcon type={opt.type} size={28} isSelected={isSelected} />
-            </View>
-
-            {/* Label */}
-            <Text
-              style={[
-                styles.tileLabel,
-                isSelected && { color: Colors.white },
-              ]}
-              numberOfLines={1}
-            >
-              {opt.label}
-            </Text>
-
-            {/* Description */}
-            <Text
-              style={[
-                styles.tileDesc,
-                isSelected && { color: 'rgba(255,255,255,0.60)' },
-              ]}
-              numberOfLines={2}
-            >
-              {opt.description}
-            </Text>
-
-            {/* Selected indicator dot */}
-            {isSelected && (
-              <View style={[styles.selectedDot, { backgroundColor: opt.activeColor }]} />
-            )}
-          </Pressable>
-        )
-      })}
+      {DEVICE_OPTIONS.map((opt) => (
+        <DeviceTile
+          key={opt.type}
+          opt={opt}
+          isSelected={value === opt.type}
+          onPress={() => onChange(opt.type)}
+        />
+      ))}
     </View>
   )
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  tile: {
-    // 2 columns with gap: each tile is ~(containerWidth - 8) / 2
-    // Using flex-basis % approach: wrap handles the rest
+  tileWrapper: {
     width: '47.5%',
+  },
+  tile: {
     backgroundColor: Colors.white,
     borderRadius: 12,
     borderWidth: 1.5,

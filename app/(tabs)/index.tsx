@@ -9,7 +9,7 @@
  * FAB creates a new project and navigates directly to canvas.
  */
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -18,6 +18,10 @@ import {
   ScrollView,
   FlatList,
   Animated,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Modal,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
@@ -282,10 +286,28 @@ export default function CanvasScreen() {
     [userConfigs, activeConfig]
   )
 
-  const handleCreate = async () => {
+  const [namePromptOpen, setNamePromptOpen] = useState(false)
+  const [nameInput, setNameInput] = useState('')
+  const [nameCreating, setNameCreating] = useState(false)
+  const nameInputRef = useRef<TextInput>(null)
+
+  // Open the name prompt instead of creating immediately
+  const handleCreate = () => {
+    setNameInput('')
+    setNamePromptOpen(true)
+    // Auto-focus after the modal animates in
+    setTimeout(() => nameInputRef.current?.focus(), 200)
+  }
+
+  const handleConfirmCreate = async () => {
     if (!user?.id) return
+    const trimmed = nameInput.trim()
+    if (!trimmed) return
+    setNameCreating(true)
     haptics.light()
-    const newConfig = await createConfig('New Network', user.id)
+    const newConfig = await createConfig(trimmed, user.id)
+    setNameCreating(false)
+    setNamePromptOpen(false)
     if (newConfig) {
       haptics.medium()
       setActiveConfig(newConfig.id)
@@ -316,7 +338,7 @@ export default function CanvasScreen() {
               hitSlop={8}
             >
               <Text style={styles.switcherLabel}>
-                {userConfigs.length} {pluralize(userConfigs.length, 'project')}
+                {pluralize(userConfigs.length, 'project')}
               </Text>
               <CaretDown size={11} color={Colors.primary} weight="bold" />
             </Pressable>
@@ -461,6 +483,67 @@ export default function CanvasScreen() {
           visible={switcherOpen}
           onClose={() => setSwitcherOpen(false)}
         />
+
+        {/* ── New Network Name Prompt ──────────────── */}
+        <Modal
+          visible={namePromptOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setNamePromptOpen(false)}
+          statusBarTranslucent
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={namePrompt.overlay}
+          >
+            <Pressable style={namePrompt.backdrop} onPress={() => setNamePromptOpen(false)} />
+            <View style={namePrompt.card}>
+              {/* Handle */}
+              <View style={namePrompt.handle} />
+
+              <Text style={namePrompt.heading}>Name your network</Text>
+              <Text style={namePrompt.sub}>You can always rename it later.</Text>
+
+              <TextInput
+                ref={nameInputRef}
+                style={namePrompt.input}
+                placeholder="e.g. Enterprise Campus LAN"
+                placeholderTextColor={Colors.textMuted}
+                value={nameInput}
+                onChangeText={setNameInput}
+                onSubmitEditing={handleConfirmCreate}
+                returnKeyType="done"
+                autoCapitalize="words"
+                maxLength={80}
+              />
+
+              <View style={namePrompt.actions}>
+                <Pressable
+                  style={({ pressed }) => [
+                    namePrompt.confirmBtn,
+                    (!nameInput.trim() || nameCreating) && namePrompt.confirmBtnDisabled,
+                    pressed && { opacity: 0.88 },
+                  ]}
+                  onPress={handleConfirmCreate}
+                  disabled={!nameInput.trim() || nameCreating}
+                >
+                  <Text style={[
+                    namePrompt.confirmText,
+                    (!nameInput.trim() || nameCreating) && namePrompt.confirmTextDisabled,
+                  ]}>
+                    {nameCreating ? 'Creating…' : 'Create Network'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={namePrompt.cancelBtn}
+                  onPress={() => setNamePromptOpen(false)}
+                >
+                  <Text style={namePrompt.cancelText}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </SafeAreaView>
     </LinearGradient>
   )
@@ -787,5 +870,103 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 14,
     elevation: 8,
+  },
+})
+
+// ── Name-prompt modal styles ──────────────────────────────────────────────────
+
+const namePrompt = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,26,65,0.45)',
+  },
+  card: {
+    backgroundColor: Colors.white,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 36,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.10,
+        shadowRadius: 18,
+      },
+      android: { elevation: 20 },
+    }),
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginBottom: 22,
+  },
+  heading: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 22,
+    color: Colors.textPrimary,
+    marginBottom: 6,
+  },
+  sub: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: Colors.textMuted,
+    marginBottom: 22,
+  },
+  input: {
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 16,
+    color: Colors.textPrimary,
+    backgroundColor: Colors.white,
+    marginBottom: 20,
+  },
+  actions: {
+    gap: 10,
+  },
+  confirmBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  confirmBtnDisabled: {
+    backgroundColor: Colors.border,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  confirmText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    color: Colors.white,
+  },
+  confirmTextDisabled: {
+    color: Colors.textMuted,
+  },
+  cancelBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  cancelText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 15,
+    color: Colors.textMuted,
   },
 })

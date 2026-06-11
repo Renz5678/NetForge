@@ -1,4 +1,13 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  FadeIn,
+  FadeInDown,
+  ZoomIn,
+} from 'react-native-reanimated'
 
 // Custom lightweight uuidv4 implementation for React Native / Hermes compatibility
 function uuidv4(): string {
@@ -21,6 +30,7 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Dimensions,
 } from 'react-native'
 
 // Enable LayoutAnimation on Android
@@ -373,37 +383,40 @@ function DeptSheet({
 
   return (
     <BottomSheet visible={visible} onClose={onClose}>
-      <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 560 }}>
 
-        {/* ── Header ── */}
-        <View style={deptSheet.headerRow}>
-          <Text style={deptSheet.title}>
-            {dept ? 'Edit Node' : 'Add Node'}
-          </Text>
-          {dept && (
-            <View style={deptSheet.editBadge}>
-              <Text style={deptSheet.editBadgeText}>EDITING</Text>
-            </View>
-          )}
+      {/* ── Header (always visible, never scrolled away) ── */}
+      <View style={deptSheet.headerRow}>
+        <Text style={deptSheet.title}>
+          {dept ? 'Edit Node' : 'Add Node'}
+        </Text>
+        {dept && (
+          <View style={deptSheet.editBadge}>
+            <Text style={deptSheet.editBadgeText}>EDITING</Text>
+          </View>
+        )}
+      </View>
+
+      {/* ── Scrollable body (flex:1 fills the KAV-bounded sheet height) ── */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 8 }}
+        style={{ flex: 1 }}
+      >
+        {/* ── Name field (first in scroll → always visible at top) ── */}
+        <View style={[deptSheet.field, { marginBottom: 4 }]}>
+          <Input
+            label="Node Name"
+            placeholder="e.g. Core-Router or Finance-LAN"
+            value={name}
+            onChangeText={setName}
+            error={nameError}
+          />
         </View>
 
-        {/* ── Section 1: Essentials ── */}
-        <View style={deptSheet.section}>
+        {/* Device type picker */}
+        <View style={[deptSheet.section, { paddingTop: 4 }]}>
           <Text style={deptSheet.sectionLabel}>ESSENTIALS</Text>
-
-          {/* Name */}
-          <View style={deptSheet.field}>
-            <Input
-              label="Node Name"
-              placeholder="e.g. Core-Router or Finance-LAN"
-              value={name}
-              onChangeText={setName}
-              error={nameError}
-              autoFocus={!dept}
-            />
-          </View>
-
-          {/* Device type picker */}
           <View style={deptSheet.field}>
             <Text style={deptSheet.label}>Device Type</Text>
             <DeviceTypePicker
@@ -726,7 +739,7 @@ function DeptSheet({
           </View>
         )}
 
-        <View style={{ height: 16 }} />
+        <View style={{ height: 8 }} />
       </ScrollView>
 
       {/* ── Action buttons ── */}
@@ -758,6 +771,32 @@ export default function ConfigDetailScreen() {
   const isSample = activeConfig?.id.startsWith('local_tpl_') ?? false
 
   const [activeTab, setActiveTab] = useState<'departments' | 'subnets' | 'graph'>('departments')
+
+  // ── Animation shared values ───────────────────────────────────────────────
+  const segmentContainerWidth = useSharedValue(0)
+  const indicatorX = useSharedValue(0)
+  const fabScale = useSharedValue(0)
+
+  // Segment indicator slide
+  useEffect(() => {
+    const idx = activeTab === 'departments' ? 0 : activeTab === 'subnets' ? 1 : 2
+    const segW = segmentContainerWidth.value / 3
+    indicatorX.value = withSpring(idx * segW, { damping: 18, stiffness: 200 })
+  }, [activeTab])
+
+  // FAB entrance on mount
+  useEffect(() => {
+    fabScale.value = withSpring(1, { damping: 12, stiffness: 160 })
+  }, [])
+
+  const indicatorStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: indicatorX.value }],
+    width: segmentContainerWidth.value > 0 ? segmentContainerWidth.value / 3 : '33.33%' as any,
+  }))
+
+  const fabAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: fabScale.value }],
+  }))
   const [editedName, setEditedName] = useState('')
   const [isDirty, setIsDirty] = useState(false)
   const [nameInputFocused, setNameInputFocused] = useState(false)
@@ -1003,10 +1042,23 @@ export default function ConfigDetailScreen() {
         </View>
       )}
 
-      {/* Segmented control */}
-      <View style={styles.segmented}>
+      {/* Segmented control with animated sliding indicator */}
+      <View
+        style={styles.segmented}
+        onLayout={(e) => {
+          const w = e.nativeEvent.layout.width - 8 // subtract padding
+          if (segmentContainerWidth.value !== w) {
+            segmentContainerWidth.value = w
+            const idx = activeTab === 'departments' ? 0 : activeTab === 'subnets' ? 1 : 2
+            indicatorX.value = (w / 3) * idx
+          }
+        }}
+      >
+        {/* Sliding pill indicator */}
+        <Animated.View style={[styles.segmentIndicator, indicatorStyle]} />
+
         <Pressable
-          style={[styles.segment, activeTab === 'departments' && styles.segmentActive]}
+          style={styles.segment}
           onPress={() => setActiveTab('departments')}
         >
           <Text style={[styles.segmentText, activeTab === 'departments' && styles.segmentTextActive]}>
@@ -1014,7 +1066,7 @@ export default function ConfigDetailScreen() {
           </Text>
         </Pressable>
         <Pressable
-          style={[styles.segment, activeTab === 'subnets' && styles.segmentActive]}
+          style={styles.segment}
           onPress={() => setActiveTab('subnets')}
         >
           <Text style={[styles.segmentText, activeTab === 'subnets' && styles.segmentTextActive]}>
@@ -1022,7 +1074,7 @@ export default function ConfigDetailScreen() {
           </Text>
         </Pressable>
         <Pressable
-          style={[styles.segment, activeTab === 'graph' && styles.segmentActive]}
+          style={styles.segment}
           onPress={() => setActiveTab('graph')}
         >
           <Text style={[styles.segmentText, activeTab === 'graph' && styles.segmentTextActive]}>
@@ -1033,7 +1085,7 @@ export default function ConfigDetailScreen() {
 
       {/* Departments view */}
       {activeTab === 'departments' && (
-        <View style={styles.deptContainer}>
+        <Animated.View entering={FadeIn.duration(220)} style={styles.deptContainer}>
           {/* Search */}
           <View style={styles.searchRow}>
             <View style={styles.searchContainer}>
@@ -1056,56 +1108,60 @@ export default function ConfigDetailScreen() {
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => (
-              <View style={styles.deptCard}>
-                <View style={styles.deptHeader}>
-                  <Text style={styles.deptName}>{item.name}</Text>
-                  <View style={styles.deptActions}>
-                    <Pressable
-                      onPress={() => {
-                        setEditingDept(item)
-                        setShowAddSheet(true)
-                      }}
-                    >
-                      <PencilSimple size={20} color={Colors.textMuted} />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => setDeleteConfirmDeptId(item.id)}
-                      disabled={deletingId === item.id}
-                    >
-                      <Trash size={20} color={Colors.textMuted} />
-                    </Pressable>
+            renderItem={({ item, index }) => (
+              <Animated.View
+                entering={FadeInDown.delay(Math.min(index * 55, 280)).springify().damping(16)}
+              >
+                <View style={styles.deptCard}>
+                  <View style={styles.deptHeader}>
+                    <Text style={styles.deptName}>{item.name}</Text>
+                    <View style={styles.deptActions}>
+                      <Pressable
+                        onPress={() => {
+                          setEditingDept(item)
+                          setShowAddSheet(true)
+                        }}
+                      >
+                        <PencilSimple size={20} color={Colors.textMuted} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setDeleteConfirmDeptId(item.id)}
+                        disabled={deletingId === item.id}
+                      >
+                        <Trash size={20} color={Colors.textMuted} />
+                      </Pressable>
+                    </View>
                   </View>
-                </View>
 
-                <View style={styles.deptMeta}>
-                  <View style={styles.chip}>
-                    <Text style={styles.chipText}>{item.deviceCount} Devices</Text>
-                  </View>
-                  {item.subnet && (
+                  <View style={styles.deptMeta}>
                     <View style={styles.chip}>
-                      <Text style={styles.chipText}>{item.subnet}</Text>
+                      <Text style={styles.chipText}>{item.deviceCount} Devices</Text>
+                    </View>
+                    {item.subnet && (
+                      <View style={styles.chip}>
+                        <Text style={styles.chipText}>{item.subnet}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {item.peers.length > 0 && (
+                    <View style={styles.peerChips}>
+                      {item.peers.slice(0, 4).map((peerId) => {
+                        const peerDept = departments.find((d) => d.id === peerId)
+                        if (!peerDept) return null
+                        return (
+                          <View key={peerId} style={styles.peerBadge}>
+                            <Text style={styles.peerBadgeText}>Peer: {peerDept.name}</Text>
+                          </View>
+                        )
+                      })}
+                      {item.peers.length > 4 && (
+                        <Text style={styles.morePeers}>+{item.peers.length - 4} more</Text>
+                      )}
                     </View>
                   )}
                 </View>
-
-                {item.peers.length > 0 && (
-                  <View style={styles.peerChips}>
-                    {item.peers.slice(0, 4).map((peerId) => {
-                      const peerDept = departments.find((d) => d.id === peerId)
-                      if (!peerDept) return null
-                      return (
-                        <View key={peerId} style={styles.peerBadge}>
-                          <Text style={styles.peerBadgeText}>Peer: {peerDept.name}</Text>
-                        </View>
-                      )
-                    })}
-                    {item.peers.length > 4 && (
-                      <Text style={styles.morePeers}>+{item.peers.length - 4} more</Text>
-                    )}
-                  </View>
-                )}
-              </View>
+              </Animated.View>
             )}
             ListEmptyComponent={
               <View style={styles.emptyState}>
@@ -1114,10 +1170,11 @@ export default function ConfigDetailScreen() {
                 <Text style={styles.emptySubtitle}>
                   Add your first department to start building your network topology.
                 </Text>
-                <View style={{ marginTop: 12, width: 180 }}>
+                <View style={{ marginTop: 12, alignSelf: 'stretch', paddingHorizontal: 24 }}>
                   <Button
                     label="Add Department"
                     variant="primary"
+                    fullWidth
                     onPress={() => {
                       setEditingDept(null)
                       setShowAddSheet(true)
@@ -1129,8 +1186,9 @@ export default function ConfigDetailScreen() {
           />
 
           {/* FAB */}
+          <Animated.View style={[styles.fab, fabAnimStyle]}>
           <Pressable
-            style={styles.fab}
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
             onPress={() => {
               setEditingDept(null)
               setShowAddSheet(true)
@@ -1138,11 +1196,13 @@ export default function ConfigDetailScreen() {
           >
             <Plus size={28} color={Colors.white} />
           </Pressable>
-        </View>
+          </Animated.View>
+        </Animated.View>
       )}
 
       {/* Subnets view */}
       {activeTab === 'subnets' && (
+        <Animated.View entering={FadeIn.duration(220)} style={{ flex: 1 }}>
         <ScrollView style={styles.subnetContainer} showsVerticalScrollIndicator={true}>
           <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.subnetScrollHorizontal}>
             <View style={styles.subnetTable}>
@@ -1214,11 +1274,12 @@ export default function ConfigDetailScreen() {
             </View>
           </ScrollView>
         </ScrollView>
+        </Animated.View>
       )}
 
       {/* Graph view */}
       {activeTab === 'graph' && (
-        <View style={{ flex: 1, position: 'relative' }}>
+        <Animated.View entering={FadeIn.duration(220)} style={{ flex: 1, position: 'relative' }}>
           <ErrorBoundary inline inlineLabel="Network Graph">
           <NetworkGraph
               departments={departments}
@@ -1231,6 +1292,7 @@ export default function ConfigDetailScreen() {
                 ].filter(c => !c.passed).length
               }
               validationPassed={allPass}
+              validationResult={validation}
             />
           </ErrorBoundary>
 
@@ -1252,7 +1314,7 @@ export default function ConfigDetailScreen() {
               <CaretRight size={16} color={Colors.error} />
             </Pressable>
           )}
-        </View>
+        </Animated.View>
       )}
 
       {/* Add/Edit dept sheet */}
@@ -1509,15 +1571,39 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.ice,
     borderRadius: 12,
     padding: 4,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  segmentIndicator: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    left: 4,
+    backgroundColor: Colors.white,
+    borderRadius: 9,
+    // shadow for pill depth
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   segment: {
     flex: 1,
     paddingVertical: 8,
     borderRadius: 10,
     alignItems: 'center',
+    zIndex: 1,
   },
   segmentActive: {
-    backgroundColor: Colors.white,
+    // kept for API compat — visual active state now driven by animated pill
+    backgroundColor: 'transparent',
   },
   segmentText: {
     fontFamily: 'Inter_500Medium',
@@ -2095,12 +2181,15 @@ const deptSheet = StyleSheet.create({
   buttons: {
     gap: 8,
     marginTop: 12,
+    alignItems: 'stretch',
   },
   saveBtn: {
     backgroundColor: Colors.primary,
     borderRadius: 14,
     paddingVertical: 15,
     alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
     shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,

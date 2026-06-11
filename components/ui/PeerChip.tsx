@@ -1,7 +1,13 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Pressable, Text, StyleSheet } from 'react-native'
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  runOnJS,
+} from 'react-native-reanimated'
 import { Colors } from '@/constants/colors'
-
 import { Check } from 'phosphor-react-native'
 
 type PeerChipProps = {
@@ -11,16 +17,46 @@ type PeerChipProps = {
 }
 
 export function PeerChip({ label, selected, onPress }: PeerChipProps) {
+  const scale       = useSharedValue(1)
+  const checkOpacity = useSharedValue(selected ? 1 : 0)
+
+  // Animate check icon when selected changes
+  useEffect(() => {
+    checkOpacity.value = withTiming(selected ? 1 : 0, { duration: 160 })
+  }, [selected])
+
+  const chipAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }))
+
+  const checkAnimStyle = useAnimatedStyle(() => ({
+    opacity: checkOpacity.value,
+    marginRight: 4,
+  }))
+
+  const handlePress = () => {
+    scale.value = withSpring(0.88, { damping: 5, stiffness: 350 }, () => {
+      scale.value = withSpring(1, { damping: 12, stiffness: 220 })
+    })
+    onPress()
+  }
+
   return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.chip, selected ? styles.selected : styles.unselected]}
-    >
-      {selected && <Check size={14} color={Colors.white} style={{ marginRight: 4 }} />}
-      <Text style={[styles.label, selected ? styles.selectedLabel : styles.unselectedLabel]}>
-        {label}
-      </Text>
-    </Pressable>
+    <Animated.View style={chipAnimStyle}>
+      <Pressable
+        onPress={handlePress}
+        style={[styles.chip, selected ? styles.selected : styles.unselected]}
+      >
+        {selected && (
+          <Animated.View style={checkAnimStyle}>
+            <Check size={14} color={Colors.white} />
+          </Animated.View>
+        )}
+        <Text style={[styles.label, selected ? styles.selectedLabel : styles.unselectedLabel]}>
+          {label}
+        </Text>
+      </Pressable>
+    </Animated.View>
   )
 }
 
@@ -47,10 +83,5 @@ const styles = StyleSheet.create({
   },
   unselectedLabel: {
     color: Colors.medium,
-  },
-  checkmark: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
-    color: Colors.white,
   },
 })
