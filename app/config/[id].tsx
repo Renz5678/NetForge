@@ -18,7 +18,15 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native'
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true)
+}
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import {
@@ -29,15 +37,17 @@ import {
   MagnifyingGlass,
   Funnel,
   CaretRight,
+  CaretDown,
+  CaretUp,
   Globe,
   ListNumbers,
   Warning,
   Question,
   Link,
   Tag,
-  NetworkSlash,
   WarningCircle,
   Info,
+  SlidersHorizontal,
 } from 'phosphor-react-native'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -49,6 +59,7 @@ import { SyncConflictSheet } from '@/components/ui/SyncConflictSheet'
 import { Input } from '@/components/ui/Input'
 import { PeerChip } from '@/components/ui/PeerChip'
 import { StepperInput } from '@/components/ui/StepperInput'
+import { DeviceTypePicker } from '@/components/ui/DeviceTypePicker'
 import { NetworkGraph } from '@/components/graph/NetworkGraph'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { AlgorithmSelector } from '@/components/viz/AlgorithmSelector'
@@ -243,7 +254,18 @@ function initializeDefaultPorts(type: DeviceType, existingPorts?: InterfacePort[
   }
 }
 
-// Add/Edit department sheet
+// ─── Quick Add / Edit Node Sheet ────────────────────────────────────────────
+//
+// Structure (progressive disclosure):
+//   Section 1 – Essentials : Name (auto-focus) + DeviceTypePicker
+//   Section 2 – Connections: Peer chip grid
+//   Section 3 – Advanced ▾ : collapsed accordion
+//     • department  → Device count stepper
+//     • router      → OSPF config + Static routes
+//     • switch      → Port VLAN assignments
+//     • firewall    → ACL rules
+//     • all w/peers → Port wiring cards
+//
 function DeptSheet({
   visible,
   onClose,
@@ -271,6 +293,11 @@ function DeptSheet({
   const [switchPorts, setSwitchPorts] = useState<InterfacePort[]>([])
   const [aclRules, setAclRules] = useState<AclRule[]>([])
 
+  // Accordion state
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+
+  const canSave = name.trim().length > 0
+
   useEffect(() => {
     if (visible) {
       setName(dept?.name ?? '')
@@ -278,6 +305,7 @@ function DeptSheet({
       setPeers(dept?.peers ?? [])
       setNameError('')
       setDeviceCountError('')
+      setAdvancedOpen(false)
 
       const resolvedType = dept?.type ?? 'department'
       setType(resolvedType)
@@ -316,9 +344,8 @@ function DeptSheet({
   const handleSave = () => {
     setNameError('')
     setDeviceCountError('')
-    
-    // Compile final ports list
-    const finalPorts = type === 'switch' ? switchPorts : ports;
+
+    const finalPorts = type === 'switch' ? switchPorts : ports
 
     const finalDept: Department = {
       id: dept?.id ?? generateId(),
@@ -335,12 +362,8 @@ function DeptSheet({
     const validationResult = DepartmentSchema.safeParse(finalDept)
     if (!validationResult.success) {
       const formatted = validationResult.error.format()
-      if (formatted.name) {
-        setNameError(formatted.name._errors.join(', '))
-      }
-      if (formatted.deviceCount) {
-        setDeviceCountError(formatted.deviceCount._errors.join(', '))
-      }
+      if (formatted.name) setNameError(formatted.name._errors.join(', '))
+      if (formatted.deviceCount) setDeviceCountError(formatted.deviceCount._errors.join(', '))
       return
     }
 
@@ -350,313 +373,56 @@ function DeptSheet({
 
   return (
     <BottomSheet visible={visible} onClose={onClose}>
-      <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 500 }}>
-        <Text style={deptSheet.title}>{dept ? 'Edit Node Configuration' : 'Add Node to Network'}</Text>
+      <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 560 }}>
 
-        <View style={deptSheet.field}>
-          <Input
-            label="Node Name"
-            placeholder="e.g. Core-Router or Finance"
-            value={name}
-            onChangeText={setName}
-            error={nameError}
-            autoFocus={!dept}
-          />
-        </View>
-
-        {/* Device Type Segment Controls */}
-        <View style={deptSheet.field}>
-          <Text style={deptSheet.label}>Device Category Role</Text>
-          <View style={styles.segmented}>
-            {(['department', 'router', 'switch', 'firewall'] as const).map((t) => (
-              <Pressable
-                key={t}
-                style={[styles.segment, type === t && styles.segmentActive]}
-                onPress={() => {
-                  setType(t)
-                  if (t === 'switch' && switchPorts.length === 0) {
-                    setSwitchPorts(initializeDefaultPorts('switch'))
-                  }
-                }}
-              >
-                <Text style={[styles.segmentText, type === t && styles.segmentTextActive, { fontSize: 11 }]}>
-                  {t.toUpperCase()}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        {type === 'department' && (
-          <View style={deptSheet.field}>
-            <Text style={deptSheet.label}>Number of End Devices</Text>
-            <StepperInput value={deviceCount} onChange={setDeviceCount} min={1} />
-            {deviceCountError ? (
-              <Text style={{ color: Colors.error, fontSize: 12, marginTop: 4, fontFamily: 'Inter_500Medium' }}>
-                {deviceCountError}
-              </Text>
-            ) : null}
-          </View>
-        )}
-
-        {/* Router Context Forms */}
-        {type === 'router' && (
-          <View style={{ marginBottom: 16 }}>
-            {/* OSPF Area ID Config */}
-            <View style={[deptSheet.field, { backgroundColor: Colors.surfaceAlt, padding: 12, borderRadius: 10 }]}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: Colors.textPrimary }}>Dynamic OSPF Area 0</Text>
-                <Pressable
-                  style={{ backgroundColor: ospfEnabled ? Colors.successContainer : Colors.border, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}
-                  onPress={() => setOspfEnabled(!ospfEnabled)}
-                >
-                  <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 11, color: ospfEnabled ? Colors.success : Colors.textMuted }}>
-                    {ospfEnabled ? 'OSPF Active' : 'Disabled'}
-                  </Text>
-                </Pressable>
-              </View>
-              {ospfEnabled && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
-                  <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: Colors.textSecondary }}>Area ID:</Text>
-                  <TextInput
-                    style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 6, width: 44, height: 26, textAlign: 'center', fontSize: 12 }}
-                    value={String(ospfAreaId)}
-                    keyboardType="numeric"
-                    onChangeText={(val) => setOspfAreaId(parseInt(val, 10) || 0)}
-                  />
-                </View>
-              )}
-            </View>
-
-            {/* Static Routes configuration */}
-            <View style={deptSheet.field}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <Text style={deptSheet.label}>Static Forwarding Table</Text>
-                <Pressable onPress={() => setStaticRoutes([...staticRoutes, { destination: '10.0.1.0/24', nextHop: '10.0.0.2' }])}>
-                  <Text style={{ color: Colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>+ Add Route</Text>
-                </Pressable>
-              </View>
-              {staticRoutes.length === 0 && (
-                <Text style={{ fontStyle: 'italic', fontSize: 12, color: Colors.textMuted, textAlign: 'center', paddingVertical: 6 }}>No static routes defined.</Text>
-              )}
-              {staticRoutes.map((r, idx) => (
-                <View key={idx} style={{ flexDirection: 'row', gap: 6, marginBottom: 6, alignItems: 'center' }}>
-                  <TextInput
-                    style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 8, paddingHorizontal: 8, height: 32, fontSize: 11 }}
-                    placeholder="Subnet CIDR"
-                    value={r.destination}
-                    onChangeText={(text) => {
-                      const updated = [...staticRoutes]
-                      updated[idx].destination = text
-                      setStaticRoutes(updated)
-                    }}
-                  />
-                  <TextInput
-                    style={{ flex: 1, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 8, paddingHorizontal: 8, height: 32, fontSize: 11 }}
-                    placeholder="Next Hop IP"
-                    value={r.nextHop}
-                    onChangeText={(text) => {
-                      const updated = [...staticRoutes]
-                      updated[idx].nextHop = text
-                      setStaticRoutes(updated)
-                    }}
-                  />
-                  <Pressable onPress={() => setStaticRoutes(staticRoutes.filter((_, i) => i !== idx))}>
-                    <Text style={{ color: Colors.error, fontSize: 18, fontWeight: 'bold', paddingHorizontal: 6 }}>×</Text>
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Switch Context Forms */}
-        {type === 'switch' && (
-          <View style={deptSheet.field}>
-            <Text style={deptSheet.label}>Port VLAN Mode Assignments</Text>
-            {switchPorts.map((p, idx) => (
-              <View key={p.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, backgroundColor: Colors.surfaceAlt, padding: 8, borderRadius: 8 }}>
-                <Text style={{ fontFamily: 'Inter_500Medium', fontSize: 12, color: Colors.textPrimary }}>{p.name}</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 11, color: Colors.textSecondary }}>Access VLAN</Text>
-                  <TextInput
-                    style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 6, width: 44, height: 26, textAlign: 'center', fontSize: 12 }}
-                    value={String(p.vlanAccessId ?? 10)}
-                    keyboardType="numeric"
-                    onChangeText={(val) => {
-                      const updated = [...switchPorts]
-                      updated[idx].vlanAccessId = parseInt(val, 10) || 10
-                      setSwitchPorts(updated)
-                    }}
-                  />
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Firewall ACL Rules */}
-        {type === 'firewall' && (
-          <View style={deptSheet.field}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <Text style={deptSheet.label}>ACL Rules (ordered, first-match)</Text>
-              <Pressable
-                onPress={() => {
-                  const nextSeq = aclRules.length > 0
-                    ? Math.max(...aclRules.map((r) => r.sequence)) + 10
-                    : 10
-                  setAclRules([...aclRules, {
-                    id: uuidv4(),
-                    sequence: nextSeq,
-                    action: 'permit',
-                    protocol: 'ip',
-                    srcCidr: 'any',
-                    dstCidr: 'any',
-                    remark: '',
-                  }])
-                }}
-              >
-                <Text style={{ color: Colors.primary, fontFamily: 'Inter_600SemiBold', fontSize: 12 }}>+ Add Rule</Text>
-              </Pressable>
-            </View>
-
-            {aclRules.length === 0 && (
-              <Text style={{ fontStyle: 'italic', fontSize: 12, color: Colors.textMuted, textAlign: 'center', paddingVertical: 6 }}>
-                No ACL rules — all traffic implicitly denied.
-              </Text>
-            )}
-
-            {aclRules.map((rule, idx) => (
-              <View
-                key={rule.id}
-                style={{
-                  backgroundColor: rule.action === 'permit'
-                    ? 'rgba(34,197,94,0.08)'
-                    : 'rgba(239,68,68,0.08)',
-                  borderWidth: 1,
-                  borderColor: rule.action === 'permit' ? Colors.success : Colors.error,
-                  borderRadius: 10,
-                  padding: 10,
-                  marginBottom: 8,
-                }}
-              >
-                {/* Row 1: Seq + Action toggle + Protocol + Delete */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 11, color: Colors.textMuted, width: 28 }}>#{rule.sequence}</Text>
-
-                  {/* Action toggle */}
-                  <Pressable
-                    style={{
-                      backgroundColor: rule.action === 'permit' ? Colors.success : Colors.error,
-                      paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
-                    }}
-                    onPress={() => {
-                      const updated = [...aclRules]
-                      updated[idx] = { ...rule, action: rule.action === 'permit' ? 'deny' : 'permit' }
-                      setAclRules(updated)
-                    }}
-                  >
-                    <Text style={{ color: Colors.white, fontFamily: 'Inter_600SemiBold', fontSize: 11 }}>
-                      {rule.action.toUpperCase()}
-                    </Text>
-                  </Pressable>
-
-                  {/* Protocol picker */}
-                  {(['ip', 'tcp', 'udp', 'icmp'] as const).map((proto) => (
-                    <Pressable
-                      key={proto}
-                      style={{
-                        paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6,
-                        backgroundColor: rule.protocol === proto ? Colors.primary : Colors.surfaceAlt,
-                      }}
-                      onPress={() => {
-                        const updated = [...aclRules]
-                        updated[idx] = { ...rule, protocol: proto }
-                        setAclRules(updated)
-                      }}
-                    >
-                      <Text style={{ fontSize: 10, fontFamily: 'Inter_600SemiBold', color: rule.protocol === proto ? Colors.white : Colors.textMuted }}>
-                        {proto.toUpperCase()}
-                      </Text>
-                    </Pressable>
-                  ))}
-
-                  <Pressable
-                    style={{ marginLeft: 'auto' }}
-                    onPress={() => setAclRules(aclRules.filter((_, i) => i !== idx))}
-                  >
-                    <Text style={{ color: Colors.error, fontSize: 18, fontWeight: 'bold' }}>×</Text>
-                  </Pressable>
-                </View>
-
-                {/* Row 2: Src + Dst CIDRs */}
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 10, color: Colors.textMuted, marginBottom: 2 }}>Source CIDR</Text>
-                    <TextInput
-                      style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 6, paddingHorizontal: 8, height: 30, fontSize: 11 }}
-                      placeholder="any or 10.0.1.0/24"
-                      value={rule.srcCidr}
-                      onChangeText={(text) => {
-                        const updated = [...aclRules]
-                        updated[idx] = { ...rule, srcCidr: text }
-                        setAclRules(updated)
-                      }}
-                    />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 10, color: Colors.textMuted, marginBottom: 2 }}>Dest CIDR</Text>
-                    <TextInput
-                      style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 6, paddingHorizontal: 8, height: 30, fontSize: 11 }}
-                      placeholder="any or 10.0.2.0/24"
-                      value={rule.dstCidr}
-                      onChangeText={(text) => {
-                        const updated = [...aclRules]
-                        updated[idx] = { ...rule, dstCidr: text }
-                        setAclRules(updated)
-                      }}
-                    />
-                  </View>
-                  {(rule.protocol === 'tcp' || rule.protocol === 'udp') && (
-                    <View style={{ width: 54 }}>
-                      <Text style={{ fontSize: 10, color: Colors.textMuted, marginBottom: 2 }}>Port</Text>
-                      <TextInput
-                        style={{ borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 6, paddingHorizontal: 8, height: 30, fontSize: 11 }}
-                        placeholder="80"
-                        keyboardType="numeric"
-                        value={rule.dstPort !== undefined ? String(rule.dstPort) : ''}
-                        onChangeText={(text) => {
-                          const updated = [...aclRules]
-                          updated[idx] = { ...rule, dstPort: text ? parseInt(text, 10) : undefined }
-                          setAclRules(updated)
-                        }}
-                      />
-                    </View>
-                  )}
-                </View>
-
-                {/* Row 3: Optional remark */}
-                <TextInput
-                  style={{ marginTop: 6, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.white, borderRadius: 6, paddingHorizontal: 8, height: 28, fontSize: 11, color: Colors.textMuted }}
-                  placeholder="Remark (optional)"
-                  value={rule.remark ?? ''}
-                  onChangeText={(text) => {
-                    const updated = [...aclRules]
-                    updated[idx] = { ...rule, remark: text }
-                    setAclRules(updated)
-                  }}
-                />
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Peer Connections */}
-        <View style={deptSheet.field}>
-          <Text style={deptSheet.label}>Connected Nodes</Text>
-          <Text style={{ fontSize: 11, color: Colors.textMuted, marginBottom: 8 }}>
-            Tap to toggle which nodes this device links to.
+        {/* ── Header ── */}
+        <View style={deptSheet.headerRow}>
+          <Text style={deptSheet.title}>
+            {dept ? 'Edit Node' : 'Add Node'}
           </Text>
+          {dept && (
+            <View style={deptSheet.editBadge}>
+              <Text style={deptSheet.editBadgeText}>EDITING</Text>
+            </View>
+          )}
+        </View>
+
+        {/* ── Section 1: Essentials ── */}
+        <View style={deptSheet.section}>
+          <Text style={deptSheet.sectionLabel}>ESSENTIALS</Text>
+
+          {/* Name */}
+          <View style={deptSheet.field}>
+            <Input
+              label="Node Name"
+              placeholder="e.g. Core-Router or Finance-LAN"
+              value={name}
+              onChangeText={setName}
+              error={nameError}
+              autoFocus={!dept}
+            />
+          </View>
+
+          {/* Device type picker */}
+          <View style={deptSheet.field}>
+            <Text style={deptSheet.label}>Device Type</Text>
+            <DeviceTypePicker
+              value={type}
+              onChange={(t) => {
+                setType(t)
+                if (t === 'switch' && switchPorts.length === 0) {
+                  setSwitchPorts(initializeDefaultPorts('switch'))
+                }
+              }}
+            />
+          </View>
+        </View>
+
+        <View style={deptSheet.sectionDivider} />
+
+        {/* ── Section 2: Connections ── */}
+        <View style={deptSheet.section}>
+          <Text style={deptSheet.sectionLabel}>CONNECTIONS</Text>
           {otherDepts.length === 0 ? (
             <Text style={deptSheet.noPeers}>Add more nodes to define links.</Text>
           ) : (
@@ -673,147 +439,310 @@ function DeptSheet({
           )}
         </View>
 
-        {/* Port Wiring Cards (shown when peers are selected and device isn't a switch) */}
-        {peers.length > 0 && type !== 'switch' && (
-          <View style={[deptSheet.field, { marginTop: 8 }]}>
-            <Text style={deptSheet.label}>Port Wiring</Text>
-            <Text style={{ fontSize: 11, color: Colors.textMuted, marginBottom: 10 }}>
-              Assign a local interface port to each connected peer.
-            </Text>
-            {peers.map((peerId) => {
-              const peerNode = otherDepts.find((d) => d.id === peerId)
-              if (!peerNode) return null
+        <View style={deptSheet.sectionDivider} />
 
-              const currentPort = ports.find((p) => p.connectedToNodeId === peerId)
-              const portName = currentPort?.name ?? ''
-              const portIp   = currentPort?.ipAddress ?? ''
+        {/* ── Section 3: Advanced (accordion) ── */}
+        <Pressable
+          style={deptSheet.accordionHeader}
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+            setAdvancedOpen((v) => !v)
+          }}
+        >
+          <SlidersHorizontal size={16} color={Colors.textMuted} />
+          <Text style={[deptSheet.label, { flex: 1, marginBottom: 0 }]}>Advanced Settings</Text>
+          {advancedOpen
+            ? <CaretUp size={16} color={Colors.textMuted} />
+            : <CaretDown size={16} color={Colors.textMuted} />}
+        </Pressable>
 
-              const presetNames =
-                type === 'router'   ? ['GigabitEthernet0/0', 'GigabitEthernet0/1', 'GigabitEthernet0/2', 'GigabitEthernet0/3'] :
-                type === 'firewall' ? ['inside', 'outside', 'dmz'] :
-                                     ['GigabitEthernet0/0', 'FastEthernet0/1']
+        {advancedOpen && (
+          <View style={{ paddingBottom: 8 }}>
 
-              const updatePortField = (field: 'name' | 'ipAddress', value: string) => {
-                setPorts((prev) => {
-                  const existing = prev.find((p) => p.connectedToNodeId === peerId)
-                  if (existing) {
-                    return prev.map((p) =>
-                      p.connectedToNodeId === peerId ? { ...p, [field]: value } : p
-                    )
-                  } else {
-                    return [
-                      ...prev,
-                      { id: uuidv4(), name: field === 'name' ? value : 'GigabitEthernet0/0', ipAddress: field === 'ipAddress' ? value : undefined, connectedToNodeId: peerId },
-                    ]
-                  }
-                })
-              }
+            {/* Department: device count */}
+            {type === 'department' && (
+              <View style={deptSheet.field}>
+                <Text style={deptSheet.label}>Number of End Devices</Text>
+                <StepperInput value={deviceCount} onChange={setDeviceCount} min={1} />
+                {deviceCountError ? (
+                  <Text style={deptSheet.errorText}>{deviceCountError}</Text>
+                ) : null}
+              </View>
+            )}
 
-              return (
-                <View
-                  key={peerId}
-                  style={{
-                    backgroundColor: Colors.surfaceAlt,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: Colors.border,
-                    padding: 12,
-                    marginBottom: 10,
-                  }}
-                >
-                  {/* Connection header */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 }}>
-                    <View style={{ flex: 1, height: 2, backgroundColor: Colors.primary, borderRadius: 1 }} />
-                    <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 12, color: Colors.primary }}>
-                      {peerNode.name}
-                    </Text>
-                    <View style={{ flex: 1, height: 2, backgroundColor: Colors.primary, borderRadius: 1 }} />
-                  </View>
-
-                  {/* Port name presets */}
-                  <Text style={{ fontSize: 10, color: Colors.textMuted, marginBottom: 6 }}>Interface Port</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                    {presetNames.map((preset) => (
-                      <Pressable
-                        key={preset}
-                        onPress={() => updatePortField('name', preset)}
-                        style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 5,
-                          borderRadius: 8,
-                          backgroundColor: portName === preset ? Colors.primary : Colors.white,
-                          borderWidth: 1,
-                          borderColor: portName === preset ? Colors.primary : Colors.border,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            fontFamily: 'Inter_500Medium',
-                            color: portName === preset ? Colors.white : Colors.textSecondary,
-                          }}
-                        >
-                          {preset.replace('GigabitEthernet', 'Gi').replace('FastEthernet', 'Fa')}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-
-                  {/* Custom port name input */}
-                  <TextInput
-                    style={{
-                      borderWidth: 1,
-                      borderColor: Colors.border,
-                      backgroundColor: Colors.white,
-                      borderRadius: 8,
-                      paddingHorizontal: 10,
-                      height: 34,
-                      fontSize: 12,
-                      fontFamily: 'Inter_400Regular',
-                      color: Colors.textPrimary,
-                      marginBottom: 10,
-                    }}
-                    placeholder="Custom interface name…"
-                    value={portName}
-                    onChangeText={(v) => updatePortField('name', v)}
-                  />
-
-                  {/* IP Address (routers & firewalls) */}
-                  {(type === 'router' || type === 'firewall') && (
-                    <>
-                      <Text style={{ fontSize: 10, color: Colors.textMuted, marginBottom: 4 }}>
-                        Interface IP Address (CIDR)
+            {/* Router: OSPF + Static Routes */}
+            {type === 'router' && (
+              <View style={{ gap: 12 }}>
+                {/* OSPF */}
+                <View style={deptSheet.advancedCard}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={deptSheet.advancedCardTitle}>OSPF Area 0</Text>
+                    <Pressable
+                      style={[deptSheet.toggleBtn, ospfEnabled && deptSheet.toggleBtnOn]}
+                      onPress={() => setOspfEnabled(!ospfEnabled)}
+                    >
+                      <Text style={[deptSheet.toggleBtnText, ospfEnabled && deptSheet.toggleBtnTextOn]}>
+                        {ospfEnabled ? 'OSPF ON' : 'Disabled'}
                       </Text>
+                    </Pressable>
+                  </View>
+                  {ospfEnabled && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                      <Text style={deptSheet.sublabel}>Area ID:</Text>
                       <TextInput
-                        style={{
-                          borderWidth: 1,
-                          borderColor: Colors.border,
-                          backgroundColor: Colors.white,
-                          borderRadius: 8,
-                          paddingHorizontal: 10,
-                          height: 34,
-                          fontSize: 12,
-                          fontFamily: 'Inter_400Regular',
-                          color: Colors.textPrimary,
-                        }}
-                        placeholder="e.g. 10.0.0.1/30"
-                        value={portIp}
-                        keyboardType="default"
-                        autoCapitalize="none"
-                        onChangeText={(v) => updatePortField('ipAddress', v)}
+                        style={deptSheet.compactInput}
+                        value={String(ospfAreaId)}
+                        keyboardType="numeric"
+                        onChangeText={(v) => setOspfAreaId(parseInt(v, 10) || 0)}
                       />
-                    </>
+                    </View>
                   )}
                 </View>
-              )
-            })}
+
+                {/* Static Routes */}
+                <View style={deptSheet.field}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={deptSheet.label}>Static Routes</Text>
+                    <Pressable onPress={() => setStaticRoutes([...staticRoutes, { destination: '10.0.1.0/24', nextHop: '10.0.0.2' }])}>
+                      <Text style={deptSheet.addRowText}>+ Add Route</Text>
+                    </Pressable>
+                  </View>
+                  {staticRoutes.length === 0 && (
+                    <Text style={deptSheet.emptyAdvanced}>No static routes defined.</Text>
+                  )}
+                  {staticRoutes.map((r, idx) => (
+                    <View key={idx} style={{ flexDirection: 'row', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                      <TextInput
+                        style={[deptSheet.tableInput, { flex: 1 }]}
+                        placeholder="Subnet CIDR"
+                        value={r.destination}
+                        onChangeText={(text) => {
+                          const updated = [...staticRoutes]
+                          updated[idx] = { ...updated[idx], destination: text }
+                          setStaticRoutes(updated)
+                        }}
+                      />
+                      <TextInput
+                        style={[deptSheet.tableInput, { flex: 1 }]}
+                        placeholder="Next Hop IP"
+                        value={r.nextHop}
+                        onChangeText={(text) => {
+                          const updated = [...staticRoutes]
+                          updated[idx] = { ...updated[idx], nextHop: text }
+                          setStaticRoutes(updated)
+                        }}
+                      />
+                      <Pressable onPress={() => setStaticRoutes(staticRoutes.filter((_, i) => i !== idx))}>
+                        <Text style={deptSheet.removeText}>×</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Switch: VLAN port table */}
+            {type === 'switch' && (
+              <View style={deptSheet.field}>
+                <Text style={deptSheet.label}>Port VLAN Assignments</Text>
+                {switchPorts.map((port, idx) => (
+                  <View key={port.id} style={deptSheet.portRow}>
+                    <Text style={deptSheet.portName}>{port.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={deptSheet.sublabel}>VLAN</Text>
+                      <TextInput
+                        style={deptSheet.compactInput}
+                        value={String(port.vlanAccessId ?? 10)}
+                        keyboardType="numeric"
+                        onChangeText={(text) => {
+                          const updated = [...switchPorts]
+                          updated[idx] = { ...updated[idx], vlanAccessId: parseInt(text, 10) || 10 }
+                          setSwitchPorts(updated)
+                        }}
+                      />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Firewall: ACL Rules */}
+            {type === 'firewall' && (
+              <View style={deptSheet.field}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <Text style={deptSheet.label}>ACL Rules</Text>
+                  <Pressable onPress={() => setAclRules([...aclRules, {
+                    id: uuidv4(), sequence: (aclRules.length + 1) * 10,
+                    action: 'permit', protocol: 'ip', srcCidr: 'any', dstCidr: 'any',
+                  }])}>
+                    <Text style={deptSheet.addRowText}>+ Add Rule</Text>
+                  </Pressable>
+                </View>
+                {aclRules.length === 0 && (
+                  <Text style={deptSheet.emptyAdvanced}>No ACL rules defined. All traffic is implicitly denied.</Text>
+                )}
+                {aclRules.map((rule, idx) => (
+                  <View
+                    key={rule.id}
+                    style={[deptSheet.aclCard, {
+                      borderColor: rule.action === 'permit' ? Colors.success + '40' : Colors.error + '40',
+                      backgroundColor: rule.action === 'permit' ? Colors.success + '08' : Colors.error + '08',
+                    }]}
+                  >
+                    {/* Row 1: seq + action toggle + protocol chips + delete */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <Text style={deptSheet.aclSeq}>#{rule.sequence}</Text>
+                      <Pressable
+                        style={[deptSheet.aclAction, { backgroundColor: rule.action === 'permit' ? Colors.success : Colors.error }]}
+                        onPress={() => {
+                          const updated = [...aclRules]
+                          updated[idx] = { ...rule, action: rule.action === 'permit' ? 'deny' : 'permit' }
+                          setAclRules(updated)
+                        }}
+                      >
+                        <Text style={deptSheet.aclActionText}>{rule.action.toUpperCase()}</Text>
+                      </Pressable>
+                      {(['ip', 'tcp', 'udp', 'icmp'] as const).map((proto) => (
+                        <Pressable
+                          key={proto}
+                          style={[deptSheet.aclProto, rule.protocol === proto && deptSheet.aclProtoActive]}
+                          onPress={() => {
+                            const updated = [...aclRules]
+                            updated[idx] = { ...rule, protocol: proto }
+                            setAclRules(updated)
+                          }}
+                        >
+                          <Text style={[deptSheet.aclProtoText, rule.protocol === proto && deptSheet.aclProtoTextActive]}>
+                            {proto.toUpperCase()}
+                          </Text>
+                        </Pressable>
+                      ))}
+                      <Pressable style={{ marginLeft: 'auto' }} onPress={() => setAclRules(aclRules.filter((_, i) => i !== idx))}>
+                        <Text style={deptSheet.removeText}>×</Text>
+                      </Pressable>
+                    </View>
+                    {/* Row 2: CIDRs */}
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <TextInput
+                        style={[deptSheet.tableInput, { flex: 1 }]}
+                        placeholder="Src CIDR"
+                        value={rule.srcCidr}
+                        onChangeText={(text) => {
+                          const updated = [...aclRules]; updated[idx] = { ...rule, srcCidr: text }; setAclRules(updated)
+                        }}
+                      />
+                      <TextInput
+                        style={[deptSheet.tableInput, { flex: 1 }]}
+                        placeholder="Dst CIDR"
+                        value={rule.dstCidr}
+                        onChangeText={(text) => {
+                          const updated = [...aclRules]; updated[idx] = { ...rule, dstCidr: text }; setAclRules(updated)
+                        }}
+                      />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Port Wiring (all types when peers selected) */}
+            {peers.length > 0 && type !== 'switch' && (
+              <View style={[deptSheet.field, { marginTop: 4 }]}>
+                <Text style={deptSheet.label}>Port Wiring</Text>
+                <Text style={[deptSheet.sublabel, { marginBottom: 10 }]}>
+                  Assign a local interface to each connected peer.
+                </Text>
+                {peers.map((peerId) => {
+                  const peerNode = otherDepts.find((d) => d.id === peerId)
+                  if (!peerNode) return null
+
+                  const currentPort = ports.find((p) => p.connectedToNodeId === peerId)
+                  const portName = currentPort?.name ?? ''
+                  const portIp = currentPort?.ipAddress ?? ''
+
+                  const presetNames =
+                    type === 'router'   ? ['GigabitEthernet0/0', 'GigabitEthernet0/1', 'GigabitEthernet0/2'] :
+                    type === 'firewall' ? ['inside', 'outside', 'dmz'] :
+                                         ['GigabitEthernet0/0', 'FastEthernet0/1']
+
+                  const updatePortField = (field: 'name' | 'ipAddress', value: string) => {
+                    setPorts((prev) => {
+                      const existing = prev.find((p) => p.connectedToNodeId === peerId)
+                      if (existing) {
+                        return prev.map((p) => p.connectedToNodeId === peerId ? { ...p, [field]: value } : p)
+                      }
+                      return [...prev, { id: uuidv4(), name: field === 'name' ? value : 'GigabitEthernet0/0', ipAddress: field === 'ipAddress' ? value : undefined, connectedToNodeId: peerId }]
+                    })
+                  }
+
+                  return (
+                    <View key={peerId} style={deptSheet.portWiringCard}>
+                      <View style={deptSheet.portWiringHeader}>
+                        <View style={{ flex: 1, height: 1.5, backgroundColor: Colors.primary + '50', borderRadius: 1 }} />
+                        <Text style={deptSheet.portWiringPeerName}>{peerNode.name}</Text>
+                        <View style={{ flex: 1, height: 1.5, backgroundColor: Colors.primary + '50', borderRadius: 1 }} />
+                      </View>
+
+                      <Text style={[deptSheet.sublabel, { marginBottom: 6 }]}>Interface Port</Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                        {presetNames.map((preset) => (
+                          <Pressable
+                            key={preset}
+                            onPress={() => updatePortField('name', preset)}
+                            style={[deptSheet.presetChip, portName === preset && deptSheet.presetChipActive]}
+                          >
+                            <Text style={[deptSheet.presetChipText, portName === preset && deptSheet.presetChipTextActive]}>
+                              {preset.replace('GigabitEthernet', 'Gi').replace('FastEthernet', 'Fa')}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+
+                      <TextInput
+                        style={[deptSheet.tableInput, { marginBottom: (type === 'router' || type === 'firewall') ? 8 : 0 }]}
+                        placeholder="Custom interface name…"
+                        value={portName}
+                        onChangeText={(v) => updatePortField('name', v)}
+                      />
+
+                      {(type === 'router' || type === 'firewall') && (
+                        <>
+                          <Text style={[deptSheet.sublabel, { marginBottom: 4 }]}>Interface IP (CIDR)</Text>
+                          <TextInput
+                            style={deptSheet.tableInput}
+                            placeholder="e.g. 10.0.0.1/30"
+                            value={portIp}
+                            autoCapitalize="none"
+                            onChangeText={(v) => updatePortField('ipAddress', v)}
+                          />
+                        </>
+                      )}
+                    </View>
+                  )
+                })}
+              </View>
+            )}
+
           </View>
         )}
+
+        <View style={{ height: 16 }} />
       </ScrollView>
 
+      {/* ── Action buttons ── */}
       <View style={deptSheet.buttons}>
-        <Button label="Save Configuration" variant="primary" fullWidth onPress={handleSave} />
-        <Button label="Cancel" variant="ghost" fullWidth onPress={onClose} />
+        <Pressable
+          style={[deptSheet.saveBtn, !canSave && deptSheet.saveBtnDisabled]}
+          onPress={handleSave}
+          disabled={!canSave}
+        >
+          <Text style={[deptSheet.saveBtnText, !canSave && deptSheet.saveBtnTextDisabled]}>
+            {dept ? 'Save Changes' : 'Add Node'}
+          </Text>
+        </Pressable>
+        <Pressable style={deptSheet.cancelBtn} onPress={onClose}>
+          <Text style={deptSheet.cancelBtnText}>Cancel</Text>
+        </Pressable>
       </View>
     </BottomSheet>
   )
@@ -1892,27 +1821,314 @@ const styles = StyleSheet.create({
 })
 
 const deptSheet = StyleSheet.create({
-  title: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 18,
-    color: Colors.textPrimary,
+  // ── Header ──
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     marginBottom: 20,
   },
+  title: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 20,
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  editBadge: {
+    backgroundColor: `${Colors.primary}15`,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}30`,
+  },
+  editBadgeText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+    color: Colors.primary,
+    letterSpacing: 0.4,
+  },
+
+  // ── Sections ──
+  section: {
+    paddingHorizontal: 2,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  sectionLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+    color: Colors.textMuted,
+    letterSpacing: 1.2,
+    marginBottom: 14,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 14,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginHorizontal: -2,
+    marginVertical: 4,
+  },
+
+  // ── Accordion header ──
+  accordionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingVertical: 14,
+    paddingHorizontal: 2,
+  },
+
+  // ── Fields ──
   field: { marginBottom: 16 },
   label: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
     color: Colors.textPrimary,
     marginBottom: 8,
   },
+  sublabel: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  errorText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.error,
+    marginTop: 4,
+  },
+
+  // ── Advanced card ──
+  advancedCard: {
+    backgroundColor: Colors.surfaceAlt,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  advancedCardTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: Colors.textPrimary,
+  },
+
+  // ── Toggle button ──
+  toggleBtn: {
+    backgroundColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  toggleBtnOn: {
+    backgroundColor: Colors.successContainer,
+  },
+  toggleBtnText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  toggleBtnTextOn: {
+    color: Colors.success,
+  },
+
+  // ── Compact input (VLAN IDs, OSPF area) ──
+  compactInput: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.white,
+    borderRadius: 6,
+    width: 52,
+    height: 28,
+    textAlign: 'center',
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+  },
+
+  // ── Table inputs (routes, ACL CIDRs) ──
+  tableInput: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.white,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 34,
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: Colors.textPrimary,
+  },
+
+  // ── Add row / remove text ──
+  addRowText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: Colors.primary,
+  },
+  removeText: {
+    color: Colors.error,
+    fontSize: 20,
+    fontWeight: 'bold',
+    paddingHorizontal: 4,
+  },
+  emptyAdvanced: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 6,
+  },
+
+  // ── Switch port row ──
+  portRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+    backgroundColor: Colors.surfaceAlt,
+    padding: 8,
+    borderRadius: 8,
+  },
+  portName: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.textPrimary,
+  },
+
+  // ── ACL rule card ──
+  aclCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+  },
+  aclSeq: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+    color: Colors.textMuted,
+    width: 28,
+  },
+  aclAction: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  aclActionText: {
+    color: Colors.white,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+  },
+  aclProto: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: Colors.surfaceAlt,
+  },
+  aclProtoActive: {
+    backgroundColor: Colors.primary,
+  },
+  aclProtoText: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    color: Colors.textMuted,
+  },
+  aclProtoTextActive: {
+    color: Colors.white,
+  },
+
+  // ── Port wiring ──
+  portWiringCard: {
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 12,
+    marginBottom: 10,
+  },
+  portWiringHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  portWiringPeerName: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
+    color: Colors.primary,
+  },
+  presetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  presetChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  presetChipText: {
+    fontSize: 10,
+    fontFamily: 'Inter_500Medium',
+    color: Colors.textSecondary,
+  },
+  presetChipTextActive: {
+    color: Colors.white,
+  },
+
+  // ── Connections section ──
   noPeers: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.textMuted,
     fontStyle: 'italic',
   },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  buttons: { gap: 8, marginTop: 8 },
+
+  // ── Action buttons ──
+  buttons: {
+    gap: 8,
+    marginTop: 12,
+  },
+  saveBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center',
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  saveBtnDisabled: {
+    backgroundColor: Colors.border,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  saveBtnText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    color: Colors.white,
+  },
+  saveBtnTextDisabled: {
+    color: Colors.textMuted,
+  },
+  cancelBtn: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 15,
+    color: Colors.textMuted,
+  },
 })
 
 const pathSheet = StyleSheet.create({

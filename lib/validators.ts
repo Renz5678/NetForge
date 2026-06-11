@@ -82,6 +82,36 @@ export const DepartmentSchema = z
         message: 'Subnet must be a valid CIDR notation',
       })
       .optional(),
+    // ── Hardware extensions (must be included or Zod strips them) ──
+    ports: z
+      .array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          connectedToNodeId: z.string().optional(),
+          connectedToPortId: z.string().optional(),
+          ipAddress: z.string().optional(),
+          vlanMode: z.enum(['access', 'trunk']).optional(),
+          vlanAccessId: z.number().int().optional(),
+          vlanTrunkAllowed: z.array(z.number().int()).optional(),
+        })
+      )
+      .optional(),
+    staticRoutes: z
+      .array(
+        z.object({
+          destination: z.string(),
+          nextHop: z.string(),
+          interfaceId: z.string().optional(),
+        })
+      )
+      .optional(),
+    ospf: z
+      .object({
+        enabled: z.boolean(),
+        areaId: z.number().int().min(0),
+      })
+      .optional(),
     aclRules: z.array(AclRuleSchema).optional(),
   })
   .transform((val) => ({
