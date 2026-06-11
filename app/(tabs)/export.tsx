@@ -40,6 +40,7 @@ import {
   GraduationCap,
   CheckCircle,
   Download,
+  CaretRight,
 } from 'phosphor-react-native'
 import { useRouter } from 'expo-router'
 import { useConfigStore } from '@/stores/useConfigStore'
@@ -113,11 +114,25 @@ function ArtifactRow({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
+/** Returns true if the config is a built-in demo / sample template. */
+function isSampleConfig(id: string): boolean {
+  return id.startsWith('demo_enterprise_config') || id.startsWith('local_tpl_')
+}
+
 export default function ExportScreen() {
   const router = useRouter()
-  const activeConfig = useConfigStore((s) => s.activeConfig)
+  const configs = useConfigStore((s) => s.configs)
   const appMode = usePreferencesStore((s) => s.appMode)
   const isStudent = appMode === 'student'
+
+  // Local config selection — NOT auto-populated from activeConfig
+  const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null)
+  const selectedConfig = selectedConfigId
+    ? configs.find((c) => c.id === selectedConfigId) ?? null
+    : null
+
+  // Only user-created configs, no demos or templates
+  const userConfigs = configs.filter((c) => !isSampleConfig(c.id))
 
   const [loadingA, setLoadingA] = useState(false)
   const [loadingB, setLoadingB] = useState(false)
@@ -128,35 +143,35 @@ export default function ExportScreen() {
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleExportDeviceConfigs = useCallback(async () => {
-    if (!activeConfig) return
+    if (!selectedConfig) return
     setLoadingA(true)
-    const content = generateFullTopologyConfig(activeConfig)
-    const filename = `${activeConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_cisco_ios.txt`
+    const content = generateFullTopologyConfig(selectedConfig)
+    const filename = `${selectedConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_cisco_ios.txt`
     const ok = await shareTextFile(content, filename, 'text/plain')
     if (ok) setLastExported('Device Configs')
     setLoadingA(false)
-  }, [activeConfig])
+  }, [selectedConfig])
 
   const handleExportIpPlan = useCallback(async () => {
-    if (!activeConfig) return
+    if (!selectedConfig) return
     setLoadingB(true)
-    const content = generateIpPlanCsv(activeConfig)
-    const filename = ipPlanFilename(activeConfig)
+    const content = generateIpPlanCsv(selectedConfig)
+    const filename = ipPlanFilename(selectedConfig)
     const ok = await shareTextFile(content, filename, 'text/csv')
     if (ok) setLastExported('IP Plan CSV')
     setLoadingB(false)
-  }, [activeConfig])
+  }, [selectedConfig])
 
   const handleExportChecklist = useCallback(async () => {
-    if (!activeConfig) return
+    if (!selectedConfig) return
     setLoadingC(true)
-    const order = topologicalSort(activeConfig.departments)
+    const order = topologicalSort(selectedConfig.departments)
     const nameLine = (id: string) => {
-      const dept = activeConfig.departments.find((d) => d.id === id)
+      const dept = selectedConfig.departments.find((d) => d.id === id)
       return dept ? `  [ ] Configure ${dept.name} (VLAN ${dept.vlanId ?? '—'}, ${dept.subnet ?? 'no subnet'})` : `  [ ] ${id}`
     }
     const content = [
-      `Change Checklist — ${activeConfig.name}`,
+      `Change Checklist — ${selectedConfig.name}`,
       `Generated: ${new Date().toISOString()}`,
       '',
       'Deployment order (dependencies first):',
@@ -164,67 +179,95 @@ export default function ExportScreen() {
       '',
       '— End of checklist —',
     ].join('\n')
-    const filename = `${activeConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_checklist.txt`
+    const filename = `${selectedConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_checklist.txt`
     const ok = await shareTextFile(content, filename, 'text/plain')
     if (ok) setLastExported('Change Checklist')
     setLoadingC(false)
-  }, [activeConfig])
+  }, [selectedConfig])
 
   const handleExportAll = useCallback(async () => {
-    if (!activeConfig) return
+    if (!selectedConfig) return
     setLoadingAll(true)
-    // Export Device Configs only — the most common artifact for "Export All"
-    // Additional artifacts auto-downloaded in sequence
-    const configText = generateFullTopologyConfig(activeConfig)
-    const configFilename = `${activeConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_cisco_ios.txt`
+    const configText = generateFullTopologyConfig(selectedConfig)
+    const configFilename = `${selectedConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_cisco_ios.txt`
     await shareTextFile(configText, configFilename, 'text/plain')
     setLoadingAll(false)
     setLastExported('All artifacts')
-  }, [activeConfig])
+  }, [selectedConfig])
 
-  // ── No config ─────────────────────────────────────────────────────────────
+  const headerIcon = (
+    <View style={styles.headerIcon}>
+      <Export size={18} color={Colors.white} weight="fill" />
+    </View>
+  )
 
-  if (!activeConfig) {
+  // ── Config picker ───────────────────────────────────────────────────────────
+
+  if (!selectedConfigId) {
     return (
       <SafeAreaView style={styles.safe}>
-        <TopHeader
-          title="Export"
-          leftIcon={
-            <View style={styles.headerIcon}>
-              <Export size={18} color={Colors.white} weight="fill" />
-            </View>
-          }
-        />
-        <View style={styles.centeredContainer}>
-          <Export size={52} color={Colors.pale} weight="duotone" />
-          <Text style={styles.centeredTitle}>No project selected</Text>
-          <Text style={styles.centeredSubtitle}>
-            Open a project in the Canvas tab to generate export artifacts.
+        <TopHeader title="Export" leftIcon={headerIcon} />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.pickerHeading}>Choose a project to export</Text>
+          <Text style={styles.pickerSubheading}>
+            Select one of your saved networks. Sample templates are not shown.
           </Text>
-          <Pressable
-            style={styles.linkBtn}
-            onPress={() => router.push('/(tabs)')}
-          >
-            <TreeStructure size={14} color={Colors.primary} weight="duotone" />
-            <Text style={styles.linkBtnText}>Go to Canvas</Text>
-            <ArrowRight size={13} color={Colors.primary} />
-          </Pressable>
-        </View>
+
+          {userConfigs.length === 0 ? (
+            <View style={styles.centeredContainer}>
+              <Export size={48} color={Colors.pale} weight="duotone" />
+              <Text style={styles.centeredTitle}>No projects yet</Text>
+              <Text style={styles.centeredSubtitle}>
+                Create a network in the Canvas tab first.
+              </Text>
+              <Pressable style={styles.linkBtn} onPress={() => router.push('/(tabs)')}>
+                <TreeStructure size={14} color={Colors.primary} weight="duotone" />
+                <Text style={styles.linkBtnText}>Go to Canvas</Text>
+                <ArrowRight size={13} color={Colors.primary} />
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.pickerList}>
+              {userConfigs.map((cfg) => (
+                <Pressable
+                  key={cfg.id}
+                  style={({ pressed }) => [styles.pickerCard, pressed && { opacity: 0.8 }]}
+                  onPress={() => setSelectedConfigId(cfg.id)}
+                >
+                  <View style={styles.pickerCardBody}>
+                    <Text style={styles.pickerCardName} numberOfLines={1}>{cfg.name}</Text>
+                    <Text style={styles.pickerCardMeta}>
+                      {cfg.departments.length} node{cfg.departments.length !== 1 ? 's' : ''}
+                      {cfg.isValid === true ? '  ·  ✓ Valid' : cfg.isValid === false ? '  ·  ⚠ Issues' : ''}
+                    </Text>
+                  </View>
+                  <CaretRight size={18} color={Colors.textMuted} />
+                </Pressable>
+              ))}
+            </View>
+          )}
+          <View style={{ height: 40 }} />
+        </ScrollView>
       </SafeAreaView>
     )
   }
 
-  // ── Not yet validated (isValid is undefined) ──────────────────────────────
+  // ── Not yet validated ───────────────────────────────────────────────────────────
 
-  if (activeConfig.isValid === undefined || activeConfig.departments.length === 0) {
+  if (selectedConfig!.isValid === undefined || selectedConfig!.departments.length === 0) {
     return (
       <SafeAreaView style={styles.safe}>
         <TopHeader
           title="Export"
-          leftIcon={
-            <View style={styles.headerIcon}>
-              <Export size={18} color={Colors.white} weight="fill" />
-            </View>
+          leftIcon={headerIcon}
+          rightActions={
+            <Pressable onPress={() => setSelectedConfigId(null)} style={styles.changeBtn}>
+              <Text style={styles.changeBtnText}>Change</Text>
+            </Pressable>
           }
         />
         <View style={styles.centeredContainer}>
@@ -248,16 +291,17 @@ export default function ExportScreen() {
 
   // ── Export ready ──────────────────────────────────────────────────────────
 
-  const hasWarning = activeConfig.isValid === false
+  const hasWarning = selectedConfig!.isValid === false
 
   return (
     <SafeAreaView style={styles.safe}>
       <TopHeader
         title="Export"
-        leftIcon={
-          <View style={styles.headerIcon}>
-            <Export size={18} color={Colors.white} weight="fill" />
-          </View>
+        leftIcon={headerIcon}
+        rightActions={
+          <Pressable onPress={() => setSelectedConfigId(null)} style={styles.changeBtn}>
+            <Text style={styles.changeBtnText}>Change</Text>
+          </Pressable>
         }
       />
       <ScrollView
@@ -289,9 +333,9 @@ export default function ExportScreen() {
 
         {/* Project summary */}
         <View style={styles.projectSummary}>
-          <Text style={styles.projectName} numberOfLines={1}>{activeConfig.name}</Text>
+          <Text style={styles.projectName} numberOfLines={1}>{selectedConfig!.name}</Text>
           <Text style={styles.projectMeta}>
-            {activeConfig.departments.length} nodes · {activeConfig.departments.filter((d) => d.vlanId).length} VLANs
+            {selectedConfig!.departments.length} nodes · {selectedConfig!.departments.filter((d) => d.vlanId).length} VLANs
           </Text>
         </View>
 
@@ -377,6 +421,58 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
+
+  // ── Picker ───────────────────────────────────────────────────────────────
+  pickerHeading: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 22,
+    color: Colors.textPrimary,
+    marginBottom: 6,
+  },
+  pickerSubheading: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: Colors.textMuted,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  pickerList: { gap: 10 },
+  pickerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  pickerCardBody: { flex: 1, gap: 3 },
+  pickerCardName: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    color: Colors.textPrimary,
+  },
+  pickerCardMeta: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  changeBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  changeBtnText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+    color: Colors.primary,
+  },
 
   headerIcon: {
     width: 32,

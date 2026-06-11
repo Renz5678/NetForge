@@ -33,45 +33,39 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
   useEffect(() => { onCloseRef.current = onClose }, [onClose])
 
   // Animate handle hint on open
-  const pulseHandle = () => {
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(handleScale,   { toValue: 1.35, duration: 260, useNativeDriver: true }),
-        Animated.timing(handleOpacity, { toValue: 1,    duration: 260, useNativeDriver: true }),
-      ]),
-      Animated.parallel([
-        Animated.timing(handleScale,   { toValue: 1, duration: 300, useNativeDriver: true }),
-        Animated.timing(handleOpacity, { toValue: 0.4, duration: 300, useNativeDriver: true }),
-      ]),
-    ]).start()
-  }
-
   useEffect(() => {
     if (visible) {
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0,
           useNativeDriver: true,
-          damping: 22,
-          stiffness: 220,
-          mass: 0.8,
+          damping: 32,
+          stiffness: 260,
+          mass: 0.9,
         }),
         Animated.timing(opacity, {
           toValue: 1,
-          duration: 180,
+          duration: 160,
           useNativeDriver: true,
         }),
-      ]).start(() => pulseHandle())
+      ]).start(() => {
+        // Subtle handle fade-in only — no scale bounce
+        Animated.timing(handleOpacity, {
+          toValue: 0.5,
+          duration: 200,
+          useNativeDriver: true,
+        }).start()
+      })
     } else {
       Animated.parallel([
         Animated.timing(translateY, {
           toValue: SCREEN_HEIGHT,
-          duration: 220,
+          duration: 180,
           useNativeDriver: true,
         }),
         Animated.timing(opacity, {
           toValue: 0,
-          duration: 180,
+          duration: 150,
           useNativeDriver: true,
         }),
       ]).start()

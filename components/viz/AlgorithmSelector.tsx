@@ -14,6 +14,7 @@ import {
   Pressable,
   ScrollView,
 } from 'react-native'
+import { Graph } from 'phosphor-react-native'
 import {
   Compass,
   Target,
@@ -177,34 +178,48 @@ export function AlgorithmSelector({
     ? false
     : true
 
+  const tooFewNodes = departments.length < 2
+
   return (
     <BottomSheet visible={visible} onClose={onClose} snapHeight={540}>
       {step === 'choose' ? (
         <>
           <Text style={s.title}>Analyze Network</Text>
-          <Text style={s.subtitle}>Choose an analysis to run on your current topology</Text>
-          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
-            <View style={s.cards}>
-              {ALGORITHMS.map((algo) => (
-                <Pressable
-                  key={algo.type}
-                  style={s.algoCard}
-                  onPress={() => handleSelect(algo)}
-                >
-                  <View style={s.cardLeft}>
-                    <View style={s.iconContainer}>
-                      {getAlgoIcon(algo.type, Colors.primary, 22)}
-                    </View>
-                    <View style={s.cardText}>
-                      <Text style={s.algoTitle}>{algo.title}</Text>
-                      <Text style={s.algoSubtitle}>{algo.subtitle}</Text>
-                    </View>
-                  </View>
-                  <Text style={s.caret}>›</Text>
-                </Pressable>
-              ))}
+          {tooFewNodes ? (
+            <View style={s.emptyNodes}>
+              <Graph size={40} color={Colors.textMuted} weight="duotone" />
+              <Text style={s.emptyNodesTitle}>Not enough nodes</Text>
+              <Text style={s.emptyNodesBody}>
+                Add at least 2 nodes to your topology before running an analysis.
+              </Text>
             </View>
-          </ScrollView>
+          ) : (
+            <>
+              <Text style={s.subtitle}>Choose an analysis to run on your current topology</Text>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+                <View style={s.cards}>
+                  {ALGORITHMS.map((algo) => (
+                    <Pressable
+                      key={algo.type}
+                      style={s.algoCard}
+                      onPress={() => handleSelect(algo)}
+                    >
+                      <View style={s.cardLeft}>
+                        <View style={s.iconContainer}>
+                          {getAlgoIcon(algo.type, Colors.primary, 22)}
+                        </View>
+                        <View style={s.cardText}>
+                          <Text style={s.algoTitle}>{algo.title}</Text>
+                          <Text style={s.algoSubtitle}>{algo.subtitle}</Text>
+                        </View>
+                      </View>
+                      <Text style={s.caret}>›</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+            </>
+          )}
         </>
       ) : (
         <>
@@ -344,6 +359,24 @@ const s = StyleSheet.create({
     color: Colors.textSecondary,
     lineHeight: 20,
     marginBottom: 16,
+  },
+  emptyNodes: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 10,
+  },
+  emptyNodesTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 16,
+    color: Colors.textSecondary,
+  },
+  emptyNodesBody: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingHorizontal: 12,
   },
   cards: { gap: 10 },
   algoCard: {

@@ -5,8 +5,6 @@ import Animated, {
   withSpring,
   withTiming,
   FadeIn,
-  FadeInDown,
-  ZoomIn,
 } from 'react-native-reanimated'
 
 // Custom lightweight uuidv4 implementation for React Native / Hermes compatibility
@@ -46,7 +44,6 @@ import {
   Trash,
   MagnifyingGlass,
   Funnel,
-  CaretRight,
   CaretDown,
   CaretUp,
   Globe,
@@ -396,24 +393,24 @@ function DeptSheet({
         )}
       </View>
 
-      {/* ── Scrollable body (flex:1 fills the KAV-bounded sheet height) ── */}
+      {/* ── Name field — outside ScrollView, always rendered ── */}
+      <View style={[deptSheet.field, { marginBottom: 4 }]}>
+        <Input
+          label="Node Name"
+          placeholder="e.g. Core-Router or Finance-LAN"
+          value={name}
+          onChangeText={setName}
+          error={nameError}
+        />
+      </View>
+
+      {/* ── Scrollable body — maxHeight so it renders in auto-height sheet ── */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 8 }}
-        style={{ flex: 1 }}
+        style={{ maxHeight: Dimensions.get('window').height * 0.48 }}
       >
-        {/* ── Name field (first in scroll → always visible at top) ── */}
-        <View style={[deptSheet.field, { marginBottom: 4 }]}>
-          <Input
-            label="Node Name"
-            placeholder="e.g. Core-Router or Finance-LAN"
-            value={name}
-            onChangeText={setName}
-            error={nameError}
-          />
-        </View>
-
         {/* Device type picker */}
         <View style={[deptSheet.section, { paddingTop: 4 }]}>
           <Text style={deptSheet.sectionLabel}>ESSENTIALS</Text>
@@ -781,12 +778,12 @@ export default function ConfigDetailScreen() {
   useEffect(() => {
     const idx = activeTab === 'departments' ? 0 : activeTab === 'subnets' ? 1 : 2
     const segW = segmentContainerWidth.value / 3
-    indicatorX.value = withSpring(idx * segW, { damping: 18, stiffness: 200 })
+    indicatorX.value = withTiming(idx * segW, { duration: 200 })
   }, [activeTab])
 
   // FAB entrance on mount
   useEffect(() => {
-    fabScale.value = withSpring(1, { damping: 12, stiffness: 160 })
+    fabScale.value = withSpring(1, { damping: 22, stiffness: 200 })
   }, [])
 
   const indicatorStyle = useAnimatedStyle(() => ({
@@ -1110,7 +1107,8 @@ export default function ConfigDetailScreen() {
             showsVerticalScrollIndicator={false}
             renderItem={({ item, index }) => (
               <Animated.View
-                entering={FadeInDown.delay(Math.min(index * 55, 280)).springify().damping(16)}
+                entering={FadeIn.duration(160)}
+                key={item.id}
               >
                 <View style={styles.deptCard}>
                   <View style={styles.deptHeader}>
@@ -1296,22 +1294,22 @@ export default function ConfigDetailScreen() {
             />
           </ErrorBoundary>
 
-          {/* Floating Validation Warning Bar */}
+          {/* Slim validation pill — brief, non-intrusive */}
           {!allPass && (
             <Pressable
-              style={styles.warningBar}
+              style={styles.validationPill}
               onPress={() => setShowConflictSheet(true)}
             >
-              <View style={styles.warningBarLeft}>
-                <View style={styles.warningIconCircle}>
-                  <Warning size={16} color={Colors.error} weight="fill" />
-                </View>
-                <View style={styles.warningTextContainer}>
-                  <Text style={styles.warningTitle}>Invalid Configuration</Text>
-                  <Text style={styles.warningSubtitle}>Tap to view routing loops & overlaps</Text>
-                </View>
-              </View>
-              <CaretRight size={16} color={Colors.error} />
+              <Warning size={13} color={Colors.error} weight="fill" />
+              <Text style={styles.validationPillText}>
+                {[validation.cycleCheck, validation.allocationCheck,
+                  validation.connectivityCheck, validation.vlanCheck
+                ].filter(c => !c.passed).length} issue
+                {[validation.cycleCheck, validation.allocationCheck,
+                  validation.connectivityCheck, validation.vlanCheck
+                ].filter(c => !c.passed).length !== 1 ? 's' : ''} detected
+              </Text>
+              <Text style={styles.validationPillCta}>Details</Text>
             </Pressable>
           )}
         </Animated.View>
@@ -1733,56 +1731,32 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textAlign: 'center',
   },
-  warningBar: {
+  validationPill: {
     position: 'absolute',
-    bottom: 24,
-    left: 16,
-    right: 80,
-    backgroundColor: Colors.errorContainer,
-    borderRadius: 14,
+    bottom: 20,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: Colors.error,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    borderColor: `${Colors.error}50`,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
     zIndex: 10,
-    shadowColor: Colors.error,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
-  warningBarLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  warningIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#FEE2E2',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  warningIconText: {
-    fontSize: 16,
-    lineHeight: 20,
-  },
-  warningTextContainer: {
-    flex: 1,
-  },
-  warningTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
+  validationPillText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
     color: Colors.error,
+    flex: 1,
   },
-  warningSubtitle: {
-    fontFamily: 'Inter_400Regular',
+  validationPillCta: {
+    fontFamily: 'Inter_600SemiBold',
     fontSize: 11,
-    color: '#991B1B',
+    color: Colors.primary,
+    letterSpacing: 0.2,
   },
   sheetTitle: {
     fontFamily: 'Inter_600SemiBold',

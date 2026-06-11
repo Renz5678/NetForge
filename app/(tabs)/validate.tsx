@@ -28,6 +28,8 @@ import {
   CheckCircle,
   ArrowRight,
   Info,
+  CaretRight,
+  ArrowLeft,
 } from 'phosphor-react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useConfigStore } from '@/stores/useConfigStore'
@@ -39,7 +41,8 @@ import { ValidatePhaseIndicator } from '@/components/ui/ValidatePhaseIndicator'
 import { FindingRow } from '@/components/ui/FindingRow'
 import { AlgorithmDrillDown } from '@/components/ui/AlgorithmDrillDown'
 import { validateNetwork } from '@/lib/validatePass'
-import type { ValidatePassResult, Finding, FindingSeverity, FindingPhase } from '@/lib/validatePass'
+import { topologyReadiness } from '@/lib/validatePass'
+import type { ValidatePassResult, Finding, FindingSeverity } from '@/lib/validatePass'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -173,11 +176,27 @@ function FindingGroup({
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
+/** Returns true if the config is a built-in demo / sample template. */
+function isSampleConfig(id: string): boolean {
+  return id.startsWith('demo_enterprise_config') || id.startsWith('local_tpl_')
+}
+
 export default function ValidateScreen() {
   const router = useRouter()
+  const configs = useConfigStore((s) => s.configs)
+  const setActiveConfig = useConfigStore((s) => s.setActiveConfig)
   const activeConfig = useConfigStore((s) => s.activeConfig)
   const appMode = usePreferencesStore((s) => s.appMode)
   const isStudent = appMode === 'student'
+
+  // Local config selection — NOT auto-populated from activeConfig
+  const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null)
+  const selectedConfig = selectedConfigId
+    ? configs.find((c) => c.id === selectedConfigId) ?? null
+    : null
+
+  // Only user-created configs, no demos or templates
+  const userConfigs = configs.filter((c) => !isSampleConfig(c.id))
 
   const [result, setResult] = useState<ValidatePassResult | null>(null)
   const [running, setRunning] = useState(false)
@@ -186,13 +205,11 @@ export default function ValidateScreen() {
   const [drillDownVisible, setDrillDownVisible] = useState(false)
 
   const handleRun = useCallback(async () => {
-    if (!activeConfig) return
+    if (!selectedConfig) return
     setRunning(true)
     setResult(null)
     setCurrentPhase(0)
 
-    // Simulate phase progress for visual feedback
-    // (validateNetwork itself is near-instant for typical topologies)
     const phaseTimers: ReturnType<typeof setTimeout>[] = []
     ALL_PHASES.forEach((_, i) => {
       if (i === 0) return
@@ -201,23 +218,21 @@ export default function ValidateScreen() {
       )
     })
 
-    const runResult = await validateNetwork(activeConfig)
+    const runResult = await validateNetwork(selectedConfig)
 
-    // Ensure all phase dots complete before showing results
     setTimeout(() => {
       phaseTimers.forEach(clearTimeout)
       setRunning(false)
-      setCurrentPhase(ALL_PHASES.length) // all done
+      setCurrentPhase(ALL_PHASES.length)
       setResult(runResult)
     }, ALL_PHASES.length * 280 + 200)
-  }, [activeConfig])
+  }, [selectedConfig])
 
   const handleDrillDown = (finding: Finding) => {
     setDrillDown(finding)
     setDrillDownVisible(true)
   }
 
-  // Group findings by severity
   const groupedFindings = React.useMemo(() => {
     if (!result) return {} as Record<FindingSeverity, Finding[]>
     return SEVERITY_ORDER.reduce<Record<FindingSeverity, Finding[]>>(
@@ -237,34 +252,63 @@ export default function ValidateScreen() {
       : 'Not Ready'
     : ''
 
-  // ── No config ─────────────────────────────────────────────────────────────
+  const headerIcon = (
+    <View style={styles.headerIcon}>
+      <ShieldCheck size={18} color={Colors.white} weight="fill" />
+    </View>
+  )
 
-  if (!activeConfig) {
+  // ── Config picker ─────────────────────────────────────────────────────────
+
+  if (!selectedConfigId) {
     return (
       <SafeAreaView style={styles.safe}>
-        <TopHeader
-          title="Validate"
-          leftIcon={
-            <View style={styles.headerIcon}>
-              <ShieldCheck size={18} color={Colors.white} weight="fill" />
-            </View>
-          }
-        />
-        <View style={styles.noConfigContainer}>
-          <ShieldCheck size={52} color={Colors.pale} weight="duotone" />
-          <Text style={styles.noConfigTitle}>No project selected</Text>
-          <Text style={styles.noConfigSubtitle}>
-            Open a project in the Canvas tab to start a validation pass.
+        <TopHeader title="Validate" leftIcon={headerIcon} />
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.pickerHeading}>Choose a project to validate</Text>
+          <Text style={styles.pickerSubheading}>
+            Select one of your saved networks below. Sample templates are not shown.
           </Text>
-          <Pressable
-            style={styles.noConfigLink}
-            onPress={() => router.push('/(tabs)')}
-          >
-            <TreeStructure size={14} color={Colors.primary} weight="duotone" />
-            <Text style={styles.noConfigLinkText}>Go to Canvas</Text>
-            <ArrowRight size={13} color={Colors.primary} />
-          </Pressable>
-        </View>
+
+          {userConfigs.length === 0 ? (
+            <View style={styles.noConfigContainer}>
+              <ShieldCheck size={48} color={Colors.pale} weight="duotone" />
+              <Text style={styles.noConfigTitle}>No projects yet</Text>
+              <Text style={styles.noConfigSubtitle}>
+                Create a network in the Canvas tab first.
+              </Text>
+              <Pressable style={styles.noConfigLink} onPress={() => router.push('/(tabs)')}>
+                <TreeStructure size={14} color={Colors.primary} weight="duotone" />
+                <Text style={styles.noConfigLinkText}>Go to Canvas</Text>
+                <ArrowRight size={13} color={Colors.primary} />
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.pickerList}>
+              {userConfigs.map((cfg) => (
+                <Pressable
+                  key={cfg.id}
+                  style={({ pressed }) => [styles.pickerCard, pressed && { opacity: 0.8 }]}
+                  onPress={() => setSelectedConfigId(cfg.id)}
+                >
+                  <View style={styles.pickerCardBody}>
+                    <Text style={styles.pickerCardName} numberOfLines={1}>{cfg.name}</Text>
+                    <Text style={styles.pickerCardMeta}>
+                      {cfg.departments.length} node{cfg.departments.length !== 1 ? 's' : ''}
+                      {cfg.isValid === true ? '  ·  ✓ Valid' : cfg.isValid === false ? '  ·  ⚠ Issues' : ''}
+                    </Text>
+                  </View>
+                  <CaretRight size={18} color={Colors.textMuted} />
+                </Pressable>
+              ))}
+            </View>
+          )}
+          <View style={{ height: 40 }} />
+        </ScrollView>
       </SafeAreaView>
     )
   }
@@ -274,19 +318,12 @@ export default function ValidateScreen() {
   if (running) {
     return (
       <SafeAreaView style={styles.safe}>
-        <TopHeader
-          title="Validate"
-          leftIcon={
-            <View style={styles.headerIcon}>
-              <ShieldCheck size={18} color={Colors.white} weight="fill" />
-            </View>
-          }
-        />
+        <TopHeader title="Validate" leftIcon={headerIcon} />
         <View style={styles.runningContainer}>
           <View style={styles.runningCard}>
             <ShieldCheck size={32} color={Colors.primary} weight="duotone" />
             <Text style={styles.runningTitle}>Analysing network…</Text>
-            <Text style={styles.runningSubtitle}>{activeConfig.name}</Text>
+            <Text style={styles.runningSubtitle}>{selectedConfig?.name}</Text>
             <View style={{ marginTop: 20, width: '100%' }}>
               <ValidatePhaseIndicator
                 phases={ALL_PHASES}
@@ -306,15 +343,16 @@ export default function ValidateScreen() {
       <SafeAreaView style={styles.safe}>
         <TopHeader
           title="Validate"
-          leftIcon={
-            <View style={styles.headerIcon}>
-              <ShieldCheck size={18} color={Colors.white} weight="fill" />
-            </View>
-          }
+          leftIcon={headerIcon}
           rightActions={
-            <Pressable onPress={handleRun} style={styles.rerunBtn}>
-              <Text style={styles.rerunText}>Re-run</Text>
-            </Pressable>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <Pressable onPress={() => { setResult(null); setSelectedConfigId(null) }} style={styles.rerunBtn}>
+                <Text style={styles.rerunText}>Change</Text>
+              </Pressable>
+              <Pressable onPress={handleRun} style={styles.rerunBtn}>
+                <Text style={styles.rerunText}>Re-run</Text>
+              </Pressable>
+            </View>
           }
         />
         <ScrollView
@@ -388,17 +426,18 @@ export default function ValidateScreen() {
     )
   }
 
-  // ── Entry state (config loaded, not run) ──────────────────────────────────
+  // ── Entry state (config selected, not run) ────────────────────────────────
 
   return (
     <LinearGradient colors={['#EEF4FF', '#F5F8FF', '#FFFFFF']} style={styles.container}>
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
         <TopHeader
           title="Validate"
-          leftIcon={
-            <View style={styles.headerIcon}>
-              <ShieldCheck size={18} color={Colors.white} weight="fill" />
-            </View>
+          leftIcon={headerIcon}
+          rightActions={
+            <Pressable onPress={() => setSelectedConfigId(null)} style={styles.rerunBtn}>
+              <Text style={styles.rerunText}>Change</Text>
+            </Pressable>
           }
         />
         <ScrollView
@@ -406,11 +445,69 @@ export default function ValidateScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Network summary */}
+          {/* Network summary — shows selected config */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionLabel}>ACTIVE PROJECT</Text>
+            <Text style={styles.sectionLabel}>SELECTED PROJECT</Text>
           </View>
-          <NetworkSummaryCard />
+          {selectedConfig && (
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryCardTitle} numberOfLines={1}>{selectedConfig.name}</Text>
+              <View style={styles.summaryMetrics}>
+                <View style={styles.summaryMetric}>
+                  <Text style={styles.summaryValue}>{selectedConfig.departments.length}</Text>
+                  <Text style={styles.summaryMetricLabel}>Nodes</Text>
+                </View>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryMetric}>
+                  <Text style={styles.summaryValue}>
+                    {Math.floor(selectedConfig.departments.reduce((s, d) => s + d.peers.length, 0) / 2)}
+                  </Text>
+                  <Text style={styles.summaryMetricLabel}>Links</Text>
+                </View>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryMetric}>
+                  <Text style={styles.summaryValue}>
+                    {selectedConfig.departments.filter((d) => d.vlanId !== undefined).length}
+                  </Text>
+                  <Text style={styles.summaryMetricLabel}>VLANs</Text>
+                </View>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryMetric}>
+                  <Text style={[styles.summaryValue, {
+                    color: selectedConfig.departments.some((d) => d.type === 'router' || d.type === 'firewall')
+                      ? Colors.success : Colors.warning
+                  }]}>
+                    {selectedConfig.departments.some((d) => d.type === 'router' || d.type === 'firewall') ? 'Yes' : 'No'}
+                  </Text>
+                  <Text style={styles.summaryMetricLabel}>Routing</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* Readiness requirements card */}
+          {selectedConfig && (() => {
+            const readiness = topologyReadiness(selectedConfig)
+            const hasIssues = !readiness.ready || readiness.warnings.length > 0
+            if (!hasIssues) return null
+            return (
+              <View style={styles.readinessCard}>
+                <Text style={styles.readinessTitle}>Requirements</Text>
+                {readiness.blocking.map((msg, i) => (
+                  <View key={`block-${i}`} style={styles.readinessRow}>
+                    <Text style={styles.readinessIconBlocking}>✕</Text>
+                    <Text style={styles.readinessTextBlocking}>{msg}</Text>
+                  </View>
+                ))}
+                {readiness.warnings.map((msg, i) => (
+                  <View key={`warn-${i}`} style={styles.readinessRow}>
+                    <Text style={styles.readinessIconWarning}>⚠</Text>
+                    <Text style={styles.readinessTextWarning}>{msg}</Text>
+                  </View>
+                ))}
+              </View>
+            )
+          })()}
 
           {/* Five phases preview */}
           <View style={styles.sectionHeader}>
@@ -427,14 +524,24 @@ export default function ValidateScreen() {
             ))}
           </View>
 
-          {/* Primary CTA */}
-          <Pressable
-            style={({ pressed }) => [styles.runBtn, pressed && { opacity: 0.88 }]}
-            onPress={handleRun}
-          >
-            <ShieldCheck size={20} color={Colors.white} weight="fill" />
-            <Text style={styles.runBtnText}>Validate Network</Text>
-          </Pressable>
+          {/* Primary CTA — disabled when topology doesn't meet minimum requirements */}
+          {selectedConfig && (() => {
+            const readiness = topologyReadiness(selectedConfig)
+            return (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.runBtn,
+                  !readiness.ready && styles.runBtnDisabled,
+                  pressed && readiness.ready && { opacity: 0.88 },
+                ]}
+                onPress={readiness.ready ? handleRun : undefined}
+                disabled={!readiness.ready}
+              >
+                <ShieldCheck size={20} color={Colors.white} weight="fill" />
+                <Text style={styles.runBtnText}>Validate Network</Text>
+              </Pressable>
+            )
+          })()}
 
           {/* Student mode hint */}
           {isStudent && (
@@ -460,6 +567,49 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: Colors.background },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
+
+  // ── Picker ───────────────────────────────────────────────────────────────
+  pickerHeading: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 22,
+    color: Colors.textPrimary,
+    marginBottom: 6,
+  },
+  pickerSubheading: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: Colors.textMuted,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  pickerList: { gap: 10 },
+  pickerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 12,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  pickerCardBody: { flex: 1, gap: 3 },
+  pickerCardName: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    color: Colors.textPrimary,
+  },
+  pickerCardMeta: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
 
   headerIcon: {
     width: 32,
@@ -653,6 +803,62 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     fontSize: 16,
     color: Colors.white,
+  },
+  runBtnDisabled: {
+    backgroundColor: Colors.border,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+
+  // ── Readiness card ───────────────────────────────────────────────────────
+  readinessCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: 14,
+    marginBottom: 14,
+    gap: 8,
+  },
+  readinessTitle: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+    color: Colors.textMuted,
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  readinessRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  readinessIconBlocking: {
+    fontSize: 13,
+    color: Colors.error,
+    lineHeight: 20,
+    width: 16,
+    textAlign: 'center',
+  },
+  readinessTextBlocking: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: Colors.error,
+    flex: 1,
+    lineHeight: 20,
+  },
+  readinessIconWarning: {
+    fontSize: 13,
+    color: Colors.warning,
+    lineHeight: 20,
+    width: 16,
+    textAlign: 'center',
+  },
+  readinessTextWarning: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    color: Colors.warning,
+    flex: 1,
+    lineHeight: 20,
   },
   studentHint: {
     flexDirection: 'row',

@@ -507,7 +507,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       vlanStart,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      isValid: true,
+      isValid: undefined,    // not yet validated — will be set after first allocation run
     }
 
     // 1. Apply local change immediately (Optimistic)

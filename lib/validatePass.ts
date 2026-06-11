@@ -67,6 +67,67 @@ export type ValidatePassResult = {
   phasesRan: FindingPhase[]
 }
 
+// ─── Topology Readiness Pre-check ─────────────────────────────────────────────
+//
+// Run this BEFORE validateNetwork() to guard against structurally incomplete
+// topologies that would produce a misleadingly perfect score (0 findings).
+//
+// Hard requirements — all must pass before the 5-phase validate pass runs:
+//   1. ≥ 2 nodes           — a single device isn't a network
+//   2. ≥ 1 link            — at least two nodes must be connected
+//   3. No isolated nodes   — every node must have ≥ 1 peer
+//   4. ≥ 1 routing device  — router, firewall, or layer-3 switch needed for
+//                            addressing and routing correctness checks
+
+export type TopologyReadiness = {
+  ready: boolean
+  blocking: string[]   // hard failures — prevent the run
+  warnings: string[]   // soft advisories — run is allowed, but note these
+}
+
+export function topologyReadiness(config: NetworkConfig): TopologyReadiness {
+  const depts = config.departments
+  const blocking: string[] = []
+  const warnings: string[] = []
+
+  // 1. Minimum node count
+  if (depts.length < 2) {
+    blocking.push(
+      depts.length === 0
+        ? 'Add at least 2 nodes — this topology has no devices yet.'
+        : 'Add at least 2 nodes — a single device cannot form a network.'
+    )
+  }
+
+  if (depts.length >= 2) {
+    // 2. At least one link must exist
+    const hasAnyLink = depts.some((d) => d.peers.length > 0)
+    if (!hasAnyLink) {
+      blocking.push('Connect at least 2 nodes — no links exist between devices.')
+    }
+
+    // 3. No isolated nodes (every node must have ≥1 peer)
+    const isolated = depts.filter((d) => d.peers.length === 0)
+    if (isolated.length > 0 && hasAnyLink) {
+      const names = isolated.map((d) => d.name).join(', ')
+      blocking.push(
+        `${isolated.length} node${isolated.length > 1 ? 's are' : ' is'} not connected to anything: ${names}.`
+      )
+    }
+
+    // 4. At least one routing-capable device
+    const ROUTING_TYPES = ['router', 'firewall', 'layer3switch']
+    const hasRouter = depts.some((d) => d.type && ROUTING_TYPES.includes(d.type))
+    if (!hasRouter) {
+      warnings.push(
+        'No router or firewall found. Routing correctness checks will be limited to L2 topology only.'
+      )
+    }
+  }
+
+  return { ready: blocking.length === 0, blocking, warnings }
+}
+
 // ─── Phase 1: Connectivity ────────────────────────────────────────────────────
 
 export function checkConnectivity(config: NetworkConfig): Finding[] {
