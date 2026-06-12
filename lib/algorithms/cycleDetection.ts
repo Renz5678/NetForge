@@ -37,13 +37,16 @@ export function detectCycles(departments: NetworkNode[]): CycleResult {
   let cycleStart = ''
   let cycleEnd = ''
 
-  function dfs(nodeId: string): boolean {
+  function dfs(nodeId: string, parentId: string | null = null): boolean {
     color.set(nodeId, 'gray')
 
     const neighbors = adj.get(nodeId) ?? []
     for (const neighborId of neighbors) {
       // Skip edges to nodes not in our department list (dangling refs)
       if (!color.has(neighborId)) continue
+
+      // Skip the immediate parent to avoid treating bidirectional links as cycles
+      if (neighborId === parentId) continue
 
       if (color.get(neighborId) === 'gray') {
         // Back edge — cycle found
@@ -54,7 +57,7 @@ export function detectCycles(departments: NetworkNode[]): CycleResult {
 
       if (color.get(neighborId) === 'white') {
         parent.set(neighborId, nodeId)
-        if (dfs(neighborId)) return true
+        if (dfs(neighborId, nodeId)) return true
       }
     }
 
@@ -65,7 +68,7 @@ export function detectCycles(departments: NetworkNode[]): CycleResult {
   // Process every node to handle disconnected subgraphs
   for (const dept of departments) {
     if (color.get(dept.id) === 'white') {
-      if (dfs(dept.id)) {
+      if (dfs(dept.id, null)) {
         // Reconstruct the cycle path
         const cycle: string[] = []
         let current: string | undefined = cycleEnd

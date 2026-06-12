@@ -20,12 +20,15 @@ function getNetworkAddress(dept: NetworkNode): string {
 
 function getFirstUsable(dept: NetworkNode): string {
   if (!dept.subnet || !dept.cidrPrefix) return '—'
+  if (dept.cidrPrefix === 32) return dept.subnet.split('/')[0]
   const baseIp = dept.subnet.split('/')[0]
   return uint32ToIp(ipToUint32(baseIp) + 1)
 }
 
 function getLastUsable(dept: NetworkNode): string {
   if (!dept.subnet || !dept.cidrPrefix) return '—'
+  if (dept.cidrPrefix === 32) return dept.subnet.split('/')[0]
+  if (dept.cidrPrefix === 31) return uint32ToIp(ipToUint32(dept.subnet.split('/')[0]) + 1)
   const baseIp = dept.subnet.split('/')[0]
   const blockSize = Math.pow(2, 32 - dept.cidrPrefix)
   return uint32ToIp(ipToUint32(baseIp) + blockSize - 2)
@@ -33,6 +36,8 @@ function getLastUsable(dept: NetworkNode): string {
 
 function getBroadcast(dept: NetworkNode): string {
   if (!dept.subnet || !dept.cidrPrefix) return '—'
+  if (dept.cidrPrefix === 32) return dept.subnet.split('/')[0]
+  if (dept.cidrPrefix === 31) return uint32ToIp(ipToUint32(dept.subnet.split('/')[0]) + 1)
   const baseIp = dept.subnet.split('/')[0]
   const blockSize = Math.pow(2, 32 - dept.cidrPrefix)
   return uint32ToIp(ipToUint32(baseIp) + blockSize - 1)

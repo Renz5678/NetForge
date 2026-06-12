@@ -47,9 +47,11 @@ describe('Validators Module Tests', () => {
       expect(isValidCidr('any')).toBe(false)
     })
 
-    test('sanitizeString validation', () => {
+    test('sanitizeString strips disallowed characters (native context — no HTML encoding)', () => {
+      // In React Native, HTML entities render literally. sanitizeString now strips
+      // disallowed characters rather than encoding them.
       expect(sanitizeString('<div>Hello & "World" / \'Test\'</div>')).toBe(
-        '&lt;div&gt;Hello &amp; &quot;World&quot; &#x2F; &#x27;Test&#x27;&lt;&#x2F;div&gt;'
+        'divHello  World / Test/div'
       )
     })
   })
@@ -109,7 +111,8 @@ describe('Validators Module Tests', () => {
       const res = DepartmentSchema.safeParse(validDept)
       expect(res.success).toBe(true)
       if (res.success) {
-        expect(res.data.name).toBe('Engineering &lt;Eng&gt;')
+        // sanitizeString strips < and > in native context instead of HTML encoding
+        expect(res.data.name).toBe('Engineering Eng')
       }
     })
 

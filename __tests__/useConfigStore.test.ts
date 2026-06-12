@@ -66,10 +66,11 @@ describe('useConfigStore Offline Sync and Optimistic Updates', () => {
     expect(created).toBeDefined()
     expect(created?.id).toContain('local_')
 
-    // Expect that a pending op was enqueued because the insert failed (offline)
-    expect(useConfigStore.getState().pendingOps.length).toBe(1)
-    expect(useConfigStore.getState().pendingOps[0].type).toBe('create')
-    expect(useConfigStore.getState().pendingOps[0].configId).toBe(created?.id)
+    // local_ prefixed configs are intentionally NOT queued in pendingOps
+    // (store skips syncing local-only configs to Supabase — they live only in AsyncStorage)
+    expect(useConfigStore.getState().pendingOps.length).toBe(0)
+    // But the config WAS added to local state
+    expect(useConfigStore.getState().configs.some((c) => c.id === created?.id)).toBe(true)
   })
 
   test('loadConfigs merges local fallbacks when Supabase is unreachable', async () => {

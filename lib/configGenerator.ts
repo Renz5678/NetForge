@@ -266,7 +266,7 @@ export function generateCiscoConfig(node: NetworkNode, allNodes: NetworkNode[]):
  */
 export function generateFullTopologyConfig(config: NetworkConfig): string {
   const typeOrder: Record<string, number> = {
-    wan: 0, firewall: 1, router: 2, switch: 3, NetworkNode: 4,
+    wan: 0, firewall: 1, router: 2, switch: 3, department: 4,
   }
 
   const sorted = [...config.departments].sort((a, b) => {

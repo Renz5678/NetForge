@@ -209,33 +209,58 @@ export function checkAddressing(config: NetworkConfig): Finding[] {
   }
 
   // 2c. Address space capacity check (near capacity >90%)
-  const assigned = departments.filter((d) => d.cidrPrefix !== undefined)
+  // Only runs when baseIp is known so we can derive the parent block.
+  const assigned = departments.filter((d) => d.cidrPrefix !== undefined && d.subnet !== undefined)
   if (assigned.length > 0 && baseIp) {
     try {
+      const baseNum = ipToUint32(baseIp)
+      let maxEnd = baseNum
+
+      for (const d of assigned) {
+        const netNum = ipToUint32(d.subnet!.split('/')[0])
+        const blockSize = Math.pow(2, 32 - (d.cidrPrefix ?? 30))
+        const endNum = netNum + blockSize
+        if (endNum > maxEnd) maxEnd = endNum
+      }
+
       const totalRequired = assigned.reduce((sum, d) => {
         const blockSize = Math.pow(2, 32 - (d.cidrPrefix ?? 30))
         return sum + blockSize
       }, 0)
-      // Use /16 as default parent for capacity check
-      const parentBlockSize = Math.pow(2, 32 - 16)
-      const utilizationPct = (totalRequired / parentBlockSize) * 100
-      if (utilizationPct > 90) {
-        findings.push({
-          id: 'addr_near_capacity',
-          phase: 'addressing',
-          severity: 'yellow',
-          title: 'Address space is nearly full',
-          detail: `Allocated subnets consume over 90% of the parent address block. Adding new devices may fail.`,
-          fixSteps: [
-            'Consider switching to a larger parent block — for example, use a /15 instead of /16 to double the available space.',
-            'Alternatively, split your network into multiple non-overlapping address spaces (e.g. 10.0.0.0/16 and 10.1.0.0/16).',
-            'Reserve at least 20% headroom for future growth before deploying.',
-          ],
-          affected: [],
-          algorithm: 'vlsmCalculator',
-          stepIndex: 0,
-          vizInput: { departments, baseIp, utilizationPct },
-        })
+
+      // Determine the smallest power-of-2 block that:
+      //  a) starts at baseNum, and
+      //  b) contains all allocated addresses (maxEnd <= baseNum + parentBlockSize)
+      // This is the "natural" parent block — what you'd actually provision.
+      const span = maxEnd - baseNum
+      let parentPrefix = 32
+      while (parentPrefix > 1 && Math.pow(2, 32 - (parentPrefix - 1)) < span) {
+        parentPrefix--
+      }
+      const parentBlockSize = Math.pow(2, 32 - parentPrefix)
+
+      // Only warn when we're consuming >90% of the inferred parent block
+      // (i.e., there is less than 10% headroom for future growth)
+      if (parentBlockSize > 0 && parentBlockSize > totalRequired) {
+        const utilizationPct = (totalRequired / parentBlockSize) * 100
+        if (utilizationPct > 90) {
+          findings.push({
+            id: 'addr_near_capacity',
+            phase: 'addressing',
+            severity: 'yellow',
+            title: 'Address space is nearly full',
+            detail: `Allocated subnets consume over 90% of the parent address block. Adding new devices may fail.`,
+            fixSteps: [
+              'Consider switching to a larger parent block — for example, use a /15 instead of /16 to double the available space.',
+              'Alternatively, split your network into multiple non-overlapping address spaces (e.g. 10.0.0.0/16 and 10.1.0.0/16).',
+              'Reserve at least 20% headroom for future growth before deploying.',
+            ],
+            affected: [],
+            algorithm: 'vlsmCalculator',
+            stepIndex: 0,
+            vizInput: { departments, baseIp, utilizationPct },
+          })
+        }
       }
     } catch {
       // Ignore capacity check errors
@@ -347,6 +372,8 @@ export function checkCorrectness(config: NetworkConfig): Finding[] {
 
   // 4b. ACL conflicts — check each device with ACL rules against its peers
   const idToName = new Map(departments.map((d) => [d.id, d.name]))
+  // Track finding IDs already generated to avoid symmetric duplicates
+  const aclFindingIds = new Set<string>()
 
   for (const dept of departments) {
     if (!('aclRules' in dept) || !dept.aclRules || dept.aclRules.length === 0) continue
@@ -360,12 +387,11 @@ export function checkCorrectness(config: NetworkConfig): Finding[] {
 
       const [peerBaseIp] = peer.subnet.split('/')
 
-      // Generate a test packet: dept → peer, TCP port 443
+      // Check dept → peer (generic IP traffic, not just TCP/443)
       const testPacket: AclPacket = {
-        protocol: 'tcp',
+        protocol: 'ip',
         srcIp: uint32ToIp(ipToUint32(deptBaseIp) + 1),
         dstIp: uint32ToIp(ipToUint32(peerBaseIp) + 1),
-        dstPort: 443,
       }
 
       const decision = evaluateAcl(dept.aclRules, testPacket)
@@ -373,24 +399,69 @@ export function checkCorrectness(config: NetworkConfig): Finding[] {
         const matchingRule = findMatchingRule(dept.aclRules, testPacket)
         const ruleSeq = matchingRule?.sequence ?? '?'
         const peerName = idToName.get(peerId) ?? peerId
+        const findingId = `correctness_acl_${dept.id}_${peerId}`
 
-        findings.push({
-          id: `correctness_acl_${dept.id}_${peerId}`,
-          phase: 'correctness',
-          severity: 'yellow',
-          title: `ACL on ${dept.name} may block traffic to ${peerName}`,
-          detail: `Rule ${ruleSeq} denies TCP from ${dept.subnet} to ${peer.subnet}.`,
-          fixSteps: [
-            `Open ${dept.name} in the Departments tab and review its ACL rules.`,
-            `Find rule ${ruleSeq} (the deny rule) and either delete it or move it below a new \`permit tcp any\` rule that allows traffic to ${peer.subnet}.`,
-            'In a real ACL, the first matching rule wins — make sure a permit appears before any broad deny.',
-            'Re-run validation to confirm traffic between these segments is now allowed.',
-          ],
-          affected: [dept.name, peerName],
-          algorithm: 'aclEngine',
-          stepIndex: matchingRule ? dept.aclRules.findIndex((r) => r.id === matchingRule.id) : 0,
-          vizInput: { departments, aclRules: dept.aclRules, testPacket, matchingRule },
-        })
+        if (!aclFindingIds.has(findingId)) {
+          aclFindingIds.add(findingId)
+          findings.push({
+            id: findingId,
+            phase: 'correctness',
+            severity: 'yellow',
+            title: `ACL on ${dept.name} may block traffic to ${peerName}`,
+            detail: `Rule ${ruleSeq} denies IP traffic from ${dept.subnet} to ${peer.subnet}.`,
+            fixSteps: [
+              `Open ${dept.name} in the Departments tab and review its ACL rules.`,
+              `Find rule ${ruleSeq} (the deny rule) and either delete it or move it below a new \`permit ip any\` rule that allows traffic to ${peer.subnet}.`,
+              'In a real ACL, the first matching rule wins — make sure a permit appears before any broad deny.',
+              'Re-run validation to confirm traffic between these segments is now allowed.',
+            ],
+            affected: [dept.name, peerName],
+            algorithm: 'aclEngine',
+            stepIndex: matchingRule ? dept.aclRules.findIndex((r) => r.id === matchingRule.id) : 0,
+            vizInput: { departments, aclRules: dept.aclRules, testPacket, matchingRule },
+          })
+        }
+      }
+
+      // Check reverse direction: peer → dept (if peer has ACL rules)
+      if (!('aclRules' in peer) || !peer.aclRules || peer.aclRules.length === 0) continue
+
+      const reversePacket: AclPacket = {
+        protocol: 'ip',
+        srcIp: uint32ToIp(ipToUint32(peerBaseIp) + 1),
+        dstIp: uint32ToIp(ipToUint32(deptBaseIp) + 1),
+      }
+
+      const reverseDecision = evaluateAcl(peer.aclRules, reversePacket)
+      if (reverseDecision === 'deny') {
+        const matchingRule = findMatchingRule(peer.aclRules, reversePacket)
+        const ruleSeq = matchingRule?.sequence ?? '?'
+        const deptName = idToName.get(dept.id) ?? dept.id
+        const peerName = idToName.get(peerId) ?? peerId
+        // Use a canonical key (smaller id first) to deduplicate symmetric findings
+        const canonKey = dept.id < peerId ? `correctness_acl_${dept.id}_${peerId}` : `correctness_acl_${peerId}_${dept.id}`
+        const reverseFindingId = `correctness_acl_rev_${peerId}_${dept.id}`
+
+        if (!aclFindingIds.has(reverseFindingId) && !aclFindingIds.has(canonKey)) {
+          aclFindingIds.add(reverseFindingId)
+          findings.push({
+            id: reverseFindingId,
+            phase: 'correctness',
+            severity: 'yellow',
+            title: `ACL on ${peerName} may block traffic to ${deptName}`,
+            detail: `Rule ${ruleSeq} denies IP traffic from ${peer.subnet} to ${dept.subnet}.`,
+            fixSteps: [
+              `Open ${peerName} in the Departments tab and review its ACL rules.`,
+              `Find rule ${ruleSeq} (the deny rule) and either delete it or move it below a new \`permit ip any\` rule.`,
+              'In a real ACL, the first matching rule wins — make sure a permit appears before any broad deny.',
+              'Re-run validation to confirm traffic between these segments is now allowed.',
+            ],
+            affected: [peerName, deptName],
+            algorithm: 'aclEngine',
+            stepIndex: matchingRule ? peer.aclRules.findIndex((r) => r.id === matchingRule.id) : 0,
+            vizInput: { departments, aclRules: peer.aclRules, testPacket: reversePacket, matchingRule },
+          })
+        }
       }
     }
   }
@@ -466,36 +537,8 @@ export function checkOptimization(config: NetworkConfig, resilienceFindings: Fin
     }
   }
 
-  // Check critical nodes (from resilience phase) that have no redundant path in MST
-  for (const apFinding of resilienceFindings) {
-    const apName = apFinding.affected[0]
-    const apDept = departments.find((d) => d.name === apName)
-    if (!apDept) continue
-
-    // If this node appears in MST exactly once (single path), flag it
-    const mstEdgeCount = mstResult.mstEdges.filter(
-      (e) => e.source === apDept.id || e.target === apDept.id
-    ).length
-
-    if (mstEdgeCount <= 1) {
-      findings.push({
-        id: `opt_no_redundant_path_${apDept.id}`,
-        phase: 'optimization',
-        severity: 'blue',
-        title: `No redundant path exists for ${apName}`,
-        detail: 'Adding a second uplink would eliminate this single point of failure.',
-        fixSteps: [
-          `In the Departments tab, open ${apName} and add a peer connection to a second router or switch on a different path.`,
-          'This gives traffic an alternative route if the primary link goes down.',
-          'After adding the uplink, re-run validation — the resilience warning for this device should also clear.',
-        ],
-        affected: [apName],
-        algorithm: 'prims',
-        stepIndex: mstResult.mstEdges.length,
-        vizInput: { departments, mstEdges: mstResult.mstEdges, rootId },
-      })
-    }
-  }
+  // Critical nodes from the resilience phase are already flagged with
+  // actionable uplink-addition steps. No additional dead-code check needed here.
 
   return findings
 }

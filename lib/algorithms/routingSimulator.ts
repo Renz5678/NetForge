@@ -14,6 +14,10 @@ export type RoutingTableEntry = {
   prefixLength: number;
 }
 
+// Module-level cache: WeakMap so entries are garbage-collected when the
+// nodes array reference is replaced (which happens on every runAllocation()).
+const routingTableCache = new WeakMap<NetworkNode[], Map<string, RoutingTableEntry[]>>()
+
 export type HopDetail = {
   nodeId: string;
   nodeName: string;
@@ -42,6 +46,9 @@ export type PathTraceResult = {
 }
 
 export function compileRoutingTables(nodes: NetworkNode[]): Map<string, RoutingTableEntry[]> {
+  const cached = routingTableCache.get(nodes)
+  if (cached) return cached
+
   const tables = new Map<string, RoutingTableEntry[]>()
 
   // 1. Initialize with Direct and Static routes
@@ -205,6 +212,7 @@ export function compileRoutingTables(nodes: NetworkNode[]): Map<string, RoutingT
     }
   }
 
+  routingTableCache.set(nodes, tables)
   return tables
 }
 

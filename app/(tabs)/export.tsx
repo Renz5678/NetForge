@@ -50,6 +50,7 @@ import { generateIpPlanCsv, ipPlanFilename } from '@/lib/ipPlanCsv'
 import { topologicalSort } from '@/lib/algorithms/topologicalSort'
 import { Colors } from '@/constants/colors'
 import { TopHeader } from '@/components/ui/TopHeader'
+import { useHaptics } from '@/hooks/useHaptics'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -124,6 +125,7 @@ export default function ExportScreen() {
   const configs = useConfigStore((s) => s.configs)
   const appMode = usePreferencesStore((s) => s.appMode)
   const isStudent = appMode === 'student'
+  const haptics = useHaptics()
 
   // Local config selection — NOT auto-populated from activeConfig
   const [selectedConfigId, setSelectedConfigId] = useState<string | null>(null)
@@ -148,9 +150,9 @@ export default function ExportScreen() {
     const content = generateFullTopologyConfig(selectedConfig)
     const filename = `${selectedConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_cisco_ios.txt`
     const ok = await shareTextFile(content, filename, 'text/plain')
-    if (ok) setLastExported('Device Configs')
+    if (ok) { setLastExported('Device Configs'); haptics.success() }
     setLoadingA(false)
-  }, [selectedConfig])
+  }, [selectedConfig, haptics])
 
   const handleExportIpPlan = useCallback(async () => {
     if (!selectedConfig) return
@@ -158,9 +160,9 @@ export default function ExportScreen() {
     const content = generateIpPlanCsv(selectedConfig)
     const filename = ipPlanFilename(selectedConfig)
     const ok = await shareTextFile(content, filename, 'text/csv')
-    if (ok) setLastExported('IP Plan CSV')
+    if (ok) { setLastExported('IP Plan CSV'); haptics.success() }
     setLoadingB(false)
-  }, [selectedConfig])
+  }, [selectedConfig, haptics])
 
   const handleExportChecklist = useCallback(async () => {
     if (!selectedConfig) return
@@ -181,9 +183,9 @@ export default function ExportScreen() {
     ].join('\n')
     const filename = `${selectedConfig.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_checklist.txt`
     const ok = await shareTextFile(content, filename, 'text/plain')
-    if (ok) setLastExported('Change Checklist')
+    if (ok) { setLastExported('Change Checklist'); haptics.success() }
     setLoadingC(false)
-  }, [selectedConfig])
+  }, [selectedConfig, haptics])
 
   const handleExportAll = useCallback(async () => {
     if (!selectedConfig) return
@@ -193,7 +195,8 @@ export default function ExportScreen() {
     await shareTextFile(configText, configFilename, 'text/plain')
     setLoadingAll(false)
     setLastExported('All artifacts')
-  }, [selectedConfig])
+    haptics.heavy()
+  }, [selectedConfig, haptics])
 
   const headerIcon = (
     <View style={styles.headerIcon}>

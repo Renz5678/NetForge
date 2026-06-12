@@ -1,6 +1,11 @@
 // topologicalSort.ts
 // Pure function — no side effects.
-// Method: Kahn's algorithm (BFS-based, uses in-degree map)
+// Method: BFS traversal from a preferred root (router/firewall > first node).
+//
+// NOTE: Kahn's algorithm (in-degree based) fails on bidirectional peer graphs
+// because every connected node has non-zero in-degree, leaving Kahn's queue
+// empty and returning an empty array. Since AGENTS.md mandates bidirectional
+// peers, we use BFS instead to produce a deterministic deployment order.
 
 import type { NetworkNode } from '@/types'
 
@@ -8,46 +13,69 @@ export function topologicalSort(departments: NetworkNode[]): string[] {
   if (departments.length === 0) return []
   if (departments.length === 1) return [departments[0].id]
 
-  // Build in-degree map and adjacency list
-  const inDegree = new Map<string, number>()
+  // Build undirected adjacency list from peer relationships
   const adj = new Map<string, string[]>()
+  const idSet = new Set(departments.map((d) => d.id))
 
-  // Initialize every node
   for (const dept of departments) {
-    if (!inDegree.has(dept.id)) inDegree.set(dept.id, 0)
     if (!adj.has(dept.id)) adj.set(dept.id, [])
   }
 
-  // Count in-degrees based on peer edges (dept → peer means peer depends on dept's existence)
-  // A→B means A communicates with B, so B is a "downstream" neighbor of A
   for (const dept of departments) {
     for (const peerId of dept.peers) {
-      if (!inDegree.has(peerId)) continue // skip dangling refs
+      if (!idSet.has(peerId)) continue // skip dangling refs
       adj.get(dept.id)!.push(peerId)
-      inDegree.set(peerId, (inDegree.get(peerId) ?? 0) + 1)
+      if (!adj.get(peerId)!.includes(dept.id)) {
+        adj.get(peerId)!.push(dept.id)
+      }
     }
   }
 
-  // BFS queue: all nodes with zero in-degree
-  const queue: string[] = []
-  for (const [id, deg] of inDegree.entries()) {
-    if (deg === 0) queue.push(id)
+  // Prefer a routing-capable device as root for a meaningful deployment order
+  const PREFERRED_TYPES = ['wan', 'firewall', 'router', 'switch']
+  let rootId = departments[0].id
+  for (const type of PREFERRED_TYPES) {
+    const found = departments.find((d) => d.type === type)
+    if (found) { rootId = found.id; break }
   }
 
+  const visited = new Set<string>()
   const result: string[] = []
+
+  // BFS from root
+  const queue: string[] = [rootId]
+  visited.add(rootId)
 
   while (queue.length > 0) {
     const nodeId = queue.shift()!
     result.push(nodeId)
 
     for (const neighbor of adj.get(nodeId) ?? []) {
-      const newDeg = (inDegree.get(neighbor) ?? 1) - 1
-      inDegree.set(neighbor, newDeg)
-      if (newDeg === 0) queue.push(neighbor)
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor)
+        queue.push(neighbor)
+      }
     }
   }
 
-  // If result length < departments length, there was a cycle (shouldn't happen post-validation)
-  // Return whatever we have
+  // Handle disconnected components — restart BFS from any unvisited node
+  for (const dept of departments) {
+    if (!visited.has(dept.id)) {
+      const subQueue: string[] = [dept.id]
+      visited.add(dept.id)
+      while (subQueue.length > 0) {
+        const nodeId = subQueue.shift()!
+        result.push(nodeId)
+        for (const neighbor of adj.get(nodeId) ?? []) {
+          if (!visited.has(neighbor)) {
+            visited.add(neighbor)
+            subQueue.push(neighbor)
+          }
+        }
+      }
+    }
+  }
+
   return result
 }
+

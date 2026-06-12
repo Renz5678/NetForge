@@ -31,15 +31,10 @@ export function isValidCidr(cidr: string): boolean {
   return !isNaN(prefix) && prefix >= 0 && prefix <= 32 && prefixStr === prefix.toString()
 }
 
-// Helper to sanitize strings to prevent XSS
+// Helper to sanitize strings in a native context — strip disallowed characters
+// rather than HTML-encoding them (HTML entities render literally in React Native Text).
 export function sanitizeString(val: string): string {
-  return val
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-    .replace(/\//g, '&#x2F;')
+  return val.replace(/[^a-zA-Z0-9 \-_.,()/]/g, '')
 }
 
 export const AclRuleSchema = z

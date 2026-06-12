@@ -207,13 +207,14 @@ describe('checkOptimization', () => {
 
 describe('validateNetwork', () => {
   it('returns score 100 and no findings for clean topology', async () => {
-    // Triangle topology: A→B, B→C, A→C — no articulation points, no cycles
+    // Triangle topology with /24 subnets spread across a /16 — plenty of headroom
+    // Avoids triggering the capacity warning (utilization well below 90%)
     const triangle = [
-      { id: 'a', name: 'A', deviceCount: 5, peers: ['b', 'c'], subnet: '10.0.0.0/28', cidrPrefix: 28, vlanId: 10, usableHosts: 14 },
-      { id: 'b', name: 'B', deviceCount: 5, peers: ['c'],      subnet: '10.0.0.16/28', cidrPrefix: 28, vlanId: 20, usableHosts: 14 },
-      { id: 'c', name: 'C', deviceCount: 5, peers: [],         subnet: '10.0.0.32/28', cidrPrefix: 28, vlanId: 30, usableHosts: 14 },
+      { id: 'a', name: 'A', deviceCount: 5, peers: ['b', 'c'], subnet: '10.1.0.0/24', cidrPrefix: 24, vlanId: 10, usableHosts: 254 },
+      { id: 'b', name: 'B', deviceCount: 5, peers: ['c'],      subnet: '10.1.1.0/24', cidrPrefix: 24, vlanId: 20, usableHosts: 254 },
+      { id: 'c', name: 'C', deviceCount: 5, peers: [],         subnet: '10.1.2.0/24', cidrPrefix: 24, vlanId: 30, usableHosts: 254 },
     ]
-    const result = await validateNetwork(makeConfig({ departments: triangle as any }))
+    const result = await validateNetwork(makeConfig({ departments: triangle as any, baseIp: '10.1.0.0' }))
     // No red, no yellow — only possible blue (optimization info) findings are fine
     const reds    = result.findings.filter((f) => f.severity === 'red')
     const yellows = result.findings.filter((f) => f.severity === 'yellow')

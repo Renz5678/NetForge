@@ -22,7 +22,7 @@ import {
   simulateRoute,
 } from '../lib/algorithms/routingSimulator'
 import type { NetworkNode } from '../types'
-import { getDemoEnterpriseConfig } from '../stores/useConfigStore'
+import { getDemoEnterpriseConfig } from '../stores/demoData'
 import { detectCycles } from '../lib/algorithms/cycleDetection'
 import { checkSubnetOverlap } from '../lib/algorithms/subnetAllocator'
 import { validateConnectivity } from '../lib/algorithms/bfsValidator'
@@ -198,7 +198,7 @@ describe('routingSimulator tests', () => {
     expect(connRes.isolated).toEqual([])
 
     // 4. Routing Trace between all client departments
-    const clientDepts = depts.filter((d) => d.type === 'department' || !d.type)
+    const clientDepts = depts.filter((d: NetworkNode) => d.type === 'department' || !d.type)
     expect(clientDepts.length).toBeGreaterThan(1)
 
     for (const src of clientDepts) {
@@ -207,7 +207,7 @@ describe('routingSimulator tests', () => {
         expect(dest.subnet).toBeDefined()
         
         const [baseIp] = dest.subnet!.split('/')
-        const ipParts = baseIp.split('.').map((p) => parseInt(p, 10))
+        const ipParts = baseIp.split('.').map((p: string) => parseInt(p, 10))
         ipParts[3] += 1 // Use host IP (e.g., 10.0.0.65)
         const destHostIp = ipParts.join('.')
 

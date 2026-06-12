@@ -31,37 +31,55 @@ export function validateConnectivity(departments: NetworkNode[]): BfsResult {
     }
   }
 
-  // Track which nodes are reachable from at least one BFS traversal
-  // A node is "isolated" if it can never be reached
+  // Find all connected components via multi-source BFS
   const globallyVisited = new Set<string>()
+  const components: string[][] = []
 
-  // Run BFS from every unvisited node to find all connected components
   for (const dept of departments) {
     if (globallyVisited.has(dept.id)) continue
 
-    // BFS from dept.id
+    const component: string[] = []
     const queue: string[] = [dept.id]
-    const visited = new Set<string>([dept.id])
+    globallyVisited.add(dept.id)
 
     while (queue.length > 0) {
       const current = queue.shift()!
-      globallyVisited.add(current)
+      component.push(current)
 
       for (const neighbor of adj.get(current) ?? []) {
-        if (!visited.has(neighbor)) {
-          visited.add(neighbor)
+        if (!globallyVisited.has(neighbor)) {
+          globallyVisited.add(neighbor)
           queue.push(neighbor)
         }
       }
     }
+
+    components.push(component)
   }
 
-  // A node is isolated if it has no peers (degree 0 in undirected graph)
+  // If there is only one component, all nodes are reachable
+  if (components.length === 1) {
+    return { allReachable: true, isolated: [] }
+  }
+
+  // Find the largest component — all nodes NOT in the largest are "isolated"
+  // When all components have the same size (fully disconnected graph), all are isolated
+  const largestSize = Math.max(...components.map((c) => c.length))
+  const componentsSameSize = components.every((c) => c.length === largestSize)
+
+  if (componentsSameSize && components.length > 1) {
+    // All nodes are equally disconnected — all are isolated
+    const isolated = departments.map((d) => idToName.get(d.id) ?? d.id)
+    return { allReachable: false, isolated }
+  }
+
+  const largestComponent = components.find((c) => c.length === largestSize)!
+  const largestSet = new Set(largestComponent)
+
   const isolated: string[] = []
   for (const dept of departments) {
-    const neighbors = adj.get(dept.id) ?? new Set()
-    if (neighbors.size === 0) {
-      isolated.push(dept.name)
+    if (!largestSet.has(dept.id)) {
+      isolated.push(idToName.get(dept.id) ?? dept.id)
     }
   }
 
@@ -70,3 +88,4 @@ export function validateConnectivity(departments: NetworkNode[]): BfsResult {
     isolated,
   }
 }
+

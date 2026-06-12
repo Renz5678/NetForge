@@ -11,7 +11,7 @@
  * "Go to Export" is a secondary button shown after a clean/passing result.
  */
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import {
   View,
   Text,
@@ -43,6 +43,7 @@ import { AlgorithmDrillDown } from '@/components/ui/AlgorithmDrillDown'
 import { validateNetwork } from '@/lib/validatePass'
 import { topologyReadiness } from '@/lib/validatePass'
 import type { ValidatePassResult, Finding, FindingSeverity } from '@/lib/validatePass'
+import { useHaptics } from '@/hooks/useHaptics'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -91,12 +92,11 @@ function severityLabel(s: FindingSeverity): string {
   }
 }
 
+import type { NetworkConfig } from '@/types'
+
 // ─── Network Summary Card ─────────────────────────────────────────────────────
 
-function NetworkSummaryCard() {
-  const config = useConfigStore((s) => s.activeConfig)
-  if (!config) return null
-
+function NetworkSummaryCard({ config }: { config: NetworkConfig }) {
   const nodeCount  = config.departments.length
   const linkCount  = Math.floor(config.departments.reduce((s, d) => s + d.peers.length, 0) / 2)
   const vlanCount  = config.departments.filter((d) => d.vlanId !== undefined).length
@@ -204,29 +204,49 @@ export default function ValidateScreen() {
   const [drillDown, setDrillDown] = useState<Finding | null>(null)
   const [drillDownVisible, setDrillDownVisible] = useState(false)
 
-  const handleRun = useCallback(async () => {
+  const haptics = useHaptics()
+
+  const handleRun = useCallback(() => {
     if (!selectedConfig) return
+    haptics.light()
     setRunning(true)
     setResult(null)
     setCurrentPhase(0)
+  }, [selectedConfig, haptics])
 
+  // Effect drives the animation timers and the actual validation run.
+  // Cleanup cancels any in-flight timers if the component unmounts mid-run.
+  useEffect(() => {
+    if (!running || !selectedConfig) return
+
+    let isActive = true
     const phaseTimers: ReturnType<typeof setTimeout>[] = []
+
     ALL_PHASES.forEach((_, i) => {
       if (i === 0) return
       phaseTimers.push(
-        setTimeout(() => setCurrentPhase(i), i * 280)
+        setTimeout(() => { if (isActive) setCurrentPhase(i) }, i * 280)
       )
     })
 
-    const runResult = await validateNetwork(selectedConfig)
+    validateNetwork(selectedConfig).then((runResult) => {
+      const finalTimer = setTimeout(() => {
+        if (isActive) {
+          setRunning(false)
+          setCurrentPhase(ALL_PHASES.length)
+          setResult(runResult)
+          if (runResult.score >= 70) haptics.success()
+          else haptics.error()
+        }
+      }, ALL_PHASES.length * 280 + 200)
+      phaseTimers.push(finalTimer)
+    })
 
-    setTimeout(() => {
+    return () => {
+      isActive = false
       phaseTimers.forEach(clearTimeout)
-      setRunning(false)
-      setCurrentPhase(ALL_PHASES.length)
-      setResult(runResult)
-    }, ALL_PHASES.length * 280 + 200)
-  }, [selectedConfig])
+    }
+  }, [running]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDrillDown = (finding: Finding) => {
     setDrillDown(finding)
@@ -450,39 +470,7 @@ export default function ValidateScreen() {
             <Text style={styles.sectionLabel}>SELECTED PROJECT</Text>
           </View>
           {selectedConfig && (
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryCardTitle} numberOfLines={1}>{selectedConfig.name}</Text>
-              <View style={styles.summaryMetrics}>
-                <View style={styles.summaryMetric}>
-                  <Text style={styles.summaryValue}>{selectedConfig.departments.length}</Text>
-                  <Text style={styles.summaryMetricLabel}>Nodes</Text>
-                </View>
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryMetric}>
-                  <Text style={styles.summaryValue}>
-                    {Math.floor(selectedConfig.departments.reduce((s, d) => s + d.peers.length, 0) / 2)}
-                  </Text>
-                  <Text style={styles.summaryMetricLabel}>Links</Text>
-                </View>
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryMetric}>
-                  <Text style={styles.summaryValue}>
-                    {selectedConfig.departments.filter((d) => d.vlanId !== undefined).length}
-                  </Text>
-                  <Text style={styles.summaryMetricLabel}>VLANs</Text>
-                </View>
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryMetric}>
-                  <Text style={[styles.summaryValue, {
-                    color: selectedConfig.departments.some((d) => d.type === 'router' || d.type === 'firewall')
-                      ? Colors.success : Colors.warning
-                  }]}>
-                    {selectedConfig.departments.some((d) => d.type === 'router' || d.type === 'firewall') ? 'Yes' : 'No'}
-                  </Text>
-                  <Text style={styles.summaryMetricLabel}>Routing</Text>
-                </View>
-              </View>
-            </View>
+            <NetworkSummaryCard config={selectedConfig} />
           )}
 
           {/* Readiness requirements card */}

@@ -69,6 +69,14 @@ type ConfigStore = {
   enqueueOp: (op: PendingOp, userId: string) => Promise<void>
   flushPendingOps: (userId: string) => Promise<void>
   resolveConflict: (choice: 'local' | 'cloud', userId: string) => Promise<void>
+
+  // Local-only helpers
+  /** Inserts or replaces a config in local state without touching Supabase.
+   * Safe to call from onboarding flows, demos, and test fixtures. */
+  injectLocalConfig: (config: NetworkConfig) => void
+
+  // Internal subscription guard — kept in store to avoid cross-test pollution
+  isNetInfoSubscribed: boolean
 }
 
 function snakeToCamel(config: Record<string, unknown>): NetworkConfig {
@@ -86,8 +94,6 @@ function snakeToCamel(config: Record<string, unknown>): NetworkConfig {
 }
 
 
-let isSubscribedToNetInfo = false
-
 export const useConfigStore = create<ConfigStore>((set, get) => ({
   configs: [],
   activeConfig: null,
@@ -96,6 +102,7 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   pendingOps: [],
   syncing: false,
   conflictConfig: null,
+  isNetInfoSubscribed: false,
   // Passive algorithm outputs — empty until first runAllocation()
   activeMstEdges: [],
   activeMstCost: 0,
@@ -131,11 +138,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       console.warn('Failed to load pending ops:', e)
     }
 
-    // 2. Setup NetInfo Sync Listener once
-    // We read userId from the auth store at event time to avoid stale closure bugs
-    // (e.g., guest → real login would leave the listener pointing at the old userId).
-    if (!isSubscribedToNetInfo) {
-      isSubscribedToNetInfo = true
+    // 2. Setup NetInfo Sync Listener once per store instance
+    // isNetInfoSubscribed lives in Zustand state (not a module-level let) so tests
+    // that reset store state with setState() will also reset the subscription guard.
+    if (!get().isNetInfoSubscribed) {
+      set({ isNetInfoSubscribed: true })
       NetInfo.addEventListener((state) => {
         if (state.isConnected && state.isInternetReachable !== false) {
           const currentUserId = useAuthStore.getState().user?.id
@@ -707,5 +714,15 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
     setTimeout(() => {
       get().flushPendingOps(userId)
     }, 100)
+  },
+
+  injectLocalConfig: (config) => {
+    set((state) => {
+      const exists = state.configs.some((c) => c.id === config.id)
+      const updated = exists
+        ? state.configs.map((c) => (c.id === config.id ? config : c))
+        : [config, ...state.configs]
+      return { configs: updated }
+    })
   },
 }))

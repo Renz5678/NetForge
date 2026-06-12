@@ -12,7 +12,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
-import { PanGestureHandler } from 'react-native-gesture-handler'
+import { Gesture, GestureDetector } from 'react-native-gesture-handler'
 import AnimatedReanimated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS } from 'react-native-reanimated'
 
 const AnimatedPressable = AnimatedReanimated.createAnimatedComponent(Pressable)
@@ -115,37 +115,31 @@ function SwipeableConfigCard({
     transform: [{ translateX: translateX.value }],
   }))
 
-  const onGestureEvent = (event: any) => {
-    if (event.nativeEvent.translationX < 0) {
-      translateX.value = event.nativeEvent.translationX
-    }
-  }
-
-  const onHandlerStateChange = (event: any) => {
-    if (event.nativeEvent.state === 5) {
-      if (event.nativeEvent.translationX < -80) {
+  // RNGH v2 Gesture.Pan() — type-safe, no magic state numbers
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-10, 10])
+    .onUpdate((e) => {
+      if (e.translationX < 0) translateX.value = e.translationX
+    })
+    .onEnd((e) => {
+      if (e.translationX < -80) {
         translateX.value = withSpring(0)
         runOnJS(onDelete)()
       } else {
         translateX.value = withSpring(0)
       }
-    }
-  }
+    })
 
   return (
     <View style={swipeCard.container}>
       <View style={swipeCard.deleteZone}>
         <Trash size={20} color={Colors.white} />
       </View>
-      <PanGestureHandler
-        onGestureEvent={onGestureEvent}
-        onHandlerStateChange={onHandlerStateChange}
-        activeOffsetX={[-10, 10]}
-      >
+      <GestureDetector gesture={panGesture}>
         <AnimatedReanimated.View style={animatedStyle}>
           {children}
         </AnimatedReanimated.View>
-      </PanGestureHandler>
+      </GestureDetector>
     </View>
   )
 }
@@ -288,7 +282,7 @@ export default function ConfigsScreen() {
                 <View style={styles.textContainer}>
                   <Text style={styles.configName} numberOfLines={1}>{item.name}</Text>
                   <Text style={styles.configMeta}>
-                    {pluralize(deptCount, 'NetworkNode')} • {pluralize(vlanCount, 'VLAN')}
+                    {pluralize(deptCount, 'node')} • {pluralize(vlanCount, 'VLAN')}
                   </Text>
                 </View>
               </View>

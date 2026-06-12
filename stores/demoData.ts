@@ -22,7 +22,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       id: 'demo_firewall',
       name: 'Firewall',
       deviceCount: 2,
-      peers: ['demo_core_router'],
+      peers: ['demo_wan_cloud', 'demo_core_router'],
       vlanId: 11,
       cidrPrefix: 30,
       usableHosts: 2,
@@ -40,14 +40,15 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       id: 'demo_core_router',
       name: 'Core-Router',
       deviceCount: 2,
-      peers: [],
+      peers: ['demo_firewall', 'demo_switch_hq', 'demo_server_switch'],
       vlanId: 12,
       cidrPrefix: 29,
       usableHosts: 6,
       type: 'router',
       ports: [
         { id: 'port_cr_1', name: 'GigabitEthernet0/0', connectedToNodeId: 'demo_switch_hq', connectedToPortId: 'port_sw_1' },
-        { id: 'port_cr_2', name: 'GigabitEthernet0/1', connectedToNodeId: 'demo_firewall', connectedToPortId: 'port_fw_1' }
+        { id: 'port_cr_2', name: 'GigabitEthernet0/1', connectedToNodeId: 'demo_firewall', connectedToPortId: 'port_fw_1' },
+        { id: 'port_cr_3', name: 'GigabitEthernet0/2', connectedToNodeId: 'demo_server_switch', connectedToPortId: 'port_ssw_0' }
       ],
       ospf: { enabled: true, areaId: 0 }
     },
@@ -55,7 +56,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       id: 'demo_switch_hq',
       name: 'Switch-HQ',
       deviceCount: 1,
-      peers: ['demo_core_router'],
+      peers: ['demo_core_router', 'demo_engineering', 'demo_finance', 'demo_marketing', 'demo_rd_labs'],
       vlanId: 13,
       cidrPrefix: 29,
       usableHosts: 6,
@@ -73,7 +74,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       id: 'demo_engineering',
       name: 'Engineering',
       deviceCount: 45,
-      peers: ['demo_core_router'],
+      peers: ['demo_switch_hq'],
       vlanId: 14,
       cidrPrefix: 26,
       usableHosts: 62,
@@ -86,7 +87,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       id: 'demo_finance',
       name: 'Finance-HR',
       deviceCount: 14,
-      peers: ['demo_core_router'],
+      peers: ['demo_switch_hq'],
       vlanId: 15,
       cidrPrefix: 28,
       usableHosts: 14,
@@ -103,7 +104,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       id: 'demo_marketing',
       name: 'Marketing',
       deviceCount: 20,
-      peers: ['demo_core_router'],
+      peers: ['demo_switch_hq'],
       vlanId: 16,
       cidrPrefix: 27,
       usableHosts: 30,
@@ -116,7 +117,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       id: 'demo_rd_labs',
       name: 'R-D-Labs',
       deviceCount: 30,
-      peers: ['demo_core_router'],
+      peers: ['demo_switch_hq'],
       vlanId: 17,
       cidrPrefix: 27,
       usableHosts: 30,
@@ -129,13 +130,13 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       id: 'demo_server_switch',
       name: 'Server-Switch',
       deviceCount: 1,
-      peers: ['demo_core_router'],
+      peers: ['demo_core_router', 'demo_server_cluster'],
       vlanId: 18,
       cidrPrefix: 29,
       usableHosts: 6,
       type: 'switch',
       ports: [
-        { id: 'port_ssw_1', name: 'GigabitEthernet0/2', connectedToNodeId: 'demo_switch_hq', connectedToPortId: 'port_sw_4', vlanMode: 'trunk', vlanTrunkAllowed: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] },
+        { id: 'port_ssw_0', name: 'GigabitEthernet0/1', connectedToNodeId: 'demo_core_router', connectedToPortId: 'port_cr_3', vlanMode: 'trunk', vlanTrunkAllowed: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] },
         { id: 'port_ssw_2', name: 'FastEthernet0/1', connectedToNodeId: 'demo_server_cluster', connectedToPortId: 'port_sc_1', vlanMode: 'access', vlanAccessId: 19 }
       ]
     },
@@ -143,7 +144,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       id: 'demo_server_cluster',
       name: 'Server-Cluster',
       deviceCount: 8,
-      peers: ['demo_core_router'],
+      peers: ['demo_server_switch'],
       vlanId: 19,
       cidrPrefix: 29,
       usableHosts: 6,
@@ -176,61 +177,83 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
   const routerDept = allocated.find((d) => d.id === 'demo_core_router' && d.type === 'router') as RouterNode | undefined
   const fwDept = allocated.find((d) => d.id === 'demo_firewall' && d.type === 'firewall') as FirewallNode | undefined
   const wanDept = allocated.find((d) => d.id === 'demo_wan_cloud' && d.type === 'wan') as WanNode | undefined
+  const serverSwitchDept = allocated.find((d) => d.id === 'demo_server_switch')
+  const serverClusterDept = allocated.find((d) => d.id === 'demo_server_cluster')
+  const switchHqDept = allocated.find((d) => d.id === 'demo_switch_hq')
 
-  let nextHopIp = '10.0.0.2'
-
-  if (routerDept && routerDept.ports && routerDept.ports[0]) {
-    const routerIp = routerDept.subnet ? routerDept.subnet.split('/')[0] : '10.0.0.0'
-    const baseNum = ipToUint32(routerIp)
-    routerDept.ports[0].ipAddress = `${uint32ToIp(baseNum + 1)}/${routerDept.cidrPrefix}`
-    nextHopIp = uint32ToIp(baseNum + 2)
+  // Port 0 (GE0/0): Core-Router ↔ Switch-HQ
+  // nextHopIp is the Switch-HQ side of this link (router = +1, switch = +2)
+  let nextHopHq = '10.0.0.2'
+  if (routerDept?.ports?.[0] && routerDept.subnet) {
+    const routerBaseNum = ipToUint32(routerDept.subnet.split('/')[0])
+    routerDept.ports[0].ipAddress = `${uint32ToIp(routerBaseNum + 1)}/${routerDept.cidrPrefix}`
+    nextHopHq = uint32ToIp(routerBaseNum + 2)
   }
 
-  if (routerDept && routerDept.ports && routerDept.ports[1] && fwDept && fwDept.ports && fwDept.ports[0]) {
-    const fwIp = fwDept.subnet ? fwDept.subnet.split('/')[0] : '10.0.0.0'
-    const fwBaseNum = ipToUint32(fwIp)
+  // Port 1 (GE0/1): Core-Router ↔ Firewall
+  let routerFwIp = '10.0.0.2'
+  if (routerDept?.ports?.[1] && fwDept?.ports?.[0] && fwDept.subnet) {
+    const fwBaseNum = ipToUint32(fwDept.subnet.split('/')[0])
     fwDept.ports[0].ipAddress = `${uint32ToIp(fwBaseNum + 1)}/${fwDept.cidrPrefix}`
     routerDept.ports[1].ipAddress = `${uint32ToIp(fwBaseNum + 2)}/${fwDept.cidrPrefix}`
+    routerFwIp = uint32ToIp(fwBaseNum + 2)
   }
 
-  if (fwDept && fwDept.ports && fwDept.ports[1] && wanDept && wanDept.ports && wanDept.ports[0]) {
-    const wanIp = wanDept.subnet ? wanDept.subnet.split('/')[0] : '10.0.0.0'
-    const wanBaseNum = ipToUint32(wanIp)
+  // Port 2 (GE0/2): Core-Router ↔ Server-Switch
+  // nextHopServer is the Server-Switch side of this link
+  let nextHopServer = '10.0.0.2'
+  if (routerDept?.ports?.[2] && serverSwitchDept?.subnet) {
+    const sswBaseNum = ipToUint32(serverSwitchDept.subnet.split('/')[0])
+    routerDept.ports[2].ipAddress = `${uint32ToIp(sswBaseNum + 1)}/${serverSwitchDept.cidrPrefix ?? 29}`
+    nextHopServer = uint32ToIp(sswBaseNum + 2)
+  }
+
+  // Firewall ↔ WAN port assignment
+  let fwWanIp = '10.0.0.1'
+  if (fwDept?.ports?.[1] && wanDept?.ports?.[0] && wanDept.subnet) {
+    const wanBaseNum = ipToUint32(wanDept.subnet.split('/')[0])
     wanDept.ports[0].ipAddress = `${uint32ToIp(wanBaseNum + 1)}/${wanDept.cidrPrefix}`
     fwDept.ports[1].ipAddress = `${uint32ToIp(wanBaseNum + 2)}/${wanDept.cidrPrefix}`
+    fwWanIp = uint32ToIp(wanBaseNum + 1)
   }
 
   if (routerDept && fwDept && wanDept) {
     const fwBaseNum = ipToUint32(fwDept.subnet!.split('/')[0])
-    const wanBaseNum = ipToUint32(wanDept.subnet!.split('/')[0])
+    const fwIp = uint32ToIp(fwBaseNum + 1)         // Firewall's IP toward Core-Router
 
-    const fwIp = uint32ToIp(fwBaseNum + 1)
-    const routerFwIp = uint32ToIp(fwBaseNum + 2)
-    const wanIp = uint32ToIp(wanBaseNum + 1)
+    // HQ-side subnets: Switch-HQ and its connected departments
+    const hqNodeIds = new Set([
+      'demo_switch_hq', 'demo_engineering', 'demo_finance',
+      'demo_marketing', 'demo_rd_labs',
+    ])
+    // Server-side subnets: Server-Switch and Server-Cluster
+    const serverNodeIds = new Set(['demo_server_switch', 'demo_server_cluster'])
 
     routerDept.staticRoutes = [
       { destination: '0.0.0.0/0', nextHop: fwIp },
+      // HQ subnets → next-hop is Switch-HQ's uplink IP
       ...allocated
-        .filter((d) => !['demo_core_router', 'demo_firewall', 'demo_wan_cloud'].includes(d.id) && d.subnet != null)
-        .map((d) => ({
-          destination: d.subnet!,
-          nextHop: nextHopIp
-        }))
+        .filter((d) => hqNodeIds.has(d.id) && d.subnet != null)
+        .map((d) => ({ destination: d.subnet!, nextHop: nextHopHq })),
+      // Server subnets → next-hop is Server-Switch's uplink IP
+      ...allocated
+        .filter((d) => serverNodeIds.has(d.id) && d.subnet != null)
+        .map((d) => ({ destination: d.subnet!, nextHop: nextHopServer })),
     ]
 
     fwDept.staticRoutes = [
-      { destination: '0.0.0.0/0', nextHop: wanIp },
+      { destination: '0.0.0.0/0', nextHop: fwWanIp },
       ...allocated
         .filter((d) => !['demo_firewall', 'demo_wan_cloud'].includes(d.id) && d.subnet != null)
-        .map((d) => ({
-          destination: d.subnet!,
-          nextHop: routerFwIp
-        }))
+        .map((d) => ({ destination: d.subnet!, nextHop: routerFwIp })),
     ]
 
-    wanDept.staticRoutes = [
-      { destination: '10.0.0.0/16', nextHop: uint32ToIp(wanBaseNum + 2) }
-    ]
+    if (wanDept.subnet) {
+      const wanBaseNum = ipToUint32(wanDept.subnet.split('/')[0])
+      wanDept.staticRoutes = [
+        { destination: '10.0.0.0/16', nextHop: uint32ToIp(wanBaseNum + 2) }
+      ]
+    }
   }
 
   const engDept = allocated.find((d) => d.id === 'demo_engineering')
