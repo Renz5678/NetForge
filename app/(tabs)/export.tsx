@@ -74,7 +74,7 @@ async function shareTextFile(
     return false
   } finally {
     if (file) {
-      try { (file as any).delete?.() } catch {}
+      // Temp file is cleaned up by the OS; no explicit delete needed.
     }
   }
 }

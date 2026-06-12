@@ -11,7 +11,7 @@
 //
 // This table is symmetric (swap src/dst → same weight).
 
-import type { Department } from '@/types'
+import type { NetworkNode } from '@/types'
 
 type DeviceType = 'wan' | 'firewall' | 'router' | 'switch' | 'department'
 
@@ -23,7 +23,7 @@ const COST_MATRIX: Record<DeviceType, Record<DeviceType, number>> = {
   department: { wan: 5,  firewall: 4, router: 2, switch: 1,  department: 2 },
 }
 
-function toType(dept: Department): DeviceType {
+function toType(dept: NetworkNode): DeviceType {
   return (dept.type as DeviceType) ?? 'department'
 }
 
@@ -31,7 +31,7 @@ function toType(dept: Department): DeviceType {
  * Returns the link cost between two devices.
  * Lower = preferred path (like OSPF cost).
  */
-export function getEdgeWeight(src: Department, tgt: Department): number {
+export function getEdgeWeight(src: NetworkNode, tgt: NetworkNode): number {
   const st = toType(src)
   const tt = toType(tgt)
   return COST_MATRIX[st]?.[tt] ?? COST_MATRIX[tt]?.[st] ?? 2
@@ -45,8 +45,8 @@ export function getEdgeWeight(src: Department, tgt: Department): number {
  * - access: Access port to an endpoint department
  */
 export function getLinkType(
-  src: Department,
-  tgt: Department,
+  src: NetworkNode,
+  tgt: NetworkNode,
 ): 'access' | 'trunk' | 'wan' | 'routed' {
   const st = toType(src)
   const tt = toType(tgt)

@@ -3,7 +3,7 @@
 // Uses DFS with white/gray/black node coloring.
 // Handles disconnected subgraphs by processing every node.
 
-import type { Department } from '@/types'
+import type { NetworkNode } from '@/types'
 
 type CycleResult = {
   hasCycle: boolean
@@ -12,7 +12,7 @@ type CycleResult = {
 
 type NodeColor = 'white' | 'gray' | 'black'
 
-export function detectCycles(departments: Department[]): CycleResult {
+export function detectCycles(departments: NetworkNode[]): CycleResult {
   if (departments.length === 0) {
     return { hasCycle: false, cycle: [] }
   }

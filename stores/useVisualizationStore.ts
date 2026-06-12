@@ -51,7 +51,7 @@ type VisualizationStore = {
   showSteps: boolean
 
   // ── Articulation Point / Single Point of Failure ───────────────────────────
-  /** Department IDs identified as articulation points by Tarjan's algorithm.
+  /** NetworkNode IDs identified as articulation points by Tarjan's algorithm.
    *  Populated when the validate tab runs the SPF check. Cleared on config change. */
   criticalNodeIds: string[]
 

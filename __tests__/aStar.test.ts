@@ -10,11 +10,11 @@
 
 import { findShortestPathAStar } from '@/lib/algorithms/aStar'
 import { findShortestPath } from '@/lib/algorithms/dijkstra'
-import type { Department } from '@/types'
+import type { NetworkNode } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeDept(id: string, peers: string[] = []): Department {
+function makeDept(id: string, peers: string[] = []): NetworkNode {
   return { id, name: `Node_${id}`, deviceCount: 1, peers, type: 'department' as const }
 }
 
@@ -79,7 +79,7 @@ describe('findShortestPathAStar — trivial cases', () => {
 // ── Simple paths ──────────────────────────────────────────────────────────────
 
 describe('findShortestPathAStar — simple linear chain A—B—C', () => {
-  let depts: Department[]
+  let depts: NetworkNode[]
   let positions: Map<string, { x: number; y: number }>
 
   beforeEach(() => {
@@ -119,7 +119,7 @@ describe('findShortestPathAStar — simple linear chain A—B—C', () => {
 describe('findShortestPathAStar — parity with Dijkstra (zero heuristic)', () => {
   // With all positions at (0,0), h(n) = 0 → A* behaves identically to Dijkstra.
 
-  const topologies: Array<{ name: string; depts: Department[] }> = [
+  const topologies: Array<{ name: string; depts: NetworkNode[] }> = [
     {
       name: 'linear chain',
       depts: [
@@ -183,7 +183,7 @@ describe('findShortestPathAStar — parity with Dijkstra (zero heuristic)', () =
 describe('findShortestPathAStar — spatial heuristic steers toward target', () => {
   // Topology: two paths A→B→C (2 hops) and A→D→E→C (3 hops)
   // The heuristic should still find the 2-hop path as the shortest.
-  const depts: Department[] = [
+  const depts: NetworkNode[] = [
     makeDept('A', ['B', 'D']),
     makeDept('B', ['A', 'C']),
     makeDept('C', ['B', 'E']),

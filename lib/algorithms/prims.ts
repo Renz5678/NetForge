@@ -1,15 +1,13 @@
 // prims.ts
 // Pure function — no side effects, no imports from stores or UI.
-// Input: Department[], rootId: string (user-selected start node),
 //        edgeWeights?: Map<string, number> (keyed as "srcId→targetId" for weighted edges)
-// Output: PrimsResult | null (null = graph is empty or rootId not found)
 // Method: Prim's algorithm using a min-heap priority queue.
 //         Treats all peer edges as undirected (A→B and B→A share the same physical link).
 //         Edge weight falls back to 1 (hop count) when no explicit weight is provided.
 // Framing: "Optimal Wiring" — the minimum set of cables needed to connect all nodes
 //           at the lowest total cost.
 
-import type { Department, PrimsResult, MSTEdge } from '@/types'
+import type { NetworkNode, PrimsResult, MSTEdge } from '@/types'
 import { MinHeap } from '@/lib/dataStructures/MinHeap'
 
 type HeapEntry = {
@@ -38,7 +36,7 @@ function getEdgeWeight(
 }
 
 export function findMinimumSpanningTree(
-  departments: Department[],
+  departments: NetworkNode[],
   rootId: string,
   edgeWeights?: Map<string, number>
 ): PrimsResult | null {

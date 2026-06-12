@@ -1,13 +1,11 @@
 // primsVisualizer.ts
 // Pure function — no side effects, no imports from stores or UI.
-// Input: Department[], rootId: string, edgeWeights?: Map<string, number>
-// Output: PrimsVisualizationResult with pre-computed step snapshots.
 // Method: Runs Prim's MST algorithm and records the full cut state at each step:
 //         which nodes are in the MST, which crossing edges are candidates,
 //         and which edge is being accepted.
 // Framing: "Optimal Wiring" — minimum cables to connect all nodes at lowest cost.
 
-import type { Department, VisualizationStep, NodeVizState, MSTEdge } from '@/types'
+import type { NetworkNode, VisualizationStep, NodeVizState, MSTEdge } from '@/types'
 import { MinHeap } from '@/lib/dataStructures/MinHeap'
 
 export type PrimsVisualizationResult = {
@@ -40,7 +38,7 @@ function getEdgeWeight(
 }
 
 export function buildPrimsSteps(
-  departments: Department[],
+  departments: NetworkNode[],
   rootId: string,
   edgeWeights?: Map<string, number>
 ): PrimsVisualizationResult {

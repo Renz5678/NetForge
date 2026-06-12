@@ -1,7 +1,5 @@
 // articulationPoints.ts
 // Pure function — no side effects, no imports from stores or UI.
-// Input:  Department[]
-// Output: ArticulationResult  { articulationPoints: string[]; bridges: [string, string][] }
 //
 // Method: Depth-first Search — Decrease & Conquer.
 //   Articulation points and bridges are discovered in a single DFS pass.
@@ -20,7 +18,7 @@
 //
 //   Handles disconnected graphs by restarting DFS from every unvisited node.
 
-import type { Department } from '@/types'
+import type { NetworkNode } from '@/types'
 
 export interface ArticulationResult {
   /** Department IDs that are single points of failure. */
@@ -29,7 +27,7 @@ export interface ArticulationResult {
   bridges: [string, string][]
 }
 
-export function findArticulationPoints(departments: Department[]): ArticulationResult {
+export function findArticulationPoints(departments: NetworkNode[]): ArticulationResult {
   if (departments.length === 0) {
     return { articulationPoints: [], bridges: [] }
   }

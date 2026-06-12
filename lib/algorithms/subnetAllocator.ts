@@ -1,10 +1,8 @@
 // subnetAllocator.ts
 // Pure function — no side effects.
-// Input: Department[] in topological order, baseIp: string, vlanStart: number
-// Output: Department[] with subnet, cidrPrefix, vlanId, usableHosts filled in
 // Method: greedy pointer advance using bitwise IP operations
 
-import type { Department } from '@/types'
+import type { NetworkNode } from '@/types'
 import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
 
 const MAX_DEVICE_COUNT = 16_777_214 // /8 usable
@@ -23,10 +21,10 @@ function findCidrPrefix(deviceCount: number): number {
 }
 
 export function allocateSubnets(
-  departments: Department[],
+  departments: NetworkNode[],
   baseIp: string,
   vlanStart: number
-): Department[] {
+): NetworkNode[] {
   if (departments.length === 0) return []
 
   let pointer = ipToUint32(baseIp)
@@ -56,7 +54,7 @@ export function allocateSubnets(
     // Advance pointer past this block
     pointer = (networkAddress + blockSize) >>> 0
 
-    const result: Department = {
+    const result: NetworkNode = {
       ...dept,
       subnet,
       cidrPrefix,
@@ -91,7 +89,7 @@ function cidrsOverlap(
  * Returns list of conflicting department name pairs.
  */
 export function checkSubnetOverlap(
-  departments: Department[]
+  departments: NetworkNode[]
 ): { overlapping: boolean; conflicts: string[] } {
   const allocated = departments.filter((d) => d.subnet && d.cidrPrefix !== undefined)
   const conflicts: string[] = []

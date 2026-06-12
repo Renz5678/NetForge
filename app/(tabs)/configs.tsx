@@ -288,7 +288,7 @@ export default function ConfigsScreen() {
                 <View style={styles.textContainer}>
                   <Text style={styles.configName} numberOfLines={1}>{item.name}</Text>
                   <Text style={styles.configMeta}>
-                    {pluralize(deptCount, 'Department')} • {pluralize(vlanCount, 'VLAN')}
+                    {pluralize(deptCount, 'NetworkNode')} • {pluralize(vlanCount, 'VLAN')}
                   </Text>
                 </View>
               </View>

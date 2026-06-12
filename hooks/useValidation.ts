@@ -7,9 +7,9 @@ import { detectCycles } from '@/lib/algorithms/cycleDetection'
 import { checkSubnetOverlap } from '@/lib/algorithms/subnetAllocator'
 import { validateConnectivity } from '@/lib/algorithms/bfsValidator'
 import { simulateRoute } from '@/lib/algorithms/routingSimulator'
-import type { Department, ValidationResult } from '@/types'
+import type { NetworkNode, ValidationResult } from '@/types'
 
-export function useValidation(departments: Department[]): ValidationResult {
+export function useValidation(departments: NetworkNode[]): ValidationResult {
   return useMemo(() => {
     // 1. Cycle detection
     const { hasCycle, cycle } = detectCycles(departments)

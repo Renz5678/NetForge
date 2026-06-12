@@ -1,18 +1,16 @@
 // bfsValidator.ts
 // Pure function — no side effects.
-// Input: Department[]
-// Output: { allReachable: boolean; isolated: string[] }
 // Method: BFS from every node, treating edges as undirected for reachability
 // Collects all department names unreachable from any starting node
 
-import type { Department } from '@/types'
+import type { NetworkNode } from '@/types'
 
 type BfsResult = {
   allReachable: boolean
   isolated: string[]
 }
 
-export function validateConnectivity(departments: Department[]): BfsResult {
+export function validateConnectivity(departments: NetworkNode[]): BfsResult {
   if (departments.length === 0) return { allReachable: true, isolated: [] }
   if (departments.length === 1) return { allReachable: true, isolated: [] }
 

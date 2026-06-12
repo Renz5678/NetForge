@@ -17,7 +17,7 @@ import {
 import { ArrowRight, CaretDown, X } from 'phosphor-react-native'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Colors } from '@/constants/colors'
-import type { Department, VisualizationStep } from '@/types'
+import type { NetworkNode, VisualizationStep } from '@/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ type Props = {
   onReplay: () => void
   algorithm: Algorithm | null
   currentStep: VisualizationStep | null
-  departments: Department[]
+  departments: NetworkNode[]
   sourceId: string | null
   targetId: string | null
   totalSteps: number
@@ -69,7 +69,7 @@ function tracePath(
   sourceId: string | null,
   targetId: string | null,
   nodeStates: Record<string, string>,
-  departments: Department[]
+  departments: NetworkNode[]
 ): string[] {
   if (!sourceId || !targetId) return []
   const pathSet = new Set<string>()
@@ -156,7 +156,7 @@ function DijkstraContent({
   step, departments, sourceId, targetId, totalSteps,
 }: {
   step: VisualizationStep
-  departments: Department[]
+  departments: NetworkNode[]
   sourceId: string | null
   targetId: string | null
   totalSteps: number
@@ -245,7 +245,7 @@ function PrimsContent({
   step, departments, totalSteps,
 }: {
   step: VisualizationStep
-  departments: Department[]
+  departments: NetworkNode[]
   totalSteps: number
 }) {
   const [open, setOpen] = useState(false)
@@ -321,7 +321,7 @@ function CycleContent({
   step, departments, totalSteps,
 }: {
   step: VisualizationStep
-  departments: Department[]
+  departments: NetworkNode[]
   totalSteps: number
 }) {
   const [open, setOpen] = useState(false)
@@ -392,7 +392,7 @@ function TopoContent({
   step, departments, totalSteps,
 }: {
   step: VisualizationStep
-  departments: Department[]
+  departments: NetworkNode[]
   totalSteps: number
 }) {
   const [open, setOpen] = useState(false)

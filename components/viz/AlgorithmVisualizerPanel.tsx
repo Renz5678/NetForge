@@ -19,7 +19,7 @@ import { useVisualizationStore, SPEED_MS } from '@/stores/useVisualizationStore'
 import { DataStructureDisplay } from './DataStructureDisplay'
 import { AlgorithmInsightSheet } from './AlgorithmInsightSheet'
 import { useHaptics } from '@/hooks/useHaptics'
-import type { Department } from '@/types'
+import type { NetworkNode } from '@/types'
 import {
   Play,
   Pause,
@@ -41,7 +41,7 @@ const PANEL_HEIGHT = SCREEN_HEIGHT * 0.45
 const COLLAPSED_HEIGHT = 220
 
 type AlgorithmVisualizerPanelProps = {
-  departments: Department[]
+  departments: NetworkNode[]
 }
 
 function getAlgorithmLabel(algorithm: string): string {
@@ -86,7 +86,7 @@ function reconstructPathFromSet(
   sourceId: string | null,
   targetId: string | null,
   nodeStates: Record<string, string>,
-  departments: Department[]
+  departments: NetworkNode[]
 ): string[] {
   if (!sourceId || !targetId) return []
   

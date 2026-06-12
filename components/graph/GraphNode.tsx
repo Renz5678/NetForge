@@ -91,7 +91,7 @@ const TYPE_IDENTITY: Record<string, {
     accent:    '#2DD4BF',
     iconColor: '#5EEAD4',
   },
-  department: {
+  NetworkNode: {
     gradTop:   '#1E3A5F',
     gradBot:   '#172d4a',
     accent:    '#60A5FA',
@@ -325,7 +325,7 @@ const TYPE_LABELS: Record<string, string> = {
   switch:     'SWITCH',
   firewall:   'FIREWALL',
   wan:        'WAN',
-  department: 'HOST',
+  NetworkNode: 'HOST',
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -354,8 +354,8 @@ export function GraphNodeComponent({
   const nx = node.x - NODE_WIDTH  / 2
   const ny = node.y - NODE_HEIGHT / 2
 
-  const typeKey  = node.type ?? 'department'
-  const identity = TYPE_IDENTITY[typeKey] ?? TYPE_IDENTITY.department
+  const typeKey  = node.type ?? 'NetworkNode'
+  const identity = TYPE_IDENTITY[typeKey] ?? TYPE_IDENTITY.NetworkNode
 
   const vizActive     = useVisualizationStore((s) => s.isActive)
   const showSteps     = useVisualizationStore((s) => s.showSteps)

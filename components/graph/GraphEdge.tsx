@@ -12,7 +12,7 @@
 import React from 'react'
 import { Path, Text as SkiaText, RoundedRect, matchFont } from '@shopify/react-native-skia'
 import { Colors } from '@/constants/colors'
-import type { GraphNode, GraphEdge, Department, EdgeVizState } from '@/types'
+import type { GraphNode, GraphEdge, NetworkNode, EdgeVizState } from '@/types'
 import { useVisualizationStore } from '@/stores/useVisualizationStore'
 
 // ── Arrow constants ───────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ const TYPE_EDGE_COLOR: Record<string, string> = {
   switch:     '#10B981',   // emerald
   firewall:   '#F97316',   // orange
   wan:        '#2DD4BF',   // teal
-  department: '#60A5FA',   // sky blue
+  NetworkNode: '#60A5FA',   // sky blue
 }
 
 // ── Link type → stroke width ──────────────────────────────────────────────────
@@ -73,7 +73,7 @@ const linkTypeFont = matchFont({
 type GraphEdgeProps = {
   edge: GraphEdge
   nodes: GraphNode[]
-  departments?: Department[]
+  departments?: NetworkNode[]
   font?: ReturnType<typeof matchFont>
   highlighted?: boolean
   vizEdgeState?: EdgeVizState
@@ -176,7 +176,7 @@ export function GraphEdgeComponent({
   )
   if (!geom) return null
 
-  // ── Source / target department lookup ────────────────────────────────────
+  // ── Source / target NetworkNode lookup ────────────────────────────────────
   const sourceDept = departments?.find((d) => d.id === edge.source)
   const targetDept = departments?.find((d) => d.id === edge.target)
 
@@ -204,7 +204,7 @@ export function GraphEdgeComponent({
   // ── Link type + base colour ───────────────────────────────────────────────
   const linkType   = edge.linkType ?? 'access'
   const edgeWeight = edge.weight ?? 1
-  const sourceType = sourceDept?.type ?? source.type ?? 'department'
+  const sourceType = sourceDept?.type ?? source.type ?? 'NetworkNode'
   const defaultColor = TYPE_EDGE_COLOR[sourceType] ?? '#475569'
 
   // ── Visual state resolution ───────────────────────────────────────────────

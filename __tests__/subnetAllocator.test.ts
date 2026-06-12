@@ -1,7 +1,7 @@
 import { allocateSubnets, checkSubnetOverlap } from '../lib/algorithms/subnetAllocator'
-import type { Department } from '../types'
+import type { NetworkNode } from '../types'
 
-const makeDept = (id: string, name: string, deviceCount: number): Department => ({
+const makeDept = (id: string, name: string, deviceCount: number): NetworkNode => ({
   id,
   name,
   deviceCount,
@@ -80,7 +80,7 @@ describe('subnetAllocator', () => {
 
 describe('checkSubnetOverlap', () => {
   it('detects overlapping subnets', () => {
-    const depts: Department[] = [
+    const depts: NetworkNode[] = [
       { ...makeDept('a', 'Alpha', 10), subnet: '10.0.0.0/24', cidrPrefix: 24 },
       { ...makeDept('b', 'Beta', 10), subnet: '10.0.0.128/25', cidrPrefix: 25 },
     ]
@@ -90,7 +90,7 @@ describe('checkSubnetOverlap', () => {
   })
 
   it('returns no conflict for non-overlapping subnets', () => {
-    const depts: Department[] = [
+    const depts: NetworkNode[] = [
       { ...makeDept('a', 'Alpha', 10), subnet: '10.0.0.0/24', cidrPrefix: 24 },
       { ...makeDept('b', 'Beta', 10), subnet: '10.0.1.0/24', cidrPrefix: 24 },
     ]

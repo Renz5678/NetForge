@@ -1,13 +1,11 @@
 // aStarVisualizer.ts
 // Pure function — no side effects, no imports from stores or UI.
-// Input: Department[], sourceId: string, targetId: string,
 //        nodePositions: Map<string, { x: number; y: number }>
-// Output: AStarVisualizationResult with pre-computed step snapshots.
 // Method: Runs A* once and records every decision into VisualizationStep[].
 //         Also records visitedNodeIds for side-by-side comparison with Dijkstra.
 //         The UI replays this array — the algorithm is never re-run per frame.
 
-import type { Department, VisualizationStep, NodeVizState, PathResult } from '@/types'
+import type { NetworkNode, VisualizationStep, NodeVizState, PathResult } from '@/types'
 import { MinHeap } from '@/lib/dataStructures/MinHeap'
 
 export type AStarVisualizationResult = {
@@ -39,7 +37,7 @@ function distStr(d: number): string {
 }
 
 export function buildAStarSteps(
-  departments: Department[],
+  departments: NetworkNode[],
   sourceId: string,
   targetId: string,
   nodePositions: Map<string, { x: number; y: number }>

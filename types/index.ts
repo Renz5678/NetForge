@@ -95,12 +95,7 @@ export type WanNode = BaseNode & {
 /** Union of all network node types. Use this everywhere instead of Department. */
 export type NetworkNode = RouterNode | SwitchNode | FirewallNode | DepartmentNode | WanNode
 
-/**
- * @deprecated Use NetworkNode instead.
- * Kept temporarily as a structural alias for backward compatibility.
- * Remove once all consumers have been updated to use NetworkNode.
- */
-export type Department = NetworkNode
+
 
 export type NetworkConfig = {
   id: string

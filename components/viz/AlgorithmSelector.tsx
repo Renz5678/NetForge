@@ -26,7 +26,7 @@ import {
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
 import { Colors } from '@/constants/colors'
-import type { AlgorithmType, Department } from '@/types'
+import type { AlgorithmType, NetworkNode } from '@/types'
 
 type AlgorithmCard = {
   type: AlgorithmType
@@ -98,7 +98,7 @@ const ALGORITHMS: AlgorithmCard[] = [
 type AlgorithmSelectorProps = {
   visible: boolean
   onClose: () => void
-  departments: Department[]
+  departments: NetworkNode[]
   onStart: (config: {
     algorithm: AlgorithmType
     sourceId?: string

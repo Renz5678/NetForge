@@ -4,7 +4,7 @@
 // metrics dashboard for the active network configuration.
 //
 // Metrics displayed (all derived from the active config's departments array):
-//   • Nodes          — total department count
+//   • Nodes          — total NetworkNode count
 //   • Links          — unique undirected edge count
 //   • Avg Degree     — (2 × edges) / nodes
 //   • Density        — (2 × edges) / (nodes × (nodes - 1))  [0..100%]

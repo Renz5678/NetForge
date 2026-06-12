@@ -68,7 +68,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { CoachMark } from '@/components/ui/CoachMark'
 import { ExplainModeToggle } from '@/components/ui/ExplainModeToggle'
-import type { Department, PathResult, ValidationResult } from '@/types'
+import type { NetworkNode, PathResult, ValidationResult } from '@/types'
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
 const CANVAS_HEIGHT = SCREEN_HEIGHT - 200
@@ -86,10 +86,10 @@ const GRID_DOT_R     = 1.2
 // Tier type sets for zone shading
 const WAN_TYPES      = new Set(['wan'])
 const CORE_TYPES     = new Set(['firewall', 'router'])
-const ACCESS_TYPES   = new Set(['switch', 'department'])
+const ACCESS_TYPES   = new Set(['switch', 'NetworkNode'])
 
 type NetworkGraphProps = {
-  departments: Department[]
+  departments: NetworkNode[]
   onPathFound?:       (result: PathResult | null, nodeIds: string[]) => void
   onVisualize?:       () => void
   onWarningPress?:    () => void

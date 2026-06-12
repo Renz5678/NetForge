@@ -7,14 +7,7 @@ import Animated, {
   FadeIn,
 } from 'react-native-reanimated'
 
-// Custom lightweight uuidv4 implementation for React Native / Hermes compatibility
-function uuidv4(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0
-    const v = c === 'x' ? r : (r & 0x3) | 0x8
-    return v.toString(16)
-  })
-}
+import { generateId } from '@/lib/utils/uuid'
 
 import {
   View,
@@ -79,11 +72,10 @@ import { buildTopologicalSortSteps } from '@/lib/algorithms/topologicalSortVisua
 import { buildPrimsSteps } from '@/lib/algorithms/primsVisualizer'
 import { findShortestPath } from '@/lib/algorithms/dijkstra'
 import { findShortestPathAStar } from '@/lib/algorithms/aStar'
-import type { Department, PathResult, AlgorithmType } from '@/types'
+import type { NetworkNode, PathResult, AlgorithmType } from '@/types'
 import type { ComparisonResult } from '@/stores/useVisualizationStore'
 import { DepartmentSchema } from '@/lib/validators'
 
-const generateId = () => 'dept_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9)
 
 function getSubnetDetails(subnetStr: string | undefined) {
   if (!subnetStr) return null
@@ -130,7 +122,7 @@ function PathResultSheet({
   visible: boolean
   onClose: () => void
   result: PathResult | null
-  departments: Department[]
+  departments: NetworkNode[]
   onReplay?: () => void
 }) {
   if (!result) return null
@@ -282,9 +274,9 @@ function DeptSheet({
 }: {
   visible: boolean
   onClose: () => void
-  onSave: (dept: Department) => void
-  dept: Department | null
-  otherDepts: Department[]
+  onSave: (dept: NetworkNode) => void
+  dept: NetworkNode | null
+  otherDepts: NetworkNode[]
 }) {
   const [name, setName] = useState('')
   const [deviceCount, setDeviceCount] = useState(1)
@@ -341,7 +333,7 @@ function DeptSheet({
         return prev.filter((p) => p !== peerId)
       } else {
         const newPort: InterfacePort = {
-          id: uuidv4(),
+          id: generateId(),
           name: type === 'switch' ? 'FastEthernet0/1' : 'GigabitEthernet0/0',
           connectedToNodeId: peerId,
         }
@@ -357,7 +349,7 @@ function DeptSheet({
 
     const finalPorts = type === 'switch' ? switchPorts : ports
 
-    const finalDept: Department = {
+    const finalDept: NetworkNode = {
       id: dept?.id ?? generateId(),
       name: name.trim(),
       deviceCount,
@@ -377,7 +369,7 @@ function DeptSheet({
       return
     }
 
-    onSave(validationResult.data as Department)
+    onSave(validationResult.data as NetworkNode)
     onClose()
   }
 
@@ -585,7 +577,7 @@ function DeptSheet({
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <Text style={deptSheet.label}>ACL Rules</Text>
                   <Pressable onPress={() => setAclRules([...aclRules, {
-                    id: uuidv4(), sequence: (aclRules.length + 1) * 10,
+                    id: generateId(), sequence: (aclRules.length + 1) * 10,
                     action: 'permit', protocol: 'ip', srcCidr: 'any', dstCidr: 'any',
                   }])}>
                     <Text style={deptSheet.addRowText}>+ Add Rule</Text>
@@ -684,7 +676,7 @@ function DeptSheet({
                       if (existing) {
                         return prev.map((p) => p.connectedToNodeId === peerId ? { ...p, [field]: value } : p)
                       }
-                      return [...prev, { id: uuidv4(), name: field === 'name' ? value : 'GigabitEthernet0/0', ipAddress: field === 'ipAddress' ? value : undefined, connectedToNodeId: peerId }]
+                      return [...prev, { id: generateId(), name: field === 'name' ? value : 'GigabitEthernet0/0', ipAddress: field === 'ipAddress' ? value : undefined, connectedToNodeId: peerId }]
                     })
                   }
 
@@ -808,7 +800,7 @@ export default function ConfigDetailScreen() {
   const [nameInputFocused, setNameInputFocused] = useState(false)
   const [search, setSearch] = useState('')
   const [showAddSheet, setShowAddSheet] = useState(false)
-  const [editingDept, setEditingDept] = useState<Department | null>(null)
+  const [editingDept, setEditingDept] = useState<NetworkNode | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteConfirmDeptId, setDeleteConfirmDeptId] = useState<string | null>(null)
 
@@ -842,11 +834,11 @@ export default function ConfigDetailScreen() {
     setIsDirty(false)
   }
 
-  const handleAddDept = async (dept: Department) => {
+  const handleAddDept = async (dept: NetworkNode) => {
     await addDepartment(dept)
   }
 
-  const handleUpdateDept = async (dept: Department) => {
+  const handleUpdateDept = async (dept: NetworkNode) => {
     await updateDepartment(dept)
   }
 

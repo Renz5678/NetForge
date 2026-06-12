@@ -1,15 +1,13 @@
 // aStar.ts
 // Pure function — no side effects, no imports from stores or UI.
-// Input: Department[], sourceId: string, targetId: string,
 //        nodePositions: Map<string, { x: number; y: number }>
-// Output: PathResult | null (null = no path exists)
 // Method: A* search using Euclidean distance to target as heuristic.
 //         g(n) = actual cost from source (hop count, weight = 1).
 //         h(n) = Euclidean distance from n to target (admissible, never overestimates).
 //         f(n) = g(n) + h(n) — priority in the open set min-heap.
 // Treats edges as directed (respects communication rules, same as Dijkstra).
 
-import type { Department, PathResult } from '@/types'
+import type { NetworkNode, PathResult } from '@/types'
 import { MinHeap } from '@/lib/dataStructures/MinHeap'
 
 type HeapNode = {
@@ -41,7 +39,7 @@ function euclideanHeuristic(
 }
 
 export function findShortestPathAStar(
-  departments: Department[],
+  departments: NetworkNode[],
   sourceId: string,
   targetId: string,
   nodePositions: Map<string, { x: number; y: number }>

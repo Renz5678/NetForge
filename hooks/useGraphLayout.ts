@@ -1,21 +1,9 @@
-// useGraphLayout.ts
-// Hierarchical BFS tier layout with physical port-based grouping for wide tiers.
-//
-// Strategy:
-//   1. Build undirected adjacency from peers.
-//   2. BFS from root (wan > firewall > router > switch > dept) to assign tiers.
-//   3. For each tier:
-//      - If nodes <= MAX_PER_ROW → evenly space them across the canvas.
-//      - If nodes >  MAX_PER_ROW → group them by their physical port parent
-//        (from dept.ports[*].connectedToNodeId), split into sub-rows of MAX_PER_ROW,
-//        and center each sub-row under its parent node.
-//   4. Multiple disconnected components are stacked vertically.
-
+// Hierarchical BFS layout assigning nodes to physical port-grouped tiers.
 import { useMemo } from 'react'
 import { detectCycles } from '@/lib/algorithms/cycleDetection'
 import { validateConnectivity } from '@/lib/algorithms/bfsValidator'
 import { getEdgeWeight, getLinkType } from '@/lib/algorithms/edgeWeights'
-import type { Department, GraphNode, GraphEdge } from '@/types'
+import type { NetworkNode, GraphNode, GraphEdge } from '@/types'
 
 type GraphLayout = {
   nodes: GraphNode[]
@@ -31,7 +19,7 @@ const MAX_PER_ROW   = 3     // max nodes per row before wrapping
 const MIN_SPACING   = 175   // minimum center-to-center horizontal spacing
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function buildUndirected(departments: Department[]): Map<string, string[]> {
+function buildUndirected(departments: NetworkNode[]): Map<string, string[]> {
   const idSet = new Set(departments.map((d) => d.id))
   const adj   = new Map<string, string[]>()
   for (const d of departments) adj.set(d.id, [])
@@ -47,7 +35,7 @@ function buildUndirected(departments: Department[]): Map<string, string[]> {
 
 const TYPE_PRIORITY = ['wan', 'firewall', 'router', 'switch', 'department']
 
-function pickRoot(depts: Department[]): string {
+function pickRoot(depts: NetworkNode[]): string {
   for (const t of TYPE_PRIORITY) {
     const f = depts.find((d) => d.type === t)
     if (f) return f.id
@@ -55,7 +43,7 @@ function pickRoot(depts: Department[]): string {
   return depts[0].id
 }
 
-function sortByType(ids: string[], depts: Department[]): string[] {
+function sortByType(ids: string[], depts: NetworkNode[]): string[] {
   return [...ids].sort((a, b) => {
     const ta = depts.find((d) => d.id === a)?.type ?? 'department'
     const tb = depts.find((d) => d.id === b)?.type ?? 'department'
@@ -89,7 +77,7 @@ function rowPositions(
  */
 function positionWideTier(
   ids: string[],
-  departments: Department[],
+  departments: NetworkNode[],
   positioned: Map<string, { x: number; y: number }>,
   width: number,
   baseY: number
@@ -156,7 +144,7 @@ function tierHeight(count: number): number {
 
 // ── Main export ────────────────────────────────────────────────────────────
 export function useGraphLayout(
-  departments: Department[],
+  departments: NetworkNode[],
   width: number,
   height: number
 ): GraphLayout {

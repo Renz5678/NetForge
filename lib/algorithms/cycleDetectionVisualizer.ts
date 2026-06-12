@@ -1,12 +1,10 @@
 // cycleDetectionVisualizer.ts
 // Pure function — no side effects, no imports from stores or UI.
-// Input: Department[]
-// Output: CycleDetectionVisualizationResult with pre-computed step snapshots.
 // Method: Runs DFS with white/gray/black coloring and records every node visit,
 //         stack push/pop, and the back-edge that causes a cycle.
 //         The UI replays this array — the algorithm is never re-run per frame.
 
-import type { Department, VisualizationStep, NodeVizState } from '@/types'
+import type { NetworkNode, VisualizationStep, NodeVizState } from '@/types'
 
 export type CycleDetectionVisualizationResult = {
   steps: VisualizationStep[]
@@ -17,7 +15,7 @@ export type CycleDetectionVisualizationResult = {
 type NodeColor = 'white' | 'gray' | 'black'
 
 export function buildCycleDetectionSteps(
-  departments: Department[]
+  departments: NetworkNode[]
 ): CycleDetectionVisualizationResult {
   const steps: VisualizationStep[] = []
 

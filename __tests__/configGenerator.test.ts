@@ -1,7 +1,7 @@
 import { generateCiscoConfig, generateFullTopologyConfig } from '../lib/configGenerator'
-import type { Department, NetworkConfig, AclRule } from '../types'
+import type { NetworkNode, NetworkConfig, AclRule } from '../types'
 
-const makeRouter = (): Department => ({
+const makeRouter = (): NetworkNode => ({
   id: 'router1',
   name: 'Core Router',
   deviceCount: 0,
@@ -24,7 +24,7 @@ const makeRouter = (): Department => ({
   staticRoutes: [{ destination: '0.0.0.0/0', nextHop: '192.168.1.2' }],
 })
 
-const makeSwitch = (): Department => ({
+const makeSwitch = (): NetworkNode => ({
   id: 'switch1',
   name: 'Access Switch',
   deviceCount: 0,
@@ -36,7 +36,7 @@ const makeSwitch = (): Department => ({
   ],
 })
 
-const makeFirewall = (): Department => ({
+const makeFirewall = (): NetworkNode => ({
   id: 'fw1',
   name: 'Edge Firewall',
   deviceCount: 0,
@@ -51,7 +51,7 @@ const makeFirewall = (): Department => ({
   ] as AclRule[],
 })
 
-const makeDept = (): Department => ({
+const makeDept = (): NetworkNode => ({
   id: 'dept1',
   name: 'Engineering',
   deviceCount: 30,

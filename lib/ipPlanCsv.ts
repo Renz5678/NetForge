@@ -4,34 +4,34 @@
  * Generates a CSV string representing the IP address plan for a NetworkConfig.
  * Used by the Export screen's "IP Plan CSV" artifact.
  *
- * Columns: Department, Type, VLAN ID, Subnet (CIDR), Network, First Usable,
+ * Columns: NetworkNode, Type, VLAN ID, Subnet (CIDR), Network, First Usable,
  *          Last Usable, Usable Hosts, Devices
  *
  * Pure function — no side effects.
  */
 
 import { ipToUint32, uint32ToIp, cidrToMask } from '@/lib/ipUtils'
-import type { NetworkConfig, Department } from '@/types'
+import type { NetworkConfig, NetworkNode } from '@/types'
 
-function getNetworkAddress(dept: Department): string {
+function getNetworkAddress(dept: NetworkNode): string {
   if (!dept.subnet) return '—'
   return dept.subnet.split('/')[0]
 }
 
-function getFirstUsable(dept: Department): string {
+function getFirstUsable(dept: NetworkNode): string {
   if (!dept.subnet || !dept.cidrPrefix) return '—'
   const baseIp = dept.subnet.split('/')[0]
   return uint32ToIp(ipToUint32(baseIp) + 1)
 }
 
-function getLastUsable(dept: Department): string {
+function getLastUsable(dept: NetworkNode): string {
   if (!dept.subnet || !dept.cidrPrefix) return '—'
   const baseIp = dept.subnet.split('/')[0]
   const blockSize = Math.pow(2, 32 - dept.cidrPrefix)
   return uint32ToIp(ipToUint32(baseIp) + blockSize - 2)
 }
 
-function getBroadcast(dept: Department): string {
+function getBroadcast(dept: NetworkNode): string {
   if (!dept.subnet || !dept.cidrPrefix) return '—'
   const baseIp = dept.subnet.split('/')[0]
   const blockSize = Math.pow(2, 32 - dept.cidrPrefix)

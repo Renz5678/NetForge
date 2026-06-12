@@ -1,12 +1,10 @@
 // topologicalSortVisualizer.ts
 // Pure function — no side effects, no imports from stores or UI.
-// Input: Department[] (should be cycle-free; run cycle detection first)
-// Output: TopoSortVisualizationResult with pre-computed step snapshots.
 // Method: Runs Kahn's algorithm (BFS-based) and records every enqueue/dequeue,
 //         in-degree decrement, and result expansion into VisualizationStep[].
 //         The UI replays this array — the algorithm is never re-run per frame.
 
-import type { Department, VisualizationStep, NodeVizState } from '@/types'
+import type { NetworkNode, VisualizationStep, NodeVizState } from '@/types'
 
 export type TopoSortVisualizationResult = {
   steps: VisualizationStep[]
@@ -14,7 +12,7 @@ export type TopoSortVisualizationResult = {
 }
 
 export function buildTopologicalSortSteps(
-  departments: Department[]
+  departments: NetworkNode[]
 ): TopoSortVisualizationResult {
   const steps: VisualizationStep[] = []
 

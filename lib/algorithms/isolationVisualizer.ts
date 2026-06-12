@@ -3,10 +3,9 @@
 // BFS-explores the graph from each connected component and marks nodes that
 // are never reached (isolated) with the 'cycle' viz state so they pulse red.
 //
-// Output: pre-computed VisualizationStep[] — the UI replays the array, the
 // algorithm never re-runs per frame.
 
-import type { Department, VisualizationStep, NodeVizState } from '@/types'
+import type { NetworkNode, VisualizationStep, NodeVizState } from '@/types'
 
 export type IsolationVisualizationResult = {
   steps: VisualizationStep[]
@@ -15,7 +14,7 @@ export type IsolationVisualizationResult = {
 }
 
 export function buildIsolationSteps(
-  departments: Department[]
+  departments: NetworkNode[]
 ): IsolationVisualizationResult {
   const steps: VisualizationStep[] = []
 

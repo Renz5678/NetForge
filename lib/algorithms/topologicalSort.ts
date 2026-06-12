@@ -1,12 +1,10 @@
 // topologicalSort.ts
 // Pure function — no side effects.
-// Input: Department[] (pre-validated, no cycles)
-// Output: string[] (ordered department IDs, dependencies first)
 // Method: Kahn's algorithm (BFS-based, uses in-degree map)
 
-import type { Department } from '@/types'
+import type { NetworkNode } from '@/types'
 
-export function topologicalSort(departments: Department[]): string[] {
+export function topologicalSort(departments: NetworkNode[]): string[] {
   if (departments.length === 0) return []
   if (departments.length === 1) return [departments[0].id]
 

@@ -1,12 +1,10 @@
 // dijkstraVisualizer.ts
 // Pure function — no side effects, no imports from stores or UI.
-// Input: Department[], sourceId: string, targetId: string,
 //        nodePositions: Map<string, { x: number; y: number }> (for A* comparison data)
-// Output: DijkstraVisualizationResult containing a pre-computed step snapshot array.
 // Method: Runs Dijkstra once and records every decision into VisualizationStep[].
 //         The UI replays this array — the algorithm is never re-run per animation frame.
 
-import type { Department, VisualizationStep, NodeVizState, PathResult } from '@/types'
+import type { NetworkNode, VisualizationStep, NodeVizState, PathResult } from '@/types'
 import { MinHeap } from '@/lib/dataStructures/MinHeap'
 
 export type DijkstraVisualizationResult = {
@@ -30,7 +28,7 @@ function distStr(d: number): string {
 }
 
 export function buildDijkstraSteps(
-  departments: Department[],
+  departments: NetworkNode[],
   sourceId: string,
   targetId: string
 ): DijkstraVisualizationResult {

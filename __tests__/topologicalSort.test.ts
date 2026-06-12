@@ -1,7 +1,7 @@
 import { topologicalSort } from '../lib/algorithms/topologicalSort'
-import type { Department } from '../types'
+import type { NetworkNode } from '../types'
 
-const makeDept = (id: string, name: string, peers: string[]): Department => ({
+const makeDept = (id: string, name: string, peers: string[]): NetworkNode => ({
   id,
   name,
   deviceCount: 10,

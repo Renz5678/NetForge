@@ -30,7 +30,7 @@ import {
   Graph,
 } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
-import type { Department } from '@/types'
+import type { NetworkNode } from '@/types'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 
@@ -40,7 +40,7 @@ const TYPE_LABEL: Record<string, string> = {
   switch:     'Switch',
   firewall:   'Firewall',
   wan:        'WAN Gateway',
-  department: 'Endpoint',
+  NetworkNode: 'Endpoint',
 }
 
 const TYPE_COLOR: Record<string, string> = {
@@ -48,11 +48,11 @@ const TYPE_COLOR: Record<string, string> = {
   switch:     '#10B981',
   firewall:   '#F97316',
   wan:        '#2DD4BF',
-  department: '#60A5FA',
+  NetworkNode: '#60A5FA',
 }
 
 type NodeTooltipProps = {
-  dept:          Department
+  dept:          NetworkNode
   screenX:       number   // screen-space X of node centre
   screenY:       number   // screen-space Y of node centre
   peerCount:     number
@@ -72,7 +72,7 @@ export function NodeTooltip({
   onAnalyze,
   onSimFailure,
 }: NodeTooltipProps) {
-  const typeKey    = dept.type ?? 'department'
+  const typeKey    = dept.type ?? 'NetworkNode'
   const typeLabel  = TYPE_LABEL[typeKey] ?? 'Device'
   const typeColor  = TYPE_COLOR[typeKey] ?? Colors.primary
 

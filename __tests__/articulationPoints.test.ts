@@ -2,10 +2,10 @@
 // Tests for Tarjan's articulation point and bridge detection algorithm.
 
 import { findArticulationPoints } from '@/lib/algorithms/articulationPoints'
-import type { Department } from '@/types'
+import type { NetworkNode } from '@/types'
 
 // Helper: create a minimal Department with just id, name, and peers
-function makeDept(id: string, peers: string[] = []): Department {
+function makeDept(id: string, peers: string[] = []): NetworkNode {
   return {
     id,
     name: `Node_${id}`,
@@ -41,7 +41,7 @@ describe('findArticulationPoints — trivial inputs', () => {
 // ── Linear chain: A—B—C ────────────────────────────────────────────────────────
 
 describe('findArticulationPoints — linear chain A—B—C', () => {
-  let depts: Department[]
+  let depts: NetworkNode[]
 
   beforeEach(() => {
     depts = [
@@ -71,7 +71,7 @@ describe('findArticulationPoints — linear chain A—B—C', () => {
 // ── Star topology: hub connected to 4 leaves ───────────────────────────────────
 
 describe('findArticulationPoints — star topology', () => {
-  let depts: Department[]
+  let depts: NetworkNode[]
 
   beforeEach(() => {
     depts = [
@@ -98,7 +98,7 @@ describe('findArticulationPoints — star topology', () => {
 // ── Full mesh (4 nodes) ────────────────────────────────────────────────────────
 
 describe('findArticulationPoints — full mesh (4 nodes, all connected to all)', () => {
-  let depts: Department[]
+  let depts: NetworkNode[]
 
   beforeEach(() => {
     depts = [
@@ -126,7 +126,7 @@ describe('findArticulationPoints — two triangles joined at bridge node', () =>
   // Triangle 1: A—B—C—A
   // Triangle 2: D—E—F—D
   // Bridge:     C—D  (C and D are both APs, C—D is a bridge edge)
-  let depts: Department[]
+  let depts: NetworkNode[]
 
   beforeEach(() => {
     depts = [
@@ -158,7 +158,7 @@ describe('findArticulationPoints — two triangles joined at bridge node', () =>
 describe('findArticulationPoints — disconnected graph (two separate chains)', () => {
   // Component 1: A—B—C  (B is AP in component 1)
   // Component 2: X—Y    (both are leaf-only, Y is AP if X is only neighbor — bridge)
-  let depts: Department[]
+  let depts: NetworkNode[]
 
   beforeEach(() => {
     depts = [

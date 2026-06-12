@@ -1,11 +1,9 @@
 // dijkstra.ts
 // Pure function — no side effects.
-// Input: Department[], sourceId: string, targetId: string
-// Output: PathResult | null (null = no path exists)
 // Method: Min-heap Dijkstra, edge weight = 1 (hop count)
 // Treats edges as directed (respects communication rules)
 
-import type { Department, PathResult } from '@/types'
+import type { NetworkNode, PathResult } from '@/types'
 import { MinHeap } from '@/lib/dataStructures/MinHeap'
 
 type HeapNode = {
@@ -16,7 +14,7 @@ type HeapNode = {
 
 
 export function findShortestPath(
-  departments: Department[],
+  departments: NetworkNode[],
   sourceId: string,
   targetId: string
 ): PathResult | null {

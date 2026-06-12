@@ -3,7 +3,7 @@
 // Each scenario demonstrates at least one algorithm naturally through a real networking problem.
 // Users learn by solving a networking problem, not studying algorithms.
 
-import type { Department, NetworkConfig } from '@/types'
+import type { NetworkNode, NetworkConfig } from '@/types'
 import { allocateSubnets } from '@/lib/algorithms/subnetAllocator'
 import { topologicalSort } from '@/lib/algorithms/topologicalSort'
 import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
@@ -24,14 +24,14 @@ function buildConfig(
   id: string,
   userId: string,
   name: string,
-  rawDepts: Department[],
+  rawDepts: NetworkNode[],
   baseIp: string,
   vlanStart: number
 ): NetworkConfig {
   const sorted = topologicalSort(rawDepts)
   const sortedDepts = sorted
     .map((sid) => rawDepts.find((d) => d.id === sid))
-    .filter((d): d is Department => d !== undefined)
+    .filter((d): d is NetworkNode => d !== undefined)
   const missing = rawDepts.filter((d) => !sorted.includes(d.id))
   const allocated = allocateSubnets([...sortedDepts, ...missing], baseIp, vlanStart)
   return {
@@ -51,7 +51,7 @@ function buildConfig(
 
 // ─── Template 1: Small Business Network ────────────────────────────────────────
 function getSmallBizConfig(userId: string): NetworkConfig {
-  const depts: Department[] = [
+  const depts: NetworkNode[] = [
     {
       id: 'sb_wan',
       name: 'ISP Uplink',
@@ -122,7 +122,7 @@ function getSmallBizConfig(userId: string): NetworkConfig {
 
 // ─── Template 2: Enterprise Campus Network ────────────────────────────────────
 function getEnterpriseCampusConfig(userId: string): NetworkConfig {
-  const depts: Department[] = [
+  const depts: NetworkNode[] = [
     {
       id: 'ec_wan',
       name: 'WAN / Internet',
@@ -225,7 +225,7 @@ function getEnterpriseCampusConfig(userId: string): NetworkConfig {
 
 // ─── Template 3: Multi-Branch WAN ────────────────────────────────────────────
 function getMultiBranchConfig(userId: string): NetworkConfig {
-  const depts: Department[] = [
+  const depts: NetworkNode[] = [
     {
       id: 'mb_hq_wan',
       name: 'HQ WAN',
@@ -305,7 +305,7 @@ function getMultiBranchConfig(userId: string): NetworkConfig {
 
 // ─── Template 4: Data Center Spine-Leaf ──────────────────────────────────────
 function getDataCenterConfig(userId: string): NetworkConfig {
-  const depts: Department[] = [
+  const depts: NetworkNode[] = [
     {
       id: 'dc_spine1',
       name: 'Spine-1',
@@ -401,7 +401,7 @@ function getDataCenterConfig(userId: string): NetworkConfig {
 
 // ─── Template 5: ISP Core Network ────────────────────────────────────────────
 function getISPCoreConfig(userId: string): NetworkConfig {
-  const depts: Department[] = [
+  const depts: NetworkNode[] = [
     {
       id: 'isp_backbone_a',
       name: 'Backbone-PoP-A',
