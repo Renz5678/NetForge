@@ -317,16 +317,19 @@ function DeptSheet({
       const resolvedType = dept?.type ?? 'department'
       setType(resolvedType)
       setPorts(dept?.ports ?? [])
-      setStaticRoutes(dept?.staticRoutes ?? [])
-      setOspfEnabled(dept?.ospf?.enabled ?? false)
-      setOspfAreaId(dept?.ospf?.areaId ?? 0)
+      // staticRoutes exists on router, firewall, wan (not switch or department)
+      setStaticRoutes(dept && 'staticRoutes' in dept ? (dept.staticRoutes ?? []) : [])
+      // ospf exists on router only
+      setOspfEnabled(dept && 'ospf' in dept ? (dept.ospf?.enabled ?? false) : false)
+      setOspfAreaId(dept && 'ospf' in dept ? (dept.ospf?.areaId ?? 0) : 0)
 
       if (resolvedType === 'switch') {
         setSwitchPorts(dept?.ports ?? initializeDefaultPorts('switch'))
       } else {
         setSwitchPorts([])
       }
-      setAclRules(dept?.aclRules ?? [])
+      // aclRules exists on firewall and department (not router, switch, wan)
+      setAclRules(dept && 'aclRules' in dept ? (dept.aclRules ?? []) : [])
     }
   }, [visible, dept])
 
@@ -762,8 +765,14 @@ export default function ConfigDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
-  const { activeConfig, setActiveConfig, updateConfig, addDepartment, updateDepartment, deleteDepartment } =
-    useConfigStore()
+  // useConfigStore: always use granular selectors — never destructure the whole store.
+  // See AGENTS.md §6 for rationale.
+  const activeConfig      = useConfigStore((s) => s.activeConfig)
+  const setActiveConfig   = useConfigStore((s) => s.setActiveConfig)
+  const updateConfig      = useConfigStore((s) => s.updateConfig)
+  const addDepartment     = useConfigStore((s) => s.addDepartment)
+  const updateDepartment  = useConfigStore((s) => s.updateDepartment)
+  const deleteDepartment  = useConfigStore((s) => s.deleteDepartment)
   const departments = activeConfig?.departments ?? []
   const isSample = activeConfig?.id.startsWith('local_tpl_') ?? false
 

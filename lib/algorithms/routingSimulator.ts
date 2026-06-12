@@ -2,7 +2,7 @@
 // Pure function — no side effects.
 // Implements Longest Prefix Match, OSPF Dynamic Area propagation, L2 VLAN switch forwarding, and Dijkstra path tracing.
 
-import type { Department, InterfacePort, StaticRoute, OspfConfig } from '@/types'
+import type { NetworkNode, RouterNode, InterfacePort, StaticRoute, OspfConfig } from '@/types'
 import { ipToUint32, uint32ToIp, cidrToMask, ipInSubnet } from '@/lib/ipUtils'
 import { evaluateAcl, findMatchingRule, type AclPacket } from '@/lib/algorithms/aclEngine'
 
@@ -41,7 +41,7 @@ export type PathTraceResult = {
   message: string;       // status message
 }
 
-export function compileRoutingTables(nodes: Department[]): Map<string, RoutingTableEntry[]> {
+export function compileRoutingTables(nodes: NetworkNode[]): Map<string, RoutingTableEntry[]> {
   const tables = new Map<string, RoutingTableEntry[]>()
 
   // 1. Initialize with Direct and Static routes
@@ -81,8 +81,8 @@ export function compileRoutingTables(nodes: Department[]): Map<string, RoutingTa
       })
     }
 
-    // Static routes
-    if (node.staticRoutes) {
+    // Static routes (only on router, firewall, wan nodes)
+    if (node.type !== 'switch' && node.type !== 'department' && node.staticRoutes) {
       for (const route of node.staticRoutes) {
         const [_, prefixStr] = route.destination.split('/')
         const prefix = parseInt(prefixStr ?? '24', 10)
@@ -100,7 +100,7 @@ export function compileRoutingTables(nodes: Department[]): Map<string, RoutingTa
   }
 
   // 2. OSPF Dynamic Route Propagation (Shortest Path First in OSPF Area)
-  const ospfNodes = nodes.filter((n) => n.type === 'router' && n.ospf?.enabled)
+  const ospfNodes = nodes.filter((n): n is RouterNode => n.type === 'router' && n.ospf?.enabled === true)
 
   if (ospfNodes.length > 1) {
     // Build adjacencies in same OSPF areas
@@ -209,7 +209,7 @@ export function compileRoutingTables(nodes: Department[]): Map<string, RoutingTa
 }
 
 export function simulateRoute(
-  nodes: Department[],
+  nodes: NetworkNode[],
   sourceId: string,
   targetIp: string,
   packet?: AclPacket

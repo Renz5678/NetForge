@@ -39,7 +39,18 @@ export type AclRule = {
   remark?: string        // human-readable label
 }
 
-export type Department = {
+// ─── Discriminated Union: NetworkNode ────────────────────────────────────────
+// Each variant carries ONLY the fields valid for that device class.
+// Discriminant field: `type` (required on all variants).
+//
+// Key invariants:
+//   • Edges are always bidirectional — if A lists B in peers, B must list A.
+//   • `ports[].connectedToNodeId/connectedToPortId` is the physical link.
+//   • `peers[]` is the logical adjacency used by graph algorithms.
+//   • `subnet` and `vlanId` are outputs of allocateSubnets() — never set manually.
+
+/** Fields shared by every node type. */
+type BaseNode = {
   id: string
   name: string
   deviceCount: number
@@ -48,19 +59,54 @@ export type Department = {
   vlanId?: number
   cidrPrefix?: number
   usableHosts?: number
-  // Hardware Extensions:
-  type?: DeviceType;
-  ports?: InterfacePort[];
-  staticRoutes?: StaticRoute[];
-  ospf?: OspfConfig;
-  aclRules?: AclRule[];
 }
+
+export type RouterNode = BaseNode & {
+  type: 'router'
+  ports?: InterfacePort[]
+  staticRoutes?: StaticRoute[]
+  ospf?: OspfConfig
+}
+
+export type SwitchNode = BaseNode & {
+  type: 'switch'
+  ports?: InterfacePort[]
+}
+
+export type FirewallNode = BaseNode & {
+  type: 'firewall'
+  ports?: InterfacePort[]
+  staticRoutes?: StaticRoute[]
+  aclRules?: AclRule[]
+}
+
+export type DepartmentNode = BaseNode & {
+  type: 'department'
+  ports?: InterfacePort[]
+  aclRules?: AclRule[]
+}
+
+export type WanNode = BaseNode & {
+  type: 'wan'
+  ports?: InterfacePort[]
+  staticRoutes?: StaticRoute[]
+}
+
+/** Union of all network node types. Use this everywhere instead of Department. */
+export type NetworkNode = RouterNode | SwitchNode | FirewallNode | DepartmentNode | WanNode
+
+/**
+ * @deprecated Use NetworkNode instead.
+ * Kept temporarily as a structural alias for backward compatibility.
+ * Remove once all consumers have been updated to use NetworkNode.
+ */
+export type Department = NetworkNode
 
 export type NetworkConfig = {
   id: string
   userId: string
   name: string
-  departments: Department[]
+  departments: NetworkNode[]
   baseIp: string
   vlanStart: number
   createdAt: string

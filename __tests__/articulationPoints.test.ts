@@ -11,6 +11,7 @@ function makeDept(id: string, peers: string[] = []): Department {
     name: `Node_${id}`,
     deviceCount: 1,
     peers,
+    type: 'department' as const,
   }
 }
 

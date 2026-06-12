@@ -40,3 +40,12 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Developer artifacts — must not reappear in the repo (Task 2 cleanup)
+extracted.txt
+replacement.js
+replacement.json
+replacement.txt
+payload.txt
+temp_original.tsx
+.agent/

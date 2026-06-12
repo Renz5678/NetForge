@@ -173,7 +173,14 @@ const swipeCard = StyleSheet.create({
 export default function ConfigsScreen() {
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
-  const { configs, loadConfigs, createConfig, deleteConfig, duplicateConfig, loading } = useConfigStore()
+  // useConfigStore: always use granular selectors — never destructure the whole store.
+  // See AGENTS.md §6 for rationale.
+  const configs        = useConfigStore((s) => s.configs)
+  const loadConfigs    = useConfigStore((s) => s.loadConfigs)
+  const createConfig   = useConfigStore((s) => s.createConfig)
+  const deleteConfig   = useConfigStore((s) => s.deleteConfig)
+  const duplicateConfig = useConfigStore((s) => s.duplicateConfig)
+  const loading        = useConfigStore((s) => s.loading)
   const { defaultBaseIp, defaultVlanStart } = usePreferencesStore()
 
   const fabScale = useSharedValue(1)

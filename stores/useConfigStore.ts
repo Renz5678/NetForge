@@ -9,7 +9,7 @@ import { findMinimumSpanningTree } from '@/lib/algorithms/prims'
 import { getEdgeWeight } from '@/lib/algorithms/edgeWeights'
 import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
 import { DepartmentSchema } from '@/lib/validators'
-import type { Department, NetworkConfig, NetworkInsight, MSTEdge } from '@/types'
+import type { Department, NetworkNode, RouterNode, FirewallNode, WanNode, DepartmentNode, NetworkConfig, NetworkInsight, MSTEdge } from '@/types'
 import { useAuthStore } from '@/stores/useAuthStore'
 
 const LOCAL_CONFIGS_KEY = '@netforge_configs'
@@ -240,7 +240,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
   const sorted = topologicalSort(depts)
   const sortedDepts = sorted
     .map((id) => depts.find((d) => d.id === id))
-    .filter((d): d is Department => d !== undefined)
+    .filter((d): d is NetworkNode => d !== undefined)
   
   const allocated = allocateSubnets(sortedDepts, '10.0.0.0', 10)
 
@@ -258,9 +258,9 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
   }
 
   // Configure IPs on interfaces dynamically
-  const routerDept = allocated.find((d) => d.id === 'demo_core_router')
-  const fwDept = allocated.find((d) => d.id === 'demo_firewall')
-  const wanDept = allocated.find((d) => d.id === 'demo_wan_cloud')
+  const routerDept = allocated.find((d) => d.id === 'demo_core_router' && d.type === 'router') as RouterNode | undefined
+  const fwDept = allocated.find((d) => d.id === 'demo_firewall' && d.type === 'firewall') as FirewallNode | undefined
+  const wanDept = allocated.find((d) => d.id === 'demo_wan_cloud' && d.type === 'wan') as WanNode | undefined
 
   let nextHopIp = '10.0.0.2'
 
@@ -331,7 +331,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
 
   // Update ACL rules on Finance-HR to match dynamic subnets
   const engDept = allocated.find((d) => d.id === 'demo_engineering')
-  const finDept = allocated.find((d) => d.id === 'demo_finance')
+  const finDept = allocated.find((d) => d.id === 'demo_finance') as (FirewallNode | DepartmentNode) | undefined
   if (engDept?.subnet && finDept?.subnet) {
     const finRule = finDept.aclRules?.find((r) => r.id === 'acl_fin_1')
     if (finRule) {

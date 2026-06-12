@@ -6,6 +6,7 @@ const makeDept = (id: string, name: string, peers: string[]): Department => ({
   name,
   deviceCount: 10,
   peers,
+  type: 'department' as const,
 })
 
 describe('dijkstra', () => {

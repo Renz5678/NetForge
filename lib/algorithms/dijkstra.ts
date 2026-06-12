@@ -6,58 +6,14 @@
 // Treats edges as directed (respects communication rules)
 
 import type { Department, PathResult } from '@/types'
+import { MinHeap } from '@/lib/dataStructures/MinHeap'
 
 type HeapNode = {
   id: string
   dist: number
 }
 
-class MinHeap {
-  private heap: HeapNode[] = []
 
-  push(node: HeapNode): void {
-    this.heap.push(node)
-    this._bubbleUp(this.heap.length - 1)
-  }
-
-  pop(): HeapNode | undefined {
-    if (this.heap.length === 0) return undefined
-    const top = this.heap[0]
-    const last = this.heap.pop()!
-    if (this.heap.length > 0) {
-      this.heap[0] = last
-      this._sinkDown(0)
-    }
-    return top
-  }
-
-  get size(): number {
-    return this.heap.length
-  }
-
-  private _bubbleUp(i: number): void {
-    while (i > 0) {
-      const parent = Math.floor((i - 1) / 2)
-      if (this.heap[parent].dist <= this.heap[i].dist) break
-      ;[this.heap[parent], this.heap[i]] = [this.heap[i], this.heap[parent]]
-      i = parent
-    }
-  }
-
-  private _sinkDown(i: number): void {
-    const n = this.heap.length
-    while (true) {
-      let smallest = i
-      const left = 2 * i + 1
-      const right = 2 * i + 2
-      if (left < n && this.heap[left].dist < this.heap[smallest].dist) smallest = left
-      if (right < n && this.heap[right].dist < this.heap[smallest].dist) smallest = right
-      if (smallest === i) break
-      ;[this.heap[smallest], this.heap[i]] = [this.heap[i], this.heap[smallest]]
-      i = smallest
-    }
-  }
-}
 
 export function findShortestPath(
   departments: Department[],
@@ -100,7 +56,7 @@ export function findShortestPath(
 
   dist.set(sourceId, 0)
 
-  const heap = new MinHeap()
+  const heap = new MinHeap<HeapNode>((a, b) => a.dist - b.dist)
   heap.push({ id: sourceId, dist: 0 })
 
   while (heap.size > 0) {

@@ -269,7 +269,14 @@ export default function CanvasScreen() {
   const router = useRouter()
   const haptics = useHaptics()
   const user = useAuthStore((s) => s.user)
-  const { configs, activeConfig, loading, loadConfigs, createConfig, setActiveConfig } = useConfigStore()
+  // useConfigStore: always use granular selectors — never destructure the whole store.
+  // See AGENTS.md §6 for rationale.
+  const configs        = useConfigStore((s) => s.configs)
+  const activeConfig   = useConfigStore((s) => s.activeConfig)
+  const loading        = useConfigStore((s) => s.loading)
+  const loadConfigs    = useConfigStore((s) => s.loadConfigs)
+  const createConfig   = useConfigStore((s) => s.createConfig)
+  const setActiveConfig = useConfigStore((s) => s.setActiveConfig)
   const [switcherOpen, setSwitcherOpen] = useState(false)
 
   useEffect(() => {

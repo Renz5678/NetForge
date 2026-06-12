@@ -2,7 +2,7 @@
 // Pure function — no side effects.
 // Generates Cisco IOS CLI configuration text from a NetForge topology.
 
-import type { Department, NetworkConfig, AclRule } from '@/types'
+import type { NetworkNode, RouterNode, SwitchNode, FirewallNode, DepartmentNode, WanNode, NetworkConfig, AclRule } from '@/types'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ function wildcardFromCidr(cidr: string): string {
 
 // ─── Per-device generators ───────────────────────────────────────────────────
 
-function generateRouterConfig(node: Department, allNodes: Department[]): string {
+function generateRouterConfig(node: RouterNode, allNodes: NetworkNode[]): string {
   const lines: string[] = []
   lines.push(banner(node.name))
   lines.push(`hostname ${node.name.replace(/\s+/g, '_')}`)
@@ -93,7 +93,7 @@ function generateRouterConfig(node: Department, allNodes: Department[]): string 
   return lines.join('\n')
 }
 
-function generateSwitchConfig(node: Department, allNodes: Department[]): string {
+function generateSwitchConfig(node: SwitchNode, allNodes: NetworkNode[]): string {
   const lines: string[] = []
   lines.push(banner(node.name))
   lines.push(`hostname ${node.name.replace(/\s+/g, '_')}`)
@@ -144,7 +144,7 @@ function generateSwitchConfig(node: Department, allNodes: Department[]): string 
   return lines.join('\n')
 }
 
-function generateFirewallConfig(node: Department, allNodes: Department[]): string {
+function generateFirewallConfig(node: FirewallNode, allNodes: NetworkNode[]): string {
   const lines: string[] = []
   lines.push(banner(node.name))
   lines.push(`hostname ${node.name.replace(/\s+/g, '_')}`)
@@ -195,7 +195,7 @@ function generateFirewallConfig(node: Department, allNodes: Department[]): strin
   return lines.join('\n')
 }
 
-function generateDepartmentConfig(node: Department, allNodes: Department[]): string {
+function generateDepartmentConfig(node: DepartmentNode, allNodes: NetworkNode[]): string {
   const lines: string[] = []
   lines.push(banner(node.name))
   lines.push(`hostname ${node.name.replace(/\s+/g, '_')}`)
@@ -219,7 +219,7 @@ function generateDepartmentConfig(node: Department, allNodes: Department[]): str
   return lines.join('\n')
 }
 
-function generateWanConfig(node: Department, allNodes: Department[]): string {
+function generateWanConfig(node: WanNode, allNodes: NetworkNode[]): string {
   const lines: string[] = []
   lines.push(banner(node.name))
   lines.push(`hostname ${node.name.replace(/\s+/g, '_')}`)
@@ -246,13 +246,17 @@ function generateWanConfig(node: Department, allNodes: Department[]): string {
 /**
  * Generate a Cisco IOS configuration block for a single device node.
  */
-export function generateCiscoConfig(node: Department, allNodes: Department[]): string {
+export function generateCiscoConfig(node: NetworkNode, allNodes: NetworkNode[]): string {
   switch (node.type) {
     case 'router':   return generateRouterConfig(node, allNodes)
     case 'switch':   return generateSwitchConfig(node, allNodes)
     case 'firewall': return generateFirewallConfig(node, allNodes)
     case 'wan':      return generateWanConfig(node, allNodes)
-    default:         return generateDepartmentConfig(node, allNodes)
+    case 'department': return generateDepartmentConfig(node, allNodes)
+    default: {
+      const _exhaustive: never = node
+      return ''
+    }
   }
 }
 
@@ -301,7 +305,7 @@ function prefixToMask(prefix: number): string {
   ].join('.')
 }
 
-function routerId(node: Department): string {
+function routerId(node: RouterNode): string {
   // Use first port IP or fallback to subnet network address
   const firstPortIp = node.ports?.find((p) => p.ipAddress)?.ipAddress?.split('/')[0]
   if (firstPortIp) return firstPortIp

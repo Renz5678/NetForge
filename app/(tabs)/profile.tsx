@@ -47,7 +47,12 @@ export default function ProfileScreen() {
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
   const signOut = useAuthStore((s) => s.signOut)
-  const { activeConfig, loadConfigs, createConfig, updateConfig } = useConfigStore()
+  // useConfigStore: always use granular selectors — never destructure the whole store.
+  // See AGENTS.md §6 for rationale.
+  const activeConfig = useConfigStore((s) => s.activeConfig)
+  const loadConfigs  = useConfigStore((s) => s.loadConfigs)
+  const createConfig = useConfigStore((s) => s.createConfig)
+  const updateConfig = useConfigStore((s) => s.updateConfig)
 
   const {
     notifications,

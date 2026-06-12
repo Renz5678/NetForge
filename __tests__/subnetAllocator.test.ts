@@ -6,6 +6,7 @@ const makeDept = (id: string, name: string, deviceCount: number): Department => 
   name,
   deviceCount,
   peers: [],
+  type: 'department' as const,
 })
 
 describe('subnetAllocator', () => {

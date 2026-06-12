@@ -8,6 +8,7 @@
 //         The UI replays this array — the algorithm is never re-run per frame.
 
 import type { Department, VisualizationStep, NodeVizState, PathResult } from '@/types'
+import { MinHeap } from '@/lib/dataStructures/MinHeap'
 
 export type AStarVisualizationResult = {
   steps: VisualizationStep[]
@@ -17,51 +18,8 @@ export type AStarVisualizationResult = {
 
 type HeapNode = { id: string; f: number; g: number }
 
-class MinHeap {
-  private heap: HeapNode[] = []
 
-  push(node: HeapNode): void {
-    this.heap.push(node)
-    this._bubbleUp(this.heap.length - 1)
-  }
 
-  pop(): HeapNode | undefined {
-    if (this.heap.length === 0) return undefined
-    const top = this.heap[0]
-    const last = this.heap.pop()!
-    if (this.heap.length > 0) {
-      this.heap[0] = last
-      this._sinkDown(0)
-    }
-    return top
-  }
-
-  get size(): number { return this.heap.length }
-  get contents(): HeapNode[] { return [...this.heap].sort((a, b) => a.f - b.f) }
-
-  private _bubbleUp(i: number): void {
-    while (i > 0) {
-      const parent = Math.floor((i - 1) / 2)
-      if (this.heap[parent].f <= this.heap[i].f) break
-      ;[this.heap[parent], this.heap[i]] = [this.heap[i], this.heap[parent]]
-      i = parent
-    }
-  }
-
-  private _sinkDown(i: number): void {
-    const n = this.heap.length
-    while (true) {
-      let smallest = i
-      const left = 2 * i + 1
-      const right = 2 * i + 2
-      if (left < n && this.heap[left].f < this.heap[smallest].f) smallest = left
-      if (right < n && this.heap[right].f < this.heap[smallest].f) smallest = right
-      if (smallest === i) break
-      ;[this.heap[smallest], this.heap[i]] = [this.heap[i], this.heap[smallest]]
-      i = smallest
-    }
-  }
-}
 
 function euclideanH(
   nodeId: string,
@@ -134,7 +92,7 @@ export function buildAStarSteps(
 
   gScore.set(sourceId, 0)
   const h0 = euclideanH(sourceId, targetId, nodePositions)
-  const openSet = new MinHeap()
+  const openSet = new MinHeap<HeapNode>((a, b) => a.f - b.f)
   openSet.push({ id: sourceId, f: h0, g: 0 })
   inOpen.add(sourceId)
 

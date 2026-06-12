@@ -10,6 +10,7 @@
 //           at the lowest total cost.
 
 import type { Department, PrimsResult, MSTEdge } from '@/types'
+import { MinHeap } from '@/lib/dataStructures/MinHeap'
 
 type HeapEntry = {
   nodeId: string      // node being connected into MST
@@ -17,52 +18,8 @@ type HeapEntry = {
   fromId: string | null // which MST node this edge comes from (null for root)
 }
 
-class MinHeap {
-  private heap: HeapEntry[] = []
 
-  push(entry: HeapEntry): void {
-    this.heap.push(entry)
-    this._bubbleUp(this.heap.length - 1)
-  }
 
-  pop(): HeapEntry | undefined {
-    if (this.heap.length === 0) return undefined
-    const top = this.heap[0]
-    const last = this.heap.pop()!
-    if (this.heap.length > 0) {
-      this.heap[0] = last
-      this._sinkDown(0)
-    }
-    return top
-  }
-
-  get size(): number {
-    return this.heap.length
-  }
-
-  private _bubbleUp(i: number): void {
-    while (i > 0) {
-      const parent = Math.floor((i - 1) / 2)
-      if (this.heap[parent].cost <= this.heap[i].cost) break
-      ;[this.heap[parent], this.heap[i]] = [this.heap[i], this.heap[parent]]
-      i = parent
-    }
-  }
-
-  private _sinkDown(i: number): void {
-    const n = this.heap.length
-    while (true) {
-      let smallest = i
-      const left = 2 * i + 1
-      const right = 2 * i + 2
-      if (left < n && this.heap[left].cost < this.heap[smallest].cost) smallest = left
-      if (right < n && this.heap[right].cost < this.heap[smallest].cost) smallest = right
-      if (smallest === i) break
-      ;[this.heap[smallest], this.heap[i]] = [this.heap[i], this.heap[smallest]]
-      i = smallest
-    }
-  }
-}
 
 // Resolve edge weight for a given (src, target) pair.
 // Checks both directions since the topology model is directed but
@@ -120,7 +77,7 @@ export function findMinimumSpanningTree(
   inMST.add(rootId)
   orderedNodes.push(rootId)
 
-  const heap = new MinHeap()
+  const heap = new MinHeap<HeapEntry>((a, b) => a.cost - b.cost)
 
   for (const neighbor of adj.get(rootId) ?? []) {
     if (idSet.has(neighbor)) {

@@ -140,14 +140,14 @@ type Props = {
 export function ProjectSwitcherSheet({ visible, onClose }: Props) {
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
-  const {
-    configs,
-    activeConfig,
-    setActiveConfig,
-    createConfig,
-    deleteConfig,
-    duplicateConfig,
-  } = useConfigStore()
+  // useConfigStore: always use granular selectors — never destructure the whole store.
+  // See AGENTS.md §6 for rationale.
+  const configs        = useConfigStore((s) => s.configs)
+  const activeConfig   = useConfigStore((s) => s.activeConfig)
+  const setActiveConfig = useConfigStore((s) => s.setActiveConfig)
+  const createConfig   = useConfigStore((s) => s.createConfig)
+  const deleteConfig   = useConfigStore((s) => s.deleteConfig)
+  const duplicateConfig = useConfigStore((s) => s.duplicateConfig)
 
   const [creating, setCreating] = useState(false)
 

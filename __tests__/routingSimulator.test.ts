@@ -21,7 +21,7 @@ import {
   compileRoutingTables,
   simulateRoute,
 } from '../lib/algorithms/routingSimulator'
-import type { Department } from '../types'
+import type { NetworkNode } from '../types'
 import { getDemoEnterpriseConfig } from '../stores/useConfigStore'
 import { detectCycles } from '../lib/algorithms/cycleDetection'
 import { checkSubnetOverlap } from '../lib/algorithms/subnetAllocator'
@@ -44,7 +44,7 @@ describe('routingSimulator tests', () => {
 
   test('Longest Prefix Match & Dynamic OSPF area exchanges', () => {
     // Construct two OSPF routers connected together
-    const routerA: Department = {
+    const routerA: NetworkNode = {
       id: 'rt_a',
       name: 'RouterA',
       deviceCount: 0,
@@ -67,7 +67,7 @@ describe('routingSimulator tests', () => {
       ospf: { enabled: true, areaId: 0 },
     }
 
-    const routerB: Department = {
+    const routerB: NetworkNode = {
       id: 'rt_b',
       name: 'RouterB',
       deviceCount: 0,
@@ -110,16 +110,17 @@ describe('routingSimulator tests', () => {
   })
 
   test('End-to-End Route Tracing with switch and loop detection', () => {
-    const pc1: Department = {
+    const pc1: NetworkNode = {
       id: 'pc_1',
       name: 'ClientDept',
       deviceCount: 10,
       peers: ['sw_1'],
+      type: 'department',
       subnet: '10.0.1.0/24',
       vlanId: 10,
     }
 
-    const sw1: Department = {
+    const sw1: NetworkNode = {
       id: 'sw_1',
       name: 'Switch1',
       deviceCount: 0,
@@ -144,7 +145,7 @@ describe('routingSimulator tests', () => {
       ],
     }
 
-    const rt1: Department = {
+    const rt1: NetworkNode = {
       id: 'rt_1',
       name: 'Router1',
       deviceCount: 0,
@@ -217,5 +218,200 @@ describe('routingSimulator tests', () => {
         expect(trace.success).toBe(true)
       }
     }
+  })
+
+  // ── Task 4 Edge-Case Tests ──────────────────────────────────────────────────
+
+  test('OSPF: routers in the same area but physically disconnected do not exchange routes', () => {
+    // Two OSPF routers share areaId=0 but have NO physical link between them.
+    // The OSPF propagation code requires connectedToNodeId/connectedToPortId to
+    // form an adjacency, so no OSPF routes should appear on either router.
+    const routerA: NetworkNode = {
+      id: 'router_a',
+      name: 'RouterA',
+      deviceCount: 0,
+      peers: [],  // No peers — physically isolated
+      type: 'router',
+      ports: [
+        {
+          id: 'port_a_1',
+          name: 'GigabitEthernet0/0',
+          ipAddress: '10.1.0.1/30',
+          // connectedToNodeId is intentionally absent — no physical link
+        },
+      ],
+      ospf: { enabled: true, areaId: 0 },
+    }
+
+    const routerB: NetworkNode = {
+      id: 'router_b',
+      name: 'RouterB',
+      deviceCount: 0,
+      peers: [],  // No peers — physically isolated
+      type: 'router',
+      ports: [
+        {
+          id: 'port_b_1',
+          name: 'GigabitEthernet0/0',
+          ipAddress: '10.2.0.1/30',
+          // connectedToNodeId is intentionally absent — no physical link
+        },
+      ],
+      ospf: { enabled: true, areaId: 0 },
+    }
+
+    const tables = compileRoutingTables([routerA, routerB])
+
+    const tableA = tables.get('router_a') ?? []
+    const tableB = tables.get('router_b') ?? []
+
+    // Neither router should have any OSPF entry — they share the area ID but
+    // have no physical adjacency through which to form an OSPF neighbour session.
+    const ospfOnA = tableA.find((e) => e.type === 'OSPF')
+    const ospfOnB = tableB.find((e) => e.type === 'OSPF')
+
+    expect(ospfOnA).toBeUndefined()
+    expect(ospfOnB).toBeUndefined()
+
+    // Each should still have its own DIRECT route.
+    const directOnA = tableA.find((e) => e.type === 'DIRECT')
+    const directOnB = tableB.find((e) => e.type === 'DIRECT')
+    expect(directOnA).toBeDefined()
+    expect(directOnB).toBeDefined()
+  })
+
+  test('LPM: uses 0.0.0.0/0 default route when no more-specific match exists', () => {
+    // A router has a specific static route (10.0.0.0/24 → DIRECT) and a
+    // default route (0.0.0.0/0 → 10.0.0.2). A packet destined for 8.8.8.8
+    // matches only the default route (prefixLength=0, lowest specificity).
+    const router: NetworkNode = {
+      id: 'rt_main',
+      name: 'MainRouter',
+      deviceCount: 0,
+      peers: ['sw_edge'],
+      type: 'router',
+      ports: [
+        {
+          id: 'rt_port_1',
+          name: 'GigabitEthernet0/0',
+          ipAddress: '10.0.0.1/24',
+          connectedToNodeId: 'sw_edge',
+          connectedToPortId: 'sw_port_1',
+        },
+      ],
+      staticRoutes: [
+        // More-specific: matches 10.0.0.0/24 traffic directly
+        { destination: '10.0.0.0/24', nextHop: 'DIRECT' },
+        // Default: catches everything else (e.g. public internet)
+        { destination: '0.0.0.0/0', nextHop: '10.0.0.2' },
+      ],
+    }
+
+    const sw: NetworkNode = {
+      id: 'sw_edge',
+      name: 'EdgeSwitch',
+      deviceCount: 0,
+      peers: ['rt_main'],
+      type: 'switch',
+      ports: [
+        {
+          id: 'sw_port_1',
+          name: 'FastEthernet0/1',
+          connectedToNodeId: 'rt_main',
+          connectedToPortId: 'rt_port_1',
+        },
+      ],
+    }
+
+    const tables = compileRoutingTables([router, sw])
+    const routerTable = tables.get('rt_main') ?? []
+
+    // Confirm the default route exists in the compiled table with prefixLength=0
+    const defaultRoute = routerTable.find(
+      (e) => e.destination === '0.0.0.0/0' && e.prefixLength === 0
+    )
+    expect(defaultRoute).toBeDefined()
+    expect(defaultRoute?.nextHop).toBe('10.0.0.2')
+
+    // Simulate a route to 8.8.8.8 — a public IP that matches only 0.0.0.0/0.
+    // The simulator will fail (next-hop 10.0.0.2 is not a node ID), but the
+    // first hop's decisionReason should record 0.0.0.0/0 as the matched prefix.
+    const result = simulateRoute([router, sw], 'rt_main', '8.8.8.8')
+
+    // Should fail — 10.0.0.2 is not reachable as a node in this topology
+    expect(result.success).toBe(false)
+
+    // The first hop decision should record 0.0.0.0/0 as the LPM match
+    const firstHop = result.hops?.[0]
+    expect(firstHop).toBeDefined()
+    expect(firstHop?.decisionReason?.matchedPrefix).toBe('0.0.0.0/0')
+  })
+
+  test('TTL: simulateRoute returns TTL-expired after 20 hops on a linear chain', () => {
+    // Build a chain of 21 routers: r0 → r1 → ... → r20.
+    // Each router has a static route pointing to the next hop's subnet, so the
+    // simulator will traverse hops until the TTL guard (step < 20) fires and
+    // returns an explicit "TTL Expired" failure message.
+    const CHAIN_LENGTH = 21
+    const nodes: NetworkNode[] = []
+
+    for (let i = 0; i < CHAIN_LENGTH; i++) {
+      const isLast = i === CHAIN_LENGTH - 1
+      const ports = []
+
+      if (i > 0) {
+        // Incoming port from the previous router
+        ports.push({
+          id: `r${i}_in`,
+          name: `GigabitEthernet0/0`,
+          ipAddress: `10.${i - 1}.0.2/30`,
+          connectedToNodeId: `r${i - 1}`,
+          connectedToPortId: `r${i - 1}_out`,
+        })
+      }
+
+      if (!isLast) {
+        // Outgoing port to the next router
+        ports.push({
+          id: `r${i}_out`,
+          name: `GigabitEthernet0/1`,
+          ipAddress: `10.${i}.0.1/30`,
+          connectedToNodeId: `r${i + 1}`,
+          connectedToPortId: `r${i + 1}_in`,
+        })
+      }
+
+      const staticRoutes = isLast
+        ? []
+        : [
+            {
+              // Route to the final router's subnet, forcing the packet forward
+              destination: `10.${CHAIN_LENGTH - 1}.0.0/30`,
+              nextHop: `10.${i}.0.2`,
+            },
+          ]
+
+      const peers: string[] = []
+      if (i > 0) peers.push(`r${i - 1}`)
+      if (!isLast) peers.push(`r${i + 1}`)
+
+      nodes.push({
+        id: `r${i}`,
+        name: `Router${i}`,
+        deviceCount: 0,
+        peers,
+        type: 'router',
+        ports,
+        staticRoutes,
+      })
+    }
+
+    // Target IP belongs to the final router's subnet
+    const targetIp = `10.${CHAIN_LENGTH - 1}.0.1`
+    const result = simulateRoute(nodes, 'r0', targetIp)
+
+    // TTL must expire — chain is 21 hops but the limit is 20
+    expect(result.success).toBe(false)
+    expect(result.message).toContain('TTL Expired')
   })
 })

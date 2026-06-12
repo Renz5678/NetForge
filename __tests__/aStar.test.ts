@@ -15,7 +15,7 @@ import type { Department } from '@/types'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeDept(id: string, peers: string[] = []): Department {
-  return { id, name: `Node_${id}`, deviceCount: 1, peers }
+  return { id, name: `Node_${id}`, deviceCount: 1, peers, type: 'department' as const }
 }
 
 /** Build a trivial positions map with all nodes at the origin (h = 0). */

@@ -23,7 +23,7 @@ import { evaluateAcl, findMatchingRule } from '@/lib/algorithms/aclEngine'
 import type { AclPacket } from '@/lib/algorithms/aclEngine'
 import { findMinimumSpanningTree } from '@/lib/algorithms/prims'
 import { ipToUint32, uint32ToIp, cidrToMask } from '@/lib/ipUtils'
-import type { NetworkConfig, Department } from '@/types'
+import type { NetworkConfig, NetworkNode } from '@/types'
 
 // ─── Result Types ─────────────────────────────────────────────────────────────
 
@@ -349,7 +349,7 @@ export function checkCorrectness(config: NetworkConfig): Finding[] {
   const idToName = new Map(departments.map((d) => [d.id, d.name]))
 
   for (const dept of departments) {
-    if (!dept.aclRules || dept.aclRules.length === 0) continue
+    if (!('aclRules' in dept) || !dept.aclRules || dept.aclRules.length === 0) continue
     if (!dept.subnet) continue
 
     const [deptBaseIp] = dept.subnet.split('/')
@@ -358,8 +358,7 @@ export function checkCorrectness(config: NetworkConfig): Finding[] {
       const peer = departments.find((d) => d.id === peerId)
       if (!peer || !peer.subnet) continue
 
-      const [peerBaseIp, peerPrefixStr] = peer.subnet.split('/')
-      const peerPrefix = parseInt(peerPrefixStr, 10)
+      const [peerBaseIp] = peer.subnet.split('/')
 
       // Generate a test packet: dept → peer, TCP port 443
       const testPacket: AclPacket = {
@@ -473,7 +472,6 @@ export function checkOptimization(config: NetworkConfig, resilienceFindings: Fin
     const apDept = departments.find((d) => d.name === apName)
     if (!apDept) continue
 
-    const normalizedKey1 = `${apDept.id}`
     // If this node appears in MST exactly once (single path), flag it
     const mstEdgeCount = mstResult.mstEdges.filter(
       (e) => e.source === apDept.id || e.target === apDept.id
