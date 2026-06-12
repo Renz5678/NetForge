@@ -10,4 +10,8 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },
+  // Network mocks (Supabase, NetInfo) leave in-flight Promises that prevent
+  // Jest workers from exiting gracefully. forceExit terminates cleanly once
+  // all tests have finished without waiting for those dangling handles.
+  forceExit: true,
 }

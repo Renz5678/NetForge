@@ -15,6 +15,7 @@ import { View, Text, StyleSheet, Pressable } from 'react-native'
 import { CaretRight } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
 import type { Finding, FindingSeverity } from '@/lib/validatePass'
+import { severityColor, severityLabel } from '@/lib/validateColors'
 
 type Props = {
   finding: Finding
@@ -22,23 +23,7 @@ type Props = {
   showDivider?: boolean
 }
 
-function severityColor(s: FindingSeverity): string {
-  switch (s) {
-    case 'red':    return Colors.error
-    case 'yellow': return Colors.warning
-    case 'blue':   return Colors.primary
-    default:       return Colors.pale
-  }
-}
 
-function severityLabel(s: FindingSeverity): string {
-  switch (s) {
-    case 'red':    return 'Critical'
-    case 'yellow': return 'Warning'
-    case 'blue':   return 'Info'
-    default:       return ''
-  }
-}
 
 export function FindingRow({ finding, onDrillDown, showDivider = false }: Props) {
   const color = severityColor(finding.severity)

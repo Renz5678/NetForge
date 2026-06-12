@@ -40,9 +40,9 @@ import { ValidationScoreRing } from '@/components/ui/ValidationScoreRing'
 import { ValidatePhaseIndicator } from '@/components/ui/ValidatePhaseIndicator'
 import { FindingRow } from '@/components/ui/FindingRow'
 import { AlgorithmDrillDown } from '@/components/ui/AlgorithmDrillDown'
-import { validateNetwork } from '@/lib/validatePass'
-import { topologyReadiness } from '@/lib/validatePass'
+import { validateNetwork, topologyReadiness } from '@/lib/validatePass'
 import type { ValidatePassResult, Finding, FindingSeverity } from '@/lib/validatePass'
+import { severityColor, severityBgColor, severityLabel } from '@/lib/validateColors'
 import { useHaptics } from '@/hooks/useHaptics'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -65,32 +65,7 @@ const PHASE_LABELS: Record<string, string> = {
 
 const SEVERITY_ORDER: FindingSeverity[] = ['red', 'yellow', 'blue']
 
-function severityColor(s: FindingSeverity): string {
-  switch (s) {
-    case 'red':    return Colors.error
-    case 'yellow': return Colors.warning
-    case 'blue':   return Colors.primary
-    default:       return Colors.pale
-  }
-}
 
-function severityBgColor(s: FindingSeverity): string {
-  switch (s) {
-    case 'red':    return Colors.errorContainer
-    case 'yellow': return Colors.warningContainer
-    case 'blue':   return `${Colors.primary}10`
-    default:       return Colors.surfaceAlt
-  }
-}
-
-function severityLabel(s: FindingSeverity): string {
-  switch (s) {
-    case 'red':    return 'Critical'
-    case 'yellow': return 'Warning'
-    case 'blue':   return 'Info'
-    default:       return ''
-  }
-}
 
 import type { NetworkConfig } from '@/types'
 

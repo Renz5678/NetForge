@@ -13,7 +13,9 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
   default: {
-    addEventListener: jest.fn(),
+    // Return an unsubscribe no-op so the store's addEventListener listener
+    // can be properly torn down — prevents the test worker force-exit.
+    addEventListener: jest.fn(() => () => {}),
     fetch: jest.fn().mockResolvedValue({ isConnected: false, isInternetReachable: false }),
   },
 }))
@@ -27,7 +29,9 @@ jest.mock('../lib/supabase', () => ({
 describe('useConfigStore Offline Sync and Optimistic Updates', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    // Reset Zustand store state before each test
+    // Reset Zustand store state before each test.
+    // isNetInfoSubscribed must also be reset so the subscription guard
+    // doesn't skip re-registration and leave an open handle between tests.
     useConfigStore.setState({
       configs: [],
       activeConfig: null,
@@ -36,7 +40,15 @@ describe('useConfigStore Offline Sync and Optimistic Updates', () => {
       pendingOps: [],
       syncing: false,
       conflictConfig: null,
+      isNetInfoSubscribed: false,
     })
+  })
+
+  afterEach(async () => {
+    // Drain the microtask queue so fire-and-forget AsyncStorage.setItem calls
+    // (called with .catch() inside the store) don't outlive the test and cause
+    // the Jest worker-force-exit warning.
+    await new Promise((resolve) => setImmediate(resolve))
   })
 
   test('createConfig optimistic update adds to local state immediately', async () => {
