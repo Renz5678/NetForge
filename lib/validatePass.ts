@@ -116,7 +116,7 @@ export function topologyReadiness(config: NetworkConfig): TopologyReadiness {
     }
 
     // 4. At least one routing-capable device
-    const ROUTING_TYPES = ['router', 'firewall', 'layer3switch']
+    const ROUTING_TYPES = ['router', 'firewall', 'wan']
     const hasRouter = depts.some((d) => d.type && ROUTING_TYPES.includes(d.type))
     if (!hasRouter) {
       warnings.push(
