@@ -114,7 +114,7 @@ export default function TabsLayout() {
               return (
                 <Pressable
                   {...rest}
-                  style={[style, { justifyContent: 'center', alignItems: 'center', paddingTop: 0 }]}
+                  style={[style, { justifyContent: 'flex-start', alignItems: 'center', marginTop: -16 }]}
                   onPress={handleOpenCreateModal}
                 >
                   <View style={styles.fabWrap}>
@@ -271,12 +271,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#F59E0B',
   },
   fabWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: Colors.white,
   },
 })
 
