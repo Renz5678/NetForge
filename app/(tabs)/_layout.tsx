@@ -119,7 +119,7 @@ export default function TabsLayout() {
               return (
                 <Pressable
                   {...rest}
-                  style={[rest.style, { marginTop: -15 }]}
+                  style={rest.style}
                   onPress={handleOpenCreateModal}
                 />
               )
