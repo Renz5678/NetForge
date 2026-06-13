@@ -109,19 +109,18 @@ export default function TabsLayout() {
           name="create_action"
           options={{
             title: '',
-            tabBarIcon: () => (
-              <View style={styles.fabWrap}>
-                <Plus size={24} color={Colors.white} weight="bold" />
-              </View>
-            ),
             tabBarButton: (props) => {
-              const { ref, ...rest } = props as any
+              const { ref, children, style, ...rest } = props as any
               return (
                 <Pressable
                   {...rest}
-                  style={rest.style}
+                  style={[style, { justifyContent: 'center', alignItems: 'center', paddingTop: 0 }]}
                   onPress={handleOpenCreateModal}
-                />
+                >
+                  <View style={styles.fabWrap}>
+                    <Plus size={24} color={Colors.white} weight="bold" />
+                  </View>
+                </Pressable>
               )
             },
           }}
