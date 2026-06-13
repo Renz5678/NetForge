@@ -236,8 +236,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    paddingTop: 4,
-    height: 62,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+    height: Platform.OS === 'ios' ? 88 : 72,
   },
   label: {
     fontFamily: 'Inter_500Medium',
