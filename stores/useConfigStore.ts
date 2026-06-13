@@ -189,16 +189,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         await AsyncStorage.setItem(`${LOCAL_CONFIGS_KEY}_${userId}`, JSON.stringify(configsList))
       }
 
-      // Filter out older stale demo configs to prevent duplicate listing and stale caches
-      configsList = configsList.filter((c) => !c.id.startsWith('demo_enterprise_config') || c.id === 'demo_enterprise_config_v5')
-
-      // Check and inject demo config
-      const hasDemo = configsList.some((c) => c.id === 'demo_enterprise_config_v5')
-      if (!hasDemo) {
-        const demoConfig = getDemoEnterpriseConfig(userId)
-        configsList = [demoConfig, ...configsList]
-        await AsyncStorage.setItem(`${LOCAL_CONFIGS_KEY}_${userId}`, JSON.stringify(configsList))
-      }
+      // Always replace the demo config so topology changes in demoData.ts are reflected.
+      configsList = configsList.filter((c) => !c.id.startsWith('demo_enterprise_config'))
+      const demoConfig = getDemoEnterpriseConfig(userId)
+      configsList = [demoConfig, ...configsList]
+      await AsyncStorage.setItem(`${LOCAL_CONFIGS_KEY}_${userId}`, JSON.stringify(configsList))
  
       set({ configs: configsList, loading: false })
 
@@ -213,15 +208,11 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         const localData = await AsyncStorage.getItem(`${LOCAL_CONFIGS_KEY}_${userId}`)
         let configsList: NetworkConfig[] = localData ? JSON.parse(localData) : []
         
-        // Filter out older stale demo configs to prevent duplicate listing and stale caches
-        configsList = configsList.filter((c) => !c.id.startsWith('demo_enterprise_config') || c.id === 'demo_enterprise_config_v5')
-
-        const hasDemo = configsList.some((c: NetworkConfig) => c.id === 'demo_enterprise_config_v5')
-        if (!hasDemo) {
-          const demoConfig = getDemoEnterpriseConfig(userId)
-          configsList = [demoConfig, ...configsList]
-          await AsyncStorage.setItem(`${LOCAL_CONFIGS_KEY}_${userId}`, JSON.stringify(configsList))
-        }
+        // Always replace the demo config so topology changes in demoData.ts are reflected.
+        configsList = configsList.filter((c) => !c.id.startsWith('demo_enterprise_config'))
+        const demoConfig = getDemoEnterpriseConfig(userId)
+        configsList = [demoConfig, ...configsList]
+        await AsyncStorage.setItem(`${LOCAL_CONFIGS_KEY}_${userId}`, JSON.stringify(configsList))
 
         set({ configs: configsList, loading: false })
       } catch {

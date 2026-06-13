@@ -1,26 +1,14 @@
-﻿import { allocateSubnets } from '@/lib/algorithms/subnetAllocator'
+import { allocateSubnets } from '@/lib/algorithms/subnetAllocator'
 import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
 import type { NetworkNode, RouterNode, FirewallNode, WanNode, NetworkConfig } from '@/types'
 
 /**
  * Enterprise Campus Network (Demo) — v6
  *
- * Topology: 22 nodes across 3 tiers
- *   Tier 0: Edge-Firewall   (border device, DFS root — never an AP)
- *   Tier 1: Core-Router     (aggregation — 1 AP, -10 pts → score 90/100)
- *   Tier 2: 5 distribution switches + 2 server switches (all leaf-only → not APs)
- *   Tier 3: 14 leaf departments (leaf nodes — never APs)
- *
- * Score analysis (Deploy Ready — 90/100):
- *   Connectivity : PASS — all 22 nodes reachable from FW via BFS
- *   Addressing   : PASS — unique subnets, address space <90% utilized
- *   Resilience   : 1 yellow  — Core-Router is the only articulation point
- *   Correctness  : PASS — no cycles; ACL deny rules are TCP-specific, not IP-generic
- *   Optimization : blue info — redundant links are flagged informational only
- *
- * No WAN node: keeps Core-Router as the sole AP (not Firewall).
- * All ACL deny rules use protocol:'tcp' with specific ports so the validator's
- * generic 'ip' test packet falls through to the permit-all rule.
+ * 22-node 3-tier campus topology:
+ *   Tier 0: Edge-Firewall (border)
+ *   Tier 1: Core-Router (OSPF area 0)
+ *   Tier 2: 5 distribution switches + 14 leaf departments
  */
 export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
   const depts: NetworkNode[] = [
@@ -306,7 +294,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
   }
 
   return {
-    id: 'demo_enterprise_config_v5',
+    id: 'demo_enterprise_config_v6',
     userId,
     name: '🏢 Enterprise Campus Network (Demo)',
     departments: allocated,
