@@ -1,7 +1,7 @@
-// topologicalSortVisualizer.ts
+﻿// topologicalSortVisualizer.ts
 // Pure function — no side effects, no imports from stores or UI.
-// Method: Runs Kahn's algorithm (BFS-based) and records every enqueue/dequeue,
-//         in-degree decrement, and result expansion into VisualizationStep[].
+// Method: Runs BFS (matching topologicalSort.ts) and records every enqueue/dequeue
+//         and result expansion into VisualizationStep[].
 //         The UI replays this array — the algorithm is never re-run per frame.
 
 import type { NetworkNode, VisualizationStep, NodeVizState } from '@/types'
@@ -26,22 +26,30 @@ export function buildTopologicalSortSteps(
     return `"${names.get(id) ?? id}"`
   }
 
-  // Build in-degree map and adjacency list
-  const inDegree = new Map<string, number>()
+  // Build undirected adjacency list from peer relationships
   const adj = new Map<string, string[]>()
   const idSet = new Set(departments.map((d) => d.id))
 
   for (const dept of departments) {
-    if (!inDegree.has(dept.id)) inDegree.set(dept.id, 0)
     if (!adj.has(dept.id)) adj.set(dept.id, [])
   }
 
   for (const dept of departments) {
     for (const peerId of dept.peers) {
-      if (!idSet.has(peerId)) continue
+      if (!idSet.has(peerId)) continue // skip dangling refs
       adj.get(dept.id)!.push(peerId)
-      inDegree.set(peerId, (inDegree.get(peerId) ?? 0) + 1)
+      if (!adj.get(peerId)!.includes(dept.id)) {
+        adj.get(peerId)!.push(dept.id)
+      }
     }
+  }
+
+  // Prefer a routing-capable device as root for a meaningful deployment order
+  const PREFERRED_TYPES = ['wan', 'firewall', 'router', 'switch']
+  let rootId = departments[0].id
+  for (const type of PREFERRED_TYPES) {
+    const found = departments.find((d) => d.type === type)
+    if (found) { rootId = found.id; break }
   }
 
   // Track which nodes are in each state for visualization
@@ -59,88 +67,78 @@ export function buildTopologicalSortSteps(
     return states
   }
 
-  // Seed queue: all nodes with zero in-degree
   const queue: string[] = []
-  for (const [id, deg] of inDegree.entries()) {
-    if (deg === 0) {
-      queue.push(id)
-      inQueue.add(id)
-    }
-  }
 
-  // Step 0: initialization
-  steps.push({
-    stepIndex: 0,
-    explanation: `Initializing Kahn's algorithm. Computed in-degrees for all nodes. ${queue.length} node${queue.length !== 1 ? 's' : ''} start with in-degree 0: ${queue.map(lbl).join(', ')}. These go into the queue first — they have no dependencies.`,
-    hint: `We count incoming links (in-degree) for each node. Nodes with in-degree 0 have no dependencies and can be processed immediately.`,
-    nodeStates: snapshotStates(),
-    inDegreeMap: Object.fromEntries(inDegree),
-    topoQueue: [...queue],
-    sortedResult: [],
-  })
-
-  while (queue.length > 0) {
-    const nodeId = queue.shift()!
-    inQueue.delete(nodeId)
-    settled.add(nodeId)
-    sortedResult.push(nodeId)
-
-    const neighbors = adj.get(nodeId) ?? []
+  function runBfsFrom(startNode: string) {
+    queue.push(startNode)
+    inQueue.add(startNode)
 
     steps.push({
       stepIndex: steps.length,
-      explanation: `Dequeuing ${lbl(nodeId)} — it has in-degree 0, so all its dependencies are resolved. Adding it to position ${sortedResult.length} in the sorted order. Now decrementing in-degree of its ${neighbors.length} downstream neighbor${neighbors.length !== 1 ? 's' : ''}.`,
-      hint: `Pop a node from the queue, append it to the sorted list, and check all its outgoing connections to update their remaining dependencies.`,
+      explanation: `Starting BFS traversal from root node ${lbl(startNode)}. Enqueuing it to determine the deployment sequence.`,
+      hint: `Since this network uses bidirectional peer connections, we use a Breadth-First Search (BFS) to establish a deterministic startup order radiating outwards from core infrastructure.`,
       nodeStates: snapshotStates(),
-      inDegreeMap: Object.fromEntries(inDegree),
       topoQueue: [...queue],
       sortedResult: [...sortedResult],
-      currentNode: nodeId,
     })
 
-    for (const neighbor of neighbors) {
-      const newDeg = (inDegree.get(neighbor) ?? 1) - 1
-      inDegree.set(neighbor, newDeg)
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!
+      inQueue.delete(nodeId)
+      settled.add(nodeId)
+      sortedResult.push(nodeId)
 
-      if (newDeg === 0) {
-        queue.push(neighbor)
-        inQueue.add(neighbor)
+      const neighbors = adj.get(nodeId) ?? []
 
+      steps.push({
+        stepIndex: steps.length,
+        explanation: `Dequeuing ${lbl(nodeId)} and adding it to the sorted deployment order at position ${sortedResult.length}.`,
+        hint: `Pop a node from the queue and append it to the sorted list. This node is now fully scheduled for deployment.`,
+        nodeStates: snapshotStates(),
+        topoQueue: [...queue],
+        sortedResult: [...sortedResult],
+        currentNode: nodeId,
+      })
+
+      const newlyDiscovered: string[] = []
+      for (const neighbor of neighbors) {
+        if (!settled.has(neighbor) && !inQueue.has(neighbor)) {
+          inQueue.add(neighbor)
+          queue.push(neighbor)
+          newlyDiscovered.push(neighbor)
+        }
+      }
+
+      if (newlyDiscovered.length > 0) {
         steps.push({
           stepIndex: steps.length,
-          explanation: `${lbl(neighbor)}'s in-degree dropped to 0 — all its prerequisites are now sorted. Enqueuing it.`,
-          hint: `Since this node's last dependency is resolved, its in-degree becomes 0 and it is ready to be queued for sorting.`,
+          explanation: `Discovered ${newlyDiscovered.length} unvisited neighbor${newlyDiscovered.length !== 1 ? 's' : ''} of ${lbl(nodeId)}: ${newlyDiscovered.map(lbl).join(', ')}. Added to queue.`,
+          hint: `Explore all adjacent nodes that haven't been visited yet, adding them to the queue to be scheduled later.`,
           nodeStates: snapshotStates(),
-          inDegreeMap: Object.fromEntries(inDegree),
           topoQueue: [...queue],
           sortedResult: [...sortedResult],
-          currentNode: neighbor,
-        })
-      } else {
-        steps.push({
-          stepIndex: steps.length,
-          explanation: `Decrementing ${lbl(neighbor)}'s in-degree: ${newDeg + 1} → ${newDeg}. Still waiting on ${newDeg} more predecessor${newDeg !== 1 ? 's' : ''}.`,
-          hint: `We remove the connection from the resolved node by decrementing the target's in-degree count by 1.`,
-          nodeStates: snapshotStates(),
-          inDegreeMap: Object.fromEntries(inDegree),
-          topoQueue: [...queue],
-          sortedResult: [...sortedResult],
-          currentNode: neighbor,
+          currentNode: nodeId,
         })
       }
+    }
+  }
+
+  // BFS from primary root
+  runBfsFrom(rootId)
+
+  // Handle disconnected components
+  for (const dept of departments) {
+    if (!settled.has(dept.id) && !inQueue.has(dept.id)) {
+      runBfsFrom(dept.id)
     }
   }
 
   // Final step
   steps.push({
     stepIndex: steps.length,
-    explanation:
-      sortedResult.length === departments.length
-        ? `Topological sort complete! Sorted order: ${sortedResult.map(lbl).join(' → ')}. This order guarantees all dependencies are configured before the nodes that depend on them.`
-        : `Sort terminated early — only ${sortedResult.length} of ${departments.length} nodes processed. A cycle likely exists in the remaining nodes.`,
-    hint: `Kahn's algorithm finishes successfully when all nodes are sorted. If any remain unsorted, a circular dependency exists.`,
+    explanation: `Startup Order computation complete! Sorted order: ${sortedResult.map(lbl).join(' → ')}. This sequence ensures core infrastructure comes online before dependent leaf nodes.`,
+    hint: `The BFS traversal successfully mapped every node. The resulting list is the recommended order to bring network devices online.`,
     nodeStates: snapshotStates(),
-    inDegreeMap: Object.fromEntries(inDegree),
     topoQueue: [],
     sortedResult: [...sortedResult],
   })
