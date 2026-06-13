@@ -18,6 +18,7 @@
 import { validateConnectivity } from '@/lib/algorithms/bfsValidator'
 import { checkSubnetOverlap } from '@/lib/algorithms/subnetAllocator'
 import { findArticulationPoints } from '@/lib/algorithms/articulationPoints'
+import { topologicalSort } from '@/lib/algorithms/topologicalSort'
 import { detectCycles } from '@/lib/algorithms/cycleDetection'
 import { evaluateAcl, findMatchingRule } from '@/lib/algorithms/aclEngine'
 import type { AclPacket } from '@/lib/algorithms/aclEngine'
@@ -135,7 +136,20 @@ export function checkConnectivity(config: NetworkConfig): Finding[] {
   if (departments.length <= 1) return []
 
   const { allReachable, isolated } = validateConnectivity(departments)
-  if (allReachable) return []
+  if (allReachable) {
+    return [{
+      id: 'connectivity_ok',
+      phase: 'connectivity',
+      severity: 'blue',
+      title: 'Cabling & Reachability OK',
+      detail: `All ${departments.length} devices are physically reachable. Cabling is validated.`,
+      fixSteps: ['No action needed.'],
+      affected: [],
+      algorithm: 'bfsValidator',
+      stepIndex: 0,
+      vizInput: { departments },
+    }]
+  }
 
   return [
     {
@@ -247,7 +261,7 @@ export function checkAddressing(config: NetworkConfig): Finding[] {
           findings.push({
             id: 'addr_near_capacity',
             phase: 'addressing',
-            severity: 'yellow',
+            severity: 'blue',
             title: 'Address space is nearly full',
             detail: `Allocated subnets consume over 90% of the parent address block. Adding new devices may fail.`,
             fixSteps: [
@@ -278,11 +292,26 @@ export function checkResilience(config: NetworkConfig): Finding[] {
 
   const findings: Finding[] = []
   const result = findArticulationPoints(departments)
-
-  if (result.articulationPoints.length === 0) return findings
-
   const idToName = new Map(departments.map((d) => [d.id, d.name]))
   const idToDept = new Map(departments.map((d) => [d.id, d]))
+
+  // Emitting Deployment Order
+  const topoOrder = topologicalSort(departments)
+  if (topoOrder.length > 0) {
+    const topoNames = topoOrder.map(id => idToName.get(id) ?? id)
+    findings.push({
+      id: 'resilience_deployment_order',
+      phase: 'resilience',
+      severity: 'blue',
+      title: 'Deployment Order Computed',
+      detail: `Recommended sequence: ${topoNames.slice(0, 4).join(' → ')}${topoNames.length > 4 ? ' ...' : ''}`,
+      fixSteps: ['Follow this sequence when provisioning physical hardware to avoid dependency issues.'],
+      affected: [],
+      algorithm: 'bfsValidator',
+      stepIndex: 0,
+      vizInput: { departments },
+    })
+  }
 
   for (const apId of result.articulationPoints) {
     const apName = idToName.get(apId) ?? apId
@@ -324,7 +353,7 @@ export function checkResilience(config: NetworkConfig): Finding[] {
     findings.push({
       id: `resilience_ap_${apId}`,
       phase: 'resilience',
-      severity: 'yellow',
+      severity: 'blue',
       title: `${apName} is a single point of failure`,
       detail: `Removing it would isolate ${isolatedHostCount} hosts across ${isolatedNodes.length} department${isolatedNodes.length !== 1 ? 's' : ''}.`,
       fixSteps: [
@@ -367,6 +396,19 @@ export function checkCorrectness(config: NetworkConfig): Finding[] {
       algorithm: 'cycleDetection',
       stepIndex: 0,
       vizInput: { departments, cycle: cycleResult.cycle },
+    })
+  } else {
+    findings.push({
+      id: 'correctness_no_loop',
+      phase: 'correctness',
+      severity: 'blue',
+      title: 'Routing Loops: None detected',
+      detail: 'The graph is acyclic. L2/L3 topology has no physical or logical loops.',
+      fixSteps: ['No action needed.'],
+      affected: [],
+      algorithm: 'cycleDetection',
+      stepIndex: 0,
+      vizInput: { departments, cycle: [] },
     })
   }
 
