@@ -113,7 +113,7 @@ describe('useConfigStore Offline Sync and Optimistic Updates', () => {
     const configs = useConfigStore.getState().configs
     // Should have Saved Config plus the demo campus network config (since it injects the demo config automatically if missing)
     expect(configs.some(c => c.name === 'Saved Config')).toBe(true)
-    expect(configs.some(c => c.id === 'demo_enterprise_config_v7')).toBe(true)
+    expect(configs.some(c => c.id === 'demo_enterprise_config_v8')).toBe(true)
     expect(useConfigStore.getState().loading).toBe(false)
   })
 })

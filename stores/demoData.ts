@@ -1,9 +1,9 @@
-﻿import { allocateSubnets } from '@/lib/algorithms/subnetAllocator'
+import { allocateSubnets } from '@/lib/algorithms/subnetAllocator'
 import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
 import type { NetworkNode, RouterNode, FirewallNode, NetworkConfig } from '@/types'
 
 /**
- * Enterprise Campus Network (Demo) — v7
+ * Enterprise Campus Network (Demo) — v8
  *
  * 22-node hierarchical campus topology:
  *   Tier 0: Edge-Firewall
@@ -52,7 +52,11 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       peers: ['de_cr', 'de_eng', 'de_ops', 'de_rd', 'de_qa'],
       type: 'switch',
       ports: [
-        { id: 'de_alpha_p0', name: 'GigabitEthernet0/1', connectedToNodeId: 'de_cr', connectedToPortId: 'de_cr_p1', vlanMode: 'trunk', vlanTrunkAllowed: [110, 120, 130, 140] },
+        { id: 'de_alpha_p0', name: 'GigabitEthernet0/1', connectedToNodeId: 'de_cr', connectedToPortId: 'de_cr_p1', vlanMode: 'trunk', vlanTrunkAllowed: [10, 20, 30, 40] },
+        { id: 'de_alpha_p1', name: 'FastEthernet0/1', connectedToNodeId: 'de_eng', connectedToPortId: 'de_eng_p1', vlanMode: 'access', vlanAccessId: 10 },
+        { id: 'de_alpha_p2', name: 'FastEthernet0/2', connectedToNodeId: 'de_ops', connectedToPortId: 'de_ops_p1', vlanMode: 'access', vlanAccessId: 20 },
+        { id: 'de_alpha_p3', name: 'FastEthernet0/3', connectedToNodeId: 'de_rd', connectedToPortId: 'de_rd_p1', vlanMode: 'access', vlanAccessId: 30 },
+        { id: 'de_alpha_p4', name: 'FastEthernet0/4', connectedToNodeId: 'de_qa', connectedToPortId: 'de_qa_p1', vlanMode: 'access', vlanAccessId: 40 },
       ],
     },
     {
@@ -62,7 +66,11 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       peers: ['de_cr', 'de_fin', 'de_hr', 'de_mkt', 'de_sales'],
       type: 'switch',
       ports: [
-        { id: 'de_beta_p0', name: 'GigabitEthernet0/1', connectedToNodeId: 'de_cr', connectedToPortId: 'de_cr_p2', vlanMode: 'trunk', vlanTrunkAllowed: [150, 160, 170, 180] },
+        { id: 'de_beta_p0', name: 'GigabitEthernet0/1', connectedToNodeId: 'de_cr', connectedToPortId: 'de_cr_p2', vlanMode: 'trunk', vlanTrunkAllowed: [50, 60, 70, 80] },
+        { id: 'de_beta_p1', name: 'FastEthernet0/1', connectedToNodeId: 'de_fin', connectedToPortId: 'de_fin_p1', vlanMode: 'access', vlanAccessId: 50 },
+        { id: 'de_beta_p2', name: 'FastEthernet0/2', connectedToNodeId: 'de_hr', connectedToPortId: 'de_hr_p1', vlanMode: 'access', vlanAccessId: 60 },
+        { id: 'de_beta_p3', name: 'FastEthernet0/3', connectedToNodeId: 'de_mkt', connectedToPortId: 'de_mkt_p1', vlanMode: 'access', vlanAccessId: 70 },
+        { id: 'de_beta_p4', name: 'FastEthernet0/4', connectedToNodeId: 'de_sales', connectedToPortId: 'de_sales_p1', vlanMode: 'access', vlanAccessId: 80 },
       ],
     },
     {
@@ -72,7 +80,11 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       peers: ['de_cr', 'de_exec', 'de_noc', 'de_mgmt', 'de_legal'],
       type: 'switch',
       ports: [
-        { id: 'de_gamma_p0', name: 'GigabitEthernet0/1', connectedToNodeId: 'de_cr', connectedToPortId: 'de_cr_p3', vlanMode: 'trunk', vlanTrunkAllowed: [190, 200, 210, 220] },
+        { id: 'de_gamma_p0', name: 'GigabitEthernet0/1', connectedToNodeId: 'de_cr', connectedToPortId: 'de_cr_p3', vlanMode: 'trunk', vlanTrunkAllowed: [90, 100, 110, 120] },
+        { id: 'de_gamma_p1', name: 'FastEthernet0/1', connectedToNodeId: 'de_exec', connectedToPortId: 'de_exec_p1', vlanMode: 'access', vlanAccessId: 90 },
+        { id: 'de_gamma_p2', name: 'FastEthernet0/2', connectedToNodeId: 'de_noc', connectedToPortId: 'de_noc_p1', vlanMode: 'access', vlanAccessId: 100 },
+        { id: 'de_gamma_p3', name: 'FastEthernet0/3', connectedToNodeId: 'de_mgmt', connectedToPortId: 'de_mgmt_p1', vlanMode: 'access', vlanAccessId: 110 },
+        { id: 'de_gamma_p4', name: 'FastEthernet0/4', connectedToNodeId: 'de_legal', connectedToPortId: 'de_legal_p1', vlanMode: 'access', vlanAccessId: 120 },
       ],
     },
     {
@@ -82,7 +94,11 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
       peers: ['de_cr', 'de_app', 'de_db', 'de_backup', 'de_dmz'],
       type: 'switch',
       ports: [
-        { id: 'de_delta_p0', name: 'GigabitEthernet0/1', connectedToNodeId: 'de_cr', connectedToPortId: 'de_cr_p4', vlanMode: 'trunk', vlanTrunkAllowed: [230, 240, 250, 260] },
+        { id: 'de_delta_p0', name: 'GigabitEthernet0/1', connectedToNodeId: 'de_cr', connectedToPortId: 'de_cr_p4', vlanMode: 'trunk', vlanTrunkAllowed: [130, 140, 150, 160] },
+        { id: 'de_delta_p1', name: 'FastEthernet0/1', connectedToNodeId: 'de_app', connectedToPortId: 'de_app_p1', vlanMode: 'access', vlanAccessId: 130 },
+        { id: 'de_delta_p2', name: 'FastEthernet0/2', connectedToNodeId: 'de_db', connectedToPortId: 'de_db_p1', vlanMode: 'access', vlanAccessId: 140 },
+        { id: 'de_delta_p3', name: 'FastEthernet0/3', connectedToNodeId: 'de_backup', connectedToPortId: 'de_backup_p1', vlanMode: 'access', vlanAccessId: 150 },
+        { id: 'de_delta_p4', name: 'FastEthernet0/4', connectedToNodeId: 'de_dmz', connectedToPortId: 'de_dmz_p1', vlanMode: 'access', vlanAccessId: 160 },
       ],
     },
 
@@ -140,7 +156,7 @@ export function getDemoEnterpriseConfig(userId: string): NetworkConfig {
   }
 
   return {
-    id: 'demo_enterprise_config_v7',
+    id: 'demo_enterprise_config_v8',
     userId,
     name: '🏢 Enterprise Campus Network (Demo)',
     departments: allocated,
