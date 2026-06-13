@@ -117,7 +117,7 @@ function ArtifactRow({
 
 /** Returns true if the config is a built-in demo / sample template. */
 function isSampleConfig(id: string): boolean {
-  return id.startsWith('demo_enterprise_config') || id.startsWith('local_tpl_')
+  return id.startsWith('local_tpl_')
 }
 
 export default function ExportScreen() {
