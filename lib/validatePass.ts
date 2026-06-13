@@ -142,8 +142,12 @@ export function checkConnectivity(config: NetworkConfig): Finding[] {
       phase: 'connectivity',
       severity: 'blue',
       title: 'Cabling & Reachability OK',
-      detail: `All ${departments.length} devices are physically reachable. Cabling is validated.`,
-      fixSteps: ['No action needed.'],
+      detail: `The Breadth-First Search (BFS) algorithm successfully traversed the network starting from an arbitrary root node, confirming that all ${departments.length} devices are part of a single contiguous graph. No isolated segments exist.`,
+      fixSteps: [
+        'The BFS queue explored all neighbor connections layer by layer.',
+        'Because the number of visited nodes equals the total number of devices, the network topology is fully connected.',
+        'This ensures that physical cabling and data link layer paths are theoretically viable between any two points.'
+      ],
       affected: [],
       algorithm: 'bfsValidator',
       stepIndex: 0,
@@ -304,8 +308,12 @@ export function checkResilience(config: NetworkConfig): Finding[] {
       phase: 'resilience',
       severity: 'blue',
       title: 'Deployment Order Computed',
-      detail: `Recommended sequence: ${topoNames.slice(0, 4).join(' → ')}${topoNames.length > 4 ? ' ...' : ''}`,
-      fixSteps: ['Follow this sequence when provisioning physical hardware to avoid dependency issues.'],
+      detail: `A Topological Sort via Breadth-First Search determined the optimal provisioning sequence: ${topoNames.slice(0, 4).join(' → ')}${topoNames.length > 4 ? ' ...' : ''}. Core infrastructure is prioritized before edge nodes.`,
+      fixSteps: [
+        'The algorithm built an undirected adjacency list from all peer relationships.',
+        'It identified a routing-capable device (like a Firewall or Core Router) to act as the root node.',
+        'By traversing outwards radially, it guarantees that upstream dependencies are brought online before downstream leaf nodes.'
+      ],
       affected: [],
       algorithm: 'bfsValidator',
       stepIndex: 0,
@@ -403,8 +411,12 @@ export function checkCorrectness(config: NetworkConfig): Finding[] {
       phase: 'correctness',
       severity: 'blue',
       title: 'Routing Loops: None detected',
-      detail: 'The graph is acyclic. L2/L3 topology has no physical or logical loops.',
-      fixSteps: ['No action needed.'],
+      detail: `A Depth-First Search (DFS) traversal confirmed the graph is acyclic. The topology contains no physical loops that could cause broadcast storms.`,
+      fixSteps: [
+        'The DFS algorithm pushed each visited node onto a recursion stack and marked it as visited.',
+        'As it explored outgoing links, it verified that no connection pointed back to a node currently active on the recursion stack (a "back-edge").',
+        'Since no back-edges were found, complex routing metrics or STP blocking are not strictly required to prevent infinite loops.'
+      ],
       affected: [],
       algorithm: 'cycleDetection',
       stepIndex: 0,
