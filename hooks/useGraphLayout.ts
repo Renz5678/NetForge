@@ -84,8 +84,8 @@ function positionWideTier(
 ): { id: string; x: number; y: number }[] {
   const result: { id: string; x: number; y: number }[] = []
 
-  // Group by physical port parent (connectedToNodeId of first port)
-  const groups = new Map<string, string[]>()  // parentId → [childIds]
+  // Group by physical port parent
+  const groups = new Map<string, string[]>()
   const noParent: string[] = []
 
   for (const id of ids) {
@@ -99,38 +99,64 @@ function positionWideTier(
     }
   }
 
-  // If grouping didn't help (all unparented), fall back to plain wrapping
-  if (groups.size === 0) {
-    const chunks: string[][] = []
-    for (let i = 0; i < ids.length; i += MAX_PER_ROW) {
-      chunks.push(ids.slice(i, i + MAX_PER_ROW))
-    }
-    chunks.forEach((chunk, ri) => {
+  // Sort groups by parent X position
+  const sortedParents = [...groups.keys()].sort((a, b) => {
+    return (positioned.get(a)?.x ?? 0) - (positioned.get(b)?.x ?? 0)
+  })
+
+  // If there's only one parent (or no parents), just use rowPositions but chunked
+  if (sortedParents.length <= 1) {
+    const all = sortedParents.length === 1 ? groups.get(sortedParents[0])! : noParent
+    if (noParent.length > 0 && sortedParents.length === 1) all.push(...noParent)
+    
+    for (let i = 0; i < all.length; i += MAX_PER_ROW) {
+      const chunk = all.slice(i, i + MAX_PER_ROW)
+      const ri = Math.floor(i / MAX_PER_ROW)
       rowPositions(chunk, width, baseY + ri * SUB_ROW_GAP).forEach((p) => result.push(p))
-    })
+    }
     return result
   }
 
-  // Sort groups by parent x position (left to right)
-  const sortedGroups = [...groups.entries()].sort((a, b) => {
-    const ax = positioned.get(a[0])?.x ?? 0
-    const bx = positioned.get(b[0])?.x ?? 0
-    return ax - bx
-  })
+  // Multiple parents: we want to keep children directly under their parent.
+  // We'll give each parent a column width proportional to its child count.
+  const totalChildren = ids.length - noParent.length
+  let currentX = 0
 
-  // Collect all children in left-to-right parent order
-  const allSorted = sortedGroups.flatMap(([, children]) => children)
-  // Append ungrouped at the end
-  allSorted.push(...noParent)
+  for (const parentId of sortedParents) {
+    const children = groups.get(parentId)!
+    const sectionWidth = (children.length / totalChildren) * width
+    const sectionStartX = currentX
+    currentX += sectionWidth
 
-  // Now wrap into rows of MAX_PER_ROW, centered overall
-  const chunks: string[][] = []
-  for (let i = 0; i < allSorted.length; i += MAX_PER_ROW) {
-    chunks.push(allSorted.slice(i, i + MAX_PER_ROW))
+    // Place children within this section, wrapping if needed
+    // But limit to what fits. Actually, if we just use rowPositions but with a specific center.
+    // Instead of rowPositions (which uses full width), we write a mini-layout:
+    const center = sectionStartX + sectionWidth / 2
+    
+    // Chunk children into sub-rows
+    for (let i = 0; i < children.length; i += MAX_PER_ROW) {
+      const chunk = children.slice(i, i + MAX_PER_ROW)
+      const ri = Math.floor(i / MAX_PER_ROW)
+      const chunkY = baseY + ri * SUB_ROW_GAP
+      const spacing = 100 // fixed spacing between nodes in a tight group
+      const startX = center - ((chunk.length - 1) * spacing) / 2
+      
+      chunk.forEach((childId, idx) => {
+        result.push({ id: childId, x: startX + idx * spacing, y: chunkY })
+      })
+    }
   }
-  chunks.forEach((chunk, ri) => {
-    rowPositions(chunk, width, baseY + ri * SUB_ROW_GAP).forEach((p) => result.push(p))
-  })
+
+  // Place noParent items at the bottom of everything
+  if (noParent.length > 0) {
+    const maxRi = Math.max(0, ...sortedParents.map(p => Math.floor((groups.get(p)!.length - 1) / MAX_PER_ROW)))
+    const noParentY = baseY + (maxRi + 1) * SUB_ROW_GAP
+    for (let i = 0; i < noParent.length; i += MAX_PER_ROW) {
+      const chunk = noParent.slice(i, i + MAX_PER_ROW)
+      const ri = Math.floor(i / MAX_PER_ROW)
+      rowPositions(chunk, width, noParentY + ri * SUB_ROW_GAP).forEach((p) => result.push(p))
+    }
+  }
 
   return result
 }

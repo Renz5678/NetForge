@@ -212,10 +212,10 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
       haptics.success()
     }
 
-    // Auto-show insight sheet 600ms after completion
+    // Auto-show insight sheet 200ms after completion
     if (!hasShownInsight.current) {
       hasShownInsight.current = true
-      setTimeout(() => setShowInsight(true), 600)
+      setTimeout(() => setShowInsight(true), 200)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCompleted, isActive, currentStep])
@@ -428,6 +428,16 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
                 <Play size={14} color={Colors.primary} weight="fill" />
               )}
             </Pressable>
+
+            {isCompleted && (
+              <Pressable
+                onPress={() => setShowInsight(true)}
+                style={[styles.miniStepsBtn, { backgroundColor: `${Colors.primary}20` }]}
+                hitSlop={8}
+              >
+                <Text style={[styles.miniStepsText, { color: Colors.primary }]}>Insight</Text>
+              </Pressable>
+            )}
 
             {/* Show Steps button */}
             <Pressable
