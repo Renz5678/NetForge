@@ -63,7 +63,7 @@ const PHASE_LABELS: Record<string, string> = {
   optimization: 'Optimization',
 }
 
-const SEVERITY_ORDER: FindingSeverity[] = ['red', 'yellow', 'blue']
+const SEVERITY_ORDER: FindingSeverity[] = ['red', 'yellow', 'blue', 'tip']
 
 
 
@@ -235,7 +235,7 @@ export default function ValidateScreen() {
         acc[sev] = result.findings.filter((f) => f.severity === sev)
         return acc
       },
-      { red: [], yellow: [], blue: [] }
+      { red: [], yellow: [], blue: [], tip: [] }
     )
   }, [result])
 

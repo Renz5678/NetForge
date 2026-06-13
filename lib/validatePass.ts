@@ -28,7 +28,7 @@ import type { NetworkConfig, NetworkNode } from '@/types'
 
 // ─── Result Types ─────────────────────────────────────────────────────────────
 
-export type FindingSeverity = 'red' | 'yellow' | 'blue'
+export type FindingSeverity = 'red' | 'yellow' | 'blue' | 'tip'
 
 export type FindingPhase =
   | 'connectivity'
@@ -361,7 +361,7 @@ export function checkResilience(config: NetworkConfig): Finding[] {
     findings.push({
       id: `resilience_ap_${apId}`,
       phase: 'resilience',
-      severity: 'blue',
+      severity: 'tip',
       title: `Tip: Consider Redundancy for ${apName}`,
       detail: `${apName} acts as a single point of failure. Removing it would isolate ${isolatedHostCount} hosts across ${isolatedNodes.length} department${isolatedNodes.length !== 1 ? 's' : ''}. This is normal in a tree topology, but adding a secondary link could improve resilience.`,
       fixSteps: [
