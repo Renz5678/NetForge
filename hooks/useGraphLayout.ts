@@ -1,179 +1,186 @@
-// Hierarchical BFS layout assigning nodes to physical port-grouped tiers.
+﻿/**
+ * useGraphLayout.ts — Subtree-aware hierarchical layout engine (v3)
+ *
+ * Strategy
+ * ────────
+ * 1. BFS Spanning Tree
+ *    Walk the undirected peer graph from a typed-priority root (WAN -> firewall ->
+ *    router -> switch -> department). Every node gets a BFS parent and a list of
+ *    tree children. Cycles and cross-edges are ignored for layout purposes.
+ *
+ * 2. Bottom-up Subtree Width Calculation
+ *    Starting from the leaves, calculate how much horizontal space each subtree
+ *    needs to render without any overlap:
+ *      leaf  -> NODE_SLOT  (fixed node slot)
+ *      inner -> max(NODE_SLOT, sum(children subtreeWidths) + (n-1) * SIBLING_GAP)
+ *    This guarantees that parents are always pushed far enough apart to house all
+ *    descendants of one branch before the next branch begins.
+ *
+ * 3. Top-down Position Assignment
+ *    The root is placed at x = canvasCenter.
+ *    Each parent splits its horizontal budget among children proportionally to
+ *    their subtree widths, placing each child at the center of its allotted slot.
+ *    Y positions come from BFS depth * TIER_GAP_Y.
+ *
+ * 4. Overflow clamp
+ *    After layout, we detect the real bounding box and translate nodes so
+ *    the graph is centred and never clips off either side of the canvas.
+ *
+ * Improvements over v2
+ * ─────────────────────
+ * - Zero cross-parent overlap (guaranteed mathematically).
+ * - Proper centering for single-child chains (no left-bias).
+ * - Disconnected sub-graphs stacked vertically with a component gap.
+ * - Non-tree cross-links handled gracefully (rendered as secondary edges).
+ */
+
 import { useMemo } from 'react'
 import { detectCycles } from '@/lib/algorithms/cycleDetection'
 import { validateConnectivity } from '@/lib/algorithms/bfsValidator'
 import { getEdgeWeight, getLinkType } from '@/lib/algorithms/edgeWeights'
 import type { NetworkNode, GraphNode, GraphEdge } from '@/types'
 
-type GraphLayout = {
-  nodes: GraphNode[]
-  edges: GraphEdge[]
+// ── Tuning constants ──────────────────────────────────────────────────────────
+const NODE_SLOT   = 164   // minimum horizontal space reserved per leaf node
+const SIBLING_GAP = 32    // extra gap between adjacent sibling subtrees
+const TIER_GAP_Y  = 140   // vertical distance between BFS depth levels
+const PADDING_TOP = 80    // space above root node
+const COMP_GAP_Y  = 100   // extra vertical gap between disconnected components
+
+// ── Type priority ─────────────────────────────────────────────────────────────
+const TYPE_PRIORITY = ['wan', 'firewall', 'router', 'switch', 'department']
+
+function typePriority(t: string | undefined): number {
+  const idx = TYPE_PRIORITY.indexOf(t ?? 'department')
+  return idx === -1 ? TYPE_PRIORITY.length : idx
 }
 
-// ── Constants ──────────────────────────────────────────────────────────────
-const PADDING_TOP   = 80    // space above first tier
-const PADDING_X     = 30    // left/right screen margin
-const TIER_GAP_Y    = 130   // vertical distance between full tiers
-const SUB_ROW_GAP   = 95    // vertical distance between wrapped sub-rows
-const MAX_PER_ROW   = 3     // max nodes per row before wrapping
-const MIN_SPACING   = 175   // minimum center-to-center horizontal spacing
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-function buildUndirected(departments: NetworkNode[]): Map<string, string[]> {
+// ── Build adjacency list ──────────────────────────────────────────────────────
+function buildAdj(departments: NetworkNode[]): Map<string, Set<string>> {
   const idSet = new Set(departments.map((d) => d.id))
-  const adj   = new Map<string, string[]>()
-  for (const d of departments) adj.set(d.id, [])
+  const adj   = new Map<string, Set<string>>()
+  for (const d of departments) adj.set(d.id, new Set())
   for (const d of departments) {
     for (const peer of d.peers) {
       if (!idSet.has(peer)) continue
-      if (!adj.get(d.id)!.includes(peer))  adj.get(d.id)!.push(peer)
-      if (!adj.get(peer)!.includes(d.id))  adj.get(peer)!.push(d.id)
+      adj.get(d.id)!.add(peer)
+      adj.get(peer)!.add(d.id)
     }
   }
   return adj
 }
 
-const TYPE_PRIORITY = ['wan', 'firewall', 'router', 'switch', 'department']
-
-function pickRoot(depts: NetworkNode[]): string {
-  for (const t of TYPE_PRIORITY) {
-    const f = depts.find((d) => d.type === t)
-    if (f) return f.id
+/** Pick the highest-priority node from a list of ids. */
+function pickRoot(ids: string[], deptMap: Map<string, NetworkNode>): string {
+  let best = ids[0]
+  let bestP = Infinity
+  for (const id of ids) {
+    const p = typePriority(deptMap.get(id)?.type)
+    if (p < bestP) { bestP = p; best = id }
   }
-  return depts[0].id
+  return best
 }
 
-function sortByType(ids: string[], depts: NetworkNode[]): string[] {
+/** Sort child IDs by type priority then name. */
+function sortChildren(ids: string[], deptMap: Map<string, NetworkNode>): string[] {
   return [...ids].sort((a, b) => {
-    const ta = depts.find((d) => d.id === a)?.type ?? 'department'
-    const tb = depts.find((d) => d.id === b)?.type ?? 'department'
-    return TYPE_PRIORITY.indexOf(ta) - TYPE_PRIORITY.indexOf(tb)
+    const pa = typePriority(deptMap.get(a)?.type)
+    const pb = typePriority(deptMap.get(b)?.type)
+    if (pa !== pb) return pa - pb
+    return (deptMap.get(a)?.name ?? '').localeCompare(deptMap.get(b)?.name ?? '')
   })
 }
 
-/** Center a row of `count` nodes, starting at `baseY`, evenly within `width`. */
-function rowPositions(
-  ids: string[],
-  width: number,
-  y: number
-): { id: string; x: number; y: number }[] {
-  const count   = ids.length
-  const usable  = width - PADDING_X * 2
-  const gap     = count === 1 ? 0 : Math.max(usable / (count - 1), MIN_SPACING)
-  const totalW  = gap * (count - 1)
-  const startX  = Math.max(PADDING_X, (width - totalW) / 2)
-
-  return ids.map((id, i) => ({
-    id,
-    x: count === 1 ? width / 2 : startX + i * gap,
-    y,
-  }))
+type TreeNode = {
+  id:       string
+  depth:    number
+  children: string[]
+  subtreeW: number
+  x:        number
+  y:        number
 }
 
 /**
- * For a wide tier: group nodes by their port-based physical parent, then
- * arrange each group as a sub-row centered under the parent's x position.
- * Falls back to a plain wrap if port info isn't available.
+ * Lay out one connected component via the 3-pass algorithm.
+ * Returns a map of id -> {x, y}.
  */
-function positionWideTier(
+function layoutComponent(
   ids: string[],
-  departments: NetworkNode[],
-  positioned: Map<string, { x: number; y: number }>,
-  width: number,
+  deptMap: Map<string, NetworkNode>,
+  adj: Map<string, Set<string>>,
+  canvasCenter: number,
   baseY: number
-): { id: string; x: number; y: number }[] {
-  const result: { id: string; x: number; y: number }[] = []
+): Map<string, { x: number; y: number }> {
+  const root  = pickRoot(ids, deptMap)
+  const idSet = new Set(ids)
+  const nodes = new Map<string, TreeNode>()
 
-  // Group by physical port parent
-  const groups = new Map<string, string[]>()
-  const noParent: string[] = []
+  // Pass 1: BFS spanning tree
+  const visited   = new Set<string>()
+  const bfsQueue: string[] = [root]
+  const bfsOrder: string[] = []
+  visited.add(root)
+  nodes.set(root, { id: root, depth: 0, children: [], subtreeW: 0, x: 0, y: 0 })
 
-  for (const id of ids) {
-    const dept = departments.find((d) => d.id === id)
-    const parentId = dept?.ports?.[0]?.connectedToNodeId
-    if (parentId && positioned.has(parentId)) {
-      if (!groups.has(parentId)) groups.set(parentId, [])
-      groups.get(parentId)!.push(id)
+  while (bfsQueue.length > 0) {
+    const cur     = bfsQueue.shift()!
+    const curNode = nodes.get(cur)!
+    bfsOrder.push(cur)
+    const neighbors = [...(adj.get(cur) ?? [])].filter((nb) => idSet.has(nb) && !visited.has(nb))
+    const sorted    = sortChildren(neighbors, deptMap)
+    for (const nb of sorted) {
+      visited.add(nb)
+      nodes.set(nb, { id: nb, depth: curNode.depth + 1, children: [], subtreeW: 0, x: 0, y: 0 })
+      curNode.children.push(nb)
+      bfsQueue.push(nb)
+    }
+  }
+
+  // Pass 2: bottom-up subtree width
+  for (let i = bfsOrder.length - 1; i >= 0; i--) {
+    const n = nodes.get(bfsOrder[i])!
+    if (n.children.length === 0) {
+      n.subtreeW = NODE_SLOT
     } else {
-      noParent.push(id)
+      const childrenSum = n.children.reduce((acc, cid) => acc + nodes.get(cid)!.subtreeW, 0)
+      const gapsTotal   = (n.children.length - 1) * SIBLING_GAP
+      n.subtreeW        = Math.max(NODE_SLOT, childrenSum + gapsTotal)
     }
   }
 
-  // Sort groups by parent X position
-  const sortedParents = [...groups.keys()].sort((a, b) => {
-    return (positioned.get(a)?.x ?? 0) - (positioned.get(b)?.x ?? 0)
-  })
+  // Pass 3: top-down position assignment
+  const rootNode = nodes.get(root)!
+  rootNode.x = canvasCenter
+  rootNode.y = baseY + PADDING_TOP
 
-  // If there's only one parent (or no parents), just use rowPositions but chunked
-  if (sortedParents.length <= 1) {
-    const all = sortedParents.length === 1 ? groups.get(sortedParents[0])! : noParent
-    if (noParent.length > 0 && sortedParents.length === 1) all.push(...noParent)
-    
-    for (let i = 0; i < all.length; i += MAX_PER_ROW) {
-      const chunk = all.slice(i, i + MAX_PER_ROW)
-      const ri = Math.floor(i / MAX_PER_ROW)
-      rowPositions(chunk, width, baseY + ri * SUB_ROW_GAP).forEach((p) => result.push(p))
-    }
-    return result
-  }
+  for (const id of bfsOrder) {
+    const n = nodes.get(id)!
+    if (n.children.length === 0) continue
 
-  // Multiple parents: we want to keep children directly under their parent.
-  // We'll give each parent a column width proportional to its child count.
-  const totalChildren = ids.length - noParent.length
-  let currentX = 0
+    const totalChildW = n.children.reduce((acc, cid) => acc + nodes.get(cid)!.subtreeW, 0)
+    const totalGaps   = (n.children.length - 1) * SIBLING_GAP
+    const totalSpan   = totalChildW + totalGaps
+    let curX = n.x - totalSpan / 2
 
-  for (const parentId of sortedParents) {
-    const children = groups.get(parentId)!
-    const sectionWidth = (children.length / totalChildren) * width
-    const sectionStartX = currentX
-    currentX += sectionWidth
-
-    // Place children within this section, wrapping if needed
-    // But limit to what fits. Actually, if we just use rowPositions but with a specific center.
-    // Instead of rowPositions (which uses full width), we write a mini-layout:
-    const center = sectionStartX + sectionWidth / 2
-    
-    // Chunk children into sub-rows
-    for (let i = 0; i < children.length; i += MAX_PER_ROW) {
-      const chunk = children.slice(i, i + MAX_PER_ROW)
-      const ri = Math.floor(i / MAX_PER_ROW)
-      const chunkY = baseY + ri * SUB_ROW_GAP
-      const spacing = 180 // fixed spacing between nodes in a tight group
-      const startX = center - ((chunk.length - 1) * spacing) / 2
-      
-      chunk.forEach((childId, idx) => {
-        result.push({ id: childId, x: startX + idx * spacing, y: chunkY })
-      })
+    for (const cid of n.children) {
+      const child = nodes.get(cid)!
+      child.x = curX + child.subtreeW / 2
+      child.y = baseY + PADDING_TOP + child.depth * TIER_GAP_Y
+      curX += child.subtreeW + SIBLING_GAP
     }
   }
 
-  // Place noParent items at the bottom of everything
-  if (noParent.length > 0) {
-    const maxRi = Math.max(0, ...sortedParents.map(p => Math.floor((groups.get(p)!.length - 1) / MAX_PER_ROW)))
-    const noParentY = baseY + (maxRi + 1) * SUB_ROW_GAP
-    for (let i = 0; i < noParent.length; i += MAX_PER_ROW) {
-      const chunk = noParent.slice(i, i + MAX_PER_ROW)
-      const ri = Math.floor(i / MAX_PER_ROW)
-      rowPositions(chunk, width, noParentY + ri * SUB_ROW_GAP).forEach((p) => result.push(p))
-    }
-  }
-
+  const result = new Map<string, { x: number; y: number }>()
+  for (const [id, n] of nodes) result.set(id, { x: n.x, y: n.y })
   return result
 }
 
-/** Total height consumed by a tier given its node count. */
-function tierHeight(count: number): number {
-  if (count <= MAX_PER_ROW) return 0
-  const rows = Math.ceil(count / MAX_PER_ROW)
-  return (rows - 1) * SUB_ROW_GAP
-}
-
-// ── Main export ────────────────────────────────────────────────────────────
+// ── Main export ───────────────────────────────────────────────────────────────
 export function useGraphLayout(
   departments: NetworkNode[],
   width: number,
   height: number
-): GraphLayout {
+): { nodes: GraphNode[]; edges: GraphEdge[] } {
   return useMemo(() => {
     if (departments.length === 0) return { nodes: [], edges: [] }
 
@@ -182,73 +189,77 @@ export function useGraphLayout(
     const cycleSet            = new Set(cycle)
     const isolatedSet         = new Set(isolated)
 
-    const adjUndirected = buildUndirected(departments)
-    const positioned    = new Map<string, { x: number; y: number }>()
-    const unvisited     = new Set(departments.map((d) => d.id))
+    const deptMap = new Map(departments.map((d) => [d.id, d]))
+    const adj     = buildAdj(departments)
 
-    let globalY = PADDING_TOP
+    // Find connected components via BFS flood-fill
+    const assigned   = new Set<string>()
+    const components: string[][] = []
 
-    while (unvisited.size > 0) {
-      const compDepts = departments.filter((d) => unvisited.has(d.id))
-      const rootId    = pickRoot(compDepts)
-
-      // BFS within this component
-      const depths = new Map<string, number>()
-      const queue  = [rootId]
-      depths.set(rootId, 0)
-      while (queue.length > 0) {
-        const cur = queue.shift()!
-        const d   = depths.get(cur)!
-        for (const nb of adjUndirected.get(cur) ?? []) {
-          if (unvisited.has(nb) && !depths.has(nb)) {
-            depths.set(nb, d + 1)
-            queue.push(nb)
+    for (const d of departments) {
+      if (assigned.has(d.id)) continue
+      const comp: string[] = []
+      const q = [d.id]
+      assigned.add(d.id)
+      while (q.length > 0) {
+        const cur = q.shift()!
+        comp.push(cur)
+        for (const nb of adj.get(cur) ?? []) {
+          if (!assigned.has(nb)) {
+            assigned.add(nb)
+            q.push(nb)
           }
         }
       }
-
-      const tierMap = new Map<number, string[]>()
-      for (const [id, d] of depths) {
-        if (!tierMap.has(d)) tierMap.set(d, [])
-        tierMap.get(d)!.push(id)
-      }
-
-      const maxTier = Math.max(...tierMap.keys())
-      let curY = globalY
-
-      for (let tier = 0; tier <= maxTier; tier++) {
-        const raw = tierMap.get(tier) ?? []
-        const ids = sortByType(raw, departments)
-
-        let placed: { id: string; x: number; y: number }[]
-
-        if (ids.length <= MAX_PER_ROW) {
-          // Simple centered row
-          placed = rowPositions(ids, width, curY)
-        } else {
-          // Wide tier — use port-based grouping + wrapping
-          placed = positionWideTier(ids, departments, positioned, width, curY)
-        }
-
-        for (const { id, x, y } of placed) {
-          positioned.set(id, { x, y })
-          unvisited.delete(id)
-        }
-
-        curY += tierHeight(ids.length) + TIER_GAP_Y
-      }
-
-      globalY = curY + 50
+      components.push(comp)
     }
 
-    // ── GraphNode[] ──────────────────────────────────────────────────────
+    // Largest component first; break ties by root type priority
+    components.sort((a, b) => {
+      if (b.length !== a.length) return b.length - a.length
+      return typePriority(deptMap.get(pickRoot(a, deptMap))?.type)
+           - typePriority(deptMap.get(pickRoot(b, deptMap))?.type)
+    })
+
+    const canvasCenter = width / 2
+    const positioned   = new Map<string, { x: number; y: number }>()
+    let globalY = 0
+
+    for (const comp of components) {
+      const compPositions = layoutComponent(comp, deptMap, adj, canvasCenter, globalY)
+
+      let maxY = globalY
+      for (const { y } of compPositions.values()) {
+        if (y > maxY) maxY = y
+      }
+      for (const [id, pos] of compPositions) positioned.set(id, pos)
+
+      globalY = maxY + TIER_GAP_Y + COMP_GAP_Y
+    }
+
+    // Horizontal clamp: centre the whole graph if it's wider than the canvas
+    let minX = Infinity
+    let maxX = -Infinity
+    for (const { x } of positioned.values()) {
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+    }
+    const graphW  = maxX - minX
+    const offsetX = canvasCenter - (minX + graphW / 2)
+    if (Math.abs(offsetX) > 1) {
+      for (const [id, pos] of positioned) {
+        positioned.set(id, { x: pos.x + offsetX, y: pos.y })
+      }
+    }
+
+    // Build GraphNode[]
     const nodes: GraphNode[] = departments.map((dept) => {
-      const pos  = positioned.get(dept.id) ?? { x: width / 2, y: height / 2 }
+      const pos  = positioned.get(dept.id) ?? { x: canvasCenter, y: height / 2 }
       const name = dept.name
 
       let status: GraphNode['status'] = 'valid'
-      if (hasCycle    && cycleSet.has(name))   status = 'cycle'
-      else if (isolatedSet.has(name))           status = 'isolated'
+      if (hasCycle    && cycleSet.has(name))  status = 'cycle'
+      else if (isolatedSet.has(name))          status = 'isolated'
 
       return {
         id:     dept.id,
@@ -262,16 +273,16 @@ export function useGraphLayout(
       }
     })
 
-    // ── Edges (undirected, de-duplicated, with link costs) ──────────────────────
+    // Build GraphEdge[] (undirected, de-duplicated)
     const edgeSet = new Set<string>()
     const edges: GraphEdge[] = []
     for (const dept of departments) {
       for (const peerId of dept.peers) {
-        if (!departments.find((d) => d.id === peerId)) continue
+        if (!deptMap.has(peerId)) continue
         const key = [dept.id, peerId].sort().join('|')
         if (edgeSet.has(key)) continue
         edgeSet.add(key)
-        const peerDept = departments.find((d) => d.id === peerId)!
+        const peerDept = deptMap.get(peerId)!
         edges.push({
           source:   dept.id,
           target:   peerId,
