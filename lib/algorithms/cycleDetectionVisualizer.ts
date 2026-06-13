@@ -77,7 +77,7 @@ export function buildCycleDetectionSteps(
     dfsStack: [],
   })
 
-  function dfs(nodeId: string): boolean {
+  function dfs(nodeId: string, parentId: string | null = null): boolean {
     color.set(nodeId, 'gray')
     dfsStack.push(nodeId)
 
@@ -92,6 +92,17 @@ export function buildCycleDetectionSteps(
     const neighbors = adj.get(nodeId) ?? []
     for (const neighborId of neighbors) {
       if (!color.has(neighborId)) continue
+
+      if (neighborId === parentId) {
+        steps.push({
+          stepIndex: steps.length,
+          explanation: `${lbl(neighborId)} is the node we just came from (parent). Skipping it to avoid false back-edges in an undirected graph.`,
+          hint: `In an undirected network, the direct link back to the parent isn't considered a routing loop.`,
+          nodeStates: snapshotStates(),
+          dfsStack: [...dfsStack],
+        })
+        continue
+      }
 
       if (color.get(neighborId) === 'gray') {
         // Back-edge found — cycle!
@@ -121,7 +132,7 @@ export function buildCycleDetectionSteps(
           dfsStack: [...dfsStack],
         })
 
-        if (dfs(neighborId)) return true
+        if (dfs(neighborId, nodeId)) return true
       } else {
         steps.push({
           stepIndex: steps.length,
@@ -157,7 +168,7 @@ export function buildCycleDetectionSteps(
         dfsStack: [],
       })
 
-      if (dfs(dept.id)) break
+      if (dfs(dept.id, null)) break
     }
   }
 

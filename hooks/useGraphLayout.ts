@@ -138,7 +138,7 @@ function positionWideTier(
       const chunk = children.slice(i, i + MAX_PER_ROW)
       const ri = Math.floor(i / MAX_PER_ROW)
       const chunkY = baseY + ri * SUB_ROW_GAP
-      const spacing = 100 // fixed spacing between nodes in a tight group
+      const spacing = 180 // fixed spacing between nodes in a tight group
       const startX = center - ((chunk.length - 1) * spacing) / 2
       
       chunk.forEach((childId, idx) => {
