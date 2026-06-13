@@ -41,6 +41,9 @@ type ConfigStore = {
   explainMode: boolean
   setExplainMode: (enabled: boolean) => void
 
+  isCreateModalOpen: boolean
+  setCreateModalOpen: (open: boolean) => void
+
   // Network Insights Panel: auto-surfaced findings
   insights: NetworkInsight[]
   addInsight: (insight: NetworkInsight) => void
@@ -108,10 +111,12 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
   activeMstCost: 0,
   activeHasCycle: false,
   explainMode: false,
-  insights: [],
-
   setExplainMode: (enabled) => set({ explainMode: enabled }),
 
+  isCreateModalOpen: false,
+  setCreateModalOpen: (open) => set({ isCreateModalOpen: open }),
+
+  insights: [],
   addInsight: (insight) => set((state) => ({
     insights: [
       insight,

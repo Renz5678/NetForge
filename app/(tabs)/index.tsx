@@ -273,6 +273,7 @@ export default function CanvasScreen() {
   // See AGENTS.md §6 for rationale.
   const configs        = useConfigStore((s) => s.configs)
   const activeConfig   = useConfigStore((s) => s.activeConfig)
+  const setCreateModalOpen = useConfigStore((s) => s.setCreateModalOpen)
   const loading        = useConfigStore((s) => s.loading)
   const loadConfigs    = useConfigStore((s) => s.loadConfigs)
   const createConfig   = useConfigStore((s) => s.createConfig)
@@ -293,35 +294,9 @@ export default function CanvasScreen() {
     [userConfigs, activeConfig]
   )
 
-  const [namePromptOpen, setNamePromptOpen] = useState(false)
-  const [nameInput, setNameInput] = useState('')
-  const [nameCreating, setNameCreating] = useState(false)
-  const nameInputRef = useRef<TextInput>(null)
-
-  // Open the name prompt instead of creating immediately
+  // Open the name prompt globally
   const handleCreate = () => {
-    setNameInput('')
-    setNamePromptOpen(true)
-    // Auto-focus after the modal animates in
-    setTimeout(() => nameInputRef.current?.focus(), 200)
-  }
-
-  const handleConfirmCreate = async () => {
-    if (!user?.id) return
-    const trimmed = nameInput.trim()
-    if (!trimmed) return
-    setNameCreating(true)
-    haptics.light()
-    const newConfig = await createConfig(trimmed, user.id)
-    setNameCreating(false)
-    setNamePromptOpen(false)
-    if (newConfig) {
-      haptics.medium()
-      setActiveConfig(newConfig.id)
-      router.push(`/config/${newConfig.id}`)
-    } else {
-      haptics.error()
-    }
+    setCreateModalOpen(true)
   }
 
   const handleOpenCanvas = (config: typeof activeConfig) => {
@@ -477,13 +452,6 @@ export default function CanvasScreen() {
           </View>
         </ScrollView>
 
-        {/* ── FAB ─────────────────────────────────── */}
-        <Pressable
-          style={({ pressed }) => [styles.fab, pressed && { opacity: 0.85 }]}
-          onPress={handleCreate}
-        >
-          <Plus size={24} color={Colors.white} weight="bold" />
-        </Pressable>
 
         {/* ── Project Switcher Sheet ───────────────── */}
         <ProjectSwitcherSheet
@@ -491,66 +459,6 @@ export default function CanvasScreen() {
           onClose={() => setSwitcherOpen(false)}
         />
 
-        {/* ── New Network Name Prompt ──────────────── */}
-        <Modal
-          visible={namePromptOpen}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setNamePromptOpen(false)}
-          statusBarTranslucent
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={namePrompt.overlay}
-          >
-            <Pressable style={namePrompt.backdrop} onPress={() => setNamePromptOpen(false)} />
-            <View style={namePrompt.card}>
-              {/* Handle */}
-              <View style={namePrompt.handle} />
-
-              <Text style={namePrompt.heading}>Name your network</Text>
-              <Text style={namePrompt.sub}>You can always rename it later.</Text>
-
-              <TextInput
-                ref={nameInputRef}
-                style={namePrompt.input}
-                placeholder="e.g. Enterprise Campus LAN"
-                placeholderTextColor={Colors.textMuted}
-                value={nameInput}
-                onChangeText={setNameInput}
-                onSubmitEditing={handleConfirmCreate}
-                returnKeyType="done"
-                autoCapitalize="words"
-                maxLength={80}
-              />
-
-              <View style={namePrompt.actions}>
-                <Pressable
-                  style={({ pressed }) => [
-                    namePrompt.confirmBtn,
-                    (!nameInput.trim() || nameCreating) && namePrompt.confirmBtnDisabled,
-                    pressed && { opacity: 0.88 },
-                  ]}
-                  onPress={handleConfirmCreate}
-                  disabled={!nameInput.trim() || nameCreating}
-                >
-                  <Text style={[
-                    namePrompt.confirmText,
-                    (!nameInput.trim() || nameCreating) && namePrompt.confirmTextDisabled,
-                  ]}>
-                    {nameCreating ? 'Creating…' : 'Create Network'}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={namePrompt.cancelBtn}
-                  onPress={() => setNamePromptOpen(false)}
-                >
-                  <Text style={namePrompt.cancelText}>Cancel</Text>
-                </Pressable>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
       </SafeAreaView>
     </LinearGradient>
   )
