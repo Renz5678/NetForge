@@ -13,12 +13,25 @@ export function useValidation(departments: NetworkNode[]): ValidationResult {
   return useMemo(() => {
     // 1. Cycle detection
     const { hasCycle, cycle } = detectCycles(departments)
+    
+    // A physical cycle is only a broadcast storm (L2 loop) if it consists entirely of L2 devices.
+    // If the cycle contains at least one L3 boundary (router/firewall/wan), it's L3 redundancy, which is safe.
+    let isL3Redundancy = false
+    if (hasCycle) {
+      isL3Redundancy = cycle.some(nodeName => {
+        const node = departments.find(d => d.name === nodeName || d.id === nodeName)
+        return node?.type === 'router' || node?.type === 'firewall' || node?.type === 'wan'
+      })
+    }
+
     const cycleCheck = {
-      passed: !hasCycle,
+      passed: !hasCycle || isL3Redundancy,
       message: hasCycle
-        ? `Cycle detected: ${cycle.join(' → ')}`
+        ? (isL3Redundancy 
+            ? `L3 redundancy detected: ${cycle.join(' → ')} (Safe with OSPF/BGP)` 
+            : `Routing loop detected: ${cycle.join(' → ')}`)
         : 'No routing loops detected in graph topology.',
-      affected: hasCycle ? cycle : undefined,
+      affected: hasCycle && !isL3Redundancy ? cycle : undefined,
     }
 
     // 2. Subnet allocation overlap check

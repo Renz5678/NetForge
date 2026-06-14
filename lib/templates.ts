@@ -35,6 +35,61 @@ function buildConfig(
     .filter((d): d is NetworkNode => d !== undefined)
   const missing = rawDepts.filter((d) => !sorted.includes(d.id))
   const allocated = allocateSubnets([...sortedDepts, ...missing], baseIp, vlanStart)
+
+  // Auto-inject static routes for routers/firewalls/wan so the routing simulator works perfectly out-of-the-box
+  const adj = new Map<string, string[]>()
+  for (const node of allocated) adj.set(node.id, [])
+  for (const node of allocated) {
+    for (const peerId of node.peers) {
+      if (adj.has(peerId)) {
+        adj.get(node.id)!.push(peerId)
+        if (!adj.get(peerId)!.includes(node.id)) adj.get(peerId)!.push(node.id)
+      }
+    }
+  }
+
+  const routers = allocated.filter(n => n.type === 'router' || n.type === 'firewall' || n.type === 'wan')
+  const departments = allocated.filter(n => n.type === 'department' || !n.type)
+
+  for (const router of routers) {
+    router.staticRoutes = router.staticRoutes || []
+    for (const dept of departments) {
+      if (!dept.subnet) continue
+      
+      const queue = [{ id: router.id, path: [router.id] }]
+      const visited = new Set<string>([router.id])
+      let nextNodeId: string | null = null
+
+      while (queue.length > 0) {
+        const curr = queue.shift()!
+        if (curr.id === dept.id) {
+          nextNodeId = curr.path[1]
+          break
+        }
+        for (const neighbor of adj.get(curr.id) || []) {
+          if (!visited.has(neighbor)) {
+            visited.add(neighbor)
+            queue.push({ id: neighbor, path: [...curr.path, neighbor] })
+          }
+        }
+      }
+
+      if (nextNodeId) {
+        const port = router.ports?.find(p => p.connectedToNodeId === nextNodeId)
+        if (port) {
+          const exists = router.staticRoutes.some(r => r.destination === dept.subnet)
+          if (!exists) {
+            router.staticRoutes.push({
+              destination: dept.subnet,
+              nextHop: 'DIRECT',
+              interfaceId: port.id
+            })
+          }
+        }
+      }
+    }
+  }
+
   return {
     // Prefix with 'local_' so the sync queue skips this config.
     // Templates are read-only scenarios — they don't belong in Supabase.
@@ -463,7 +518,7 @@ function getISPCoreConfig(userId: string): NetworkConfig {
       id: 'isp_residential_a',
       name: 'Residential Zone A',
       deviceCount: 200,
-      peers: ['isp_backbone_a'],
+      peers: ['isp_access_a'],
       type: 'department',
       cidrPrefix: 24,
       ports: [{ id: 'isp_ra_p1', name: 'FastEthernet0/1', connectedToNodeId: 'isp_access_a', connectedToPortId: 'isp_aa_p2' }],
@@ -472,7 +527,7 @@ function getISPCoreConfig(userId: string): NetworkConfig {
       id: 'isp_residential_b',
       name: 'Residential Zone B',
       deviceCount: 150,
-      peers: ['isp_backbone_b'],
+      peers: ['isp_access_b'],
       type: 'department',
       cidrPrefix: 24,
       ports: [{ id: 'isp_rb_p1', name: 'FastEthernet0/1', connectedToNodeId: 'isp_access_b', connectedToPortId: 'isp_ab_p2' }],
@@ -480,8 +535,8 @@ function getISPCoreConfig(userId: string): NetworkConfig {
     {
       id: 'isp_business',
       name: 'Business Clients',
-      deviceCount: 40,
-      peers: ['isp_backbone_b'],
+      deviceCount: 50,
+      peers: ['isp_access_b'],
       type: 'department',
       cidrPrefix: 26,
       ports: [{ id: 'isp_biz_p1', name: 'FastEthernet0/1', connectedToNodeId: 'isp_access_b', connectedToPortId: 'isp_ab_p3' }],
