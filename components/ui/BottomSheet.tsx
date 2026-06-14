@@ -41,9 +41,9 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
         Animated.spring(translateY, {
           toValue: 0,
           useNativeDriver: true,
-          damping: 32,
-          stiffness: 260,
-          mass: 0.9,
+          damping: 42,
+          stiffness: 380,
+          mass: 0.8,
         }),
         Animated.timing(opacity, {
           toValue: 1,
@@ -106,8 +106,8 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
           Animated.spring(translateY, {
             toValue: 0,
             useNativeDriver: true,
-            damping: 22,
-            stiffness: 220,
+            damping: 42,
+            stiffness: 380,
             mass: 0.8,
           }).start()
         }
@@ -126,7 +126,7 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
       statusBarTranslucent
     >
       <KeyboardAvoidingView
-        behavior="height"
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.overlay}
         keyboardVerticalOffset={0}
       >
@@ -137,7 +137,7 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
         <Animated.View
           style={[
             styles.sheet,
-            { transform: [{ translateY }] },
+            { transform: [{ translateY }], flexShrink: 1 },
             sheetHeight !== undefined ? { height: sheetHeight } : null,
             { paddingBottom: insets.bottom + 16, maxHeight: SCREEN_HEIGHT * 0.90 },
           ]}

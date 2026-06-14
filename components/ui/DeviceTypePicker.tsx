@@ -10,6 +10,8 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  withTiming,
+  withSequence,
   interpolate,
   Extrapolation,
 } from 'react-native-reanimated'
@@ -102,15 +104,13 @@ function DeviceTile({
   const selected   = useSharedValue(isSelected ? 1 : 0)
 
   useEffect(() => {
-    selected.value = withSpring(isSelected ? 1 : 0, {
-      damping: 14,
-      stiffness: 180,
-    })
+    selected.value = withTiming(isSelected ? 1 : 0, { duration: 150 })
     if (isSelected) {
-      // Pop: scale up then settle
-      scale.value = withSpring(1.06, { damping: 6, stiffness: 300 }, () => {
-        scale.value = withSpring(1, { damping: 12, stiffness: 220 })
-      })
+      // Snappy pop: quick scale down, firm timing back (no bounce)
+      scale.value = withSequence(
+        withTiming(0.97, { duration: 40 }),
+        withTiming(1, { duration: 100 })
+      )
     }
   }, [isSelected])
 

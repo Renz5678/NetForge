@@ -379,10 +379,10 @@ export default function ConfigsScreen() {
       <AnimatedPressable
         style={[styles.fab, animatedFabStyle]}
         onPressIn={() => {
-          fabScale.value = withSpring(0.85)
+          fabScale.value = withTiming(0.85, { duration: 60 })
         }}
         onPressOut={() => {
-          fabScale.value = withSpring(1)
+          fabScale.value = withTiming(1, { duration: 100 })
         }}
         onPress={() => {
           setNewName('')

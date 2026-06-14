@@ -4,10 +4,12 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated'
 import { Colors } from '@/constants/colors'
 import { Check } from 'phosphor-react-native'
+import { useHaptics } from '@/hooks/useHaptics'
 
 type PeerChipProps = {
   label: string
@@ -16,6 +18,7 @@ type PeerChipProps = {
 }
 
 export function PeerChip({ label, selected, onPress }: PeerChipProps) {
+  const haptics       = useHaptics()
   const scale       = useSharedValue(1)
   const checkOpacity = useSharedValue(selected ? 1 : 0)
 
@@ -34,10 +37,12 @@ export function PeerChip({ label, selected, onPress }: PeerChipProps) {
   }))
 
   const handlePress = () => {
-    scale.value = withSpring(0.88, { damping: 5, stiffness: 350 }, () => {
-      scale.value = withSpring(1, { damping: 12, stiffness: 220 })
-    })
+    haptics.light()
     onPress()
+    scale.value = withSequence(
+      withTiming(0.94, { duration: 40 }),
+      withTiming(1, { duration: 100 })
+    )
   }
 
   return (

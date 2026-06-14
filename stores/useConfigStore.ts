@@ -498,8 +498,8 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
         if (!op.configId.startsWith('local_')) {
           updatedOps.push(op)
         }
-      } else if (op.configId.startsWith('local_')) {
-        // Skip syncing template / local-only configs entirely
+      } else if (op.configId.startsWith('local_tpl_') || op.configId.startsWith('demo_')) {
+        // Skip syncing template / demo configs entirely
       } else {
         updatedOps = updatedOps.filter(
           (o) => !(o.configId === op.configId && o.type === 'update')

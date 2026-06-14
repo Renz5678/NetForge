@@ -388,26 +388,26 @@ function DeptSheet({
         )}
       </View>
 
-      {/* ── Name field — outside ScrollView, always rendered ── */}
-      <View style={[deptSheet.field, { marginBottom: 4 }]}>
-        <Input
-          label="Node Name"
-          placeholder="e.g. Core-Router or Finance-LAN"
-          value={name}
-          onChangeText={setName}
-          error={nameError}
-        />
-      </View>
-
-      {/* ── Scrollable body — maxHeight so it renders in auto-height sheet ── */}
+      {/* ── Scrollable body ── */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: 8 }}
-        style={{ maxHeight: Dimensions.get('window').height * 0.48 }}
+        contentContainerStyle={{ paddingBottom: 16 }}
+        style={{ flexShrink: 1 }}
       >
+        {/* ── Name field ── */}
+        <View style={[deptSheet.field, { marginBottom: 12, paddingTop: 4 }]}>
+          <Input
+            label="Node Name"
+            placeholder="e.g. Core-Router or Finance-LAN"
+            value={name}
+            onChangeText={setName}
+            error={nameError}
+          />
+        </View>
+
         {/* Device type picker */}
-        <View style={[deptSheet.section, { paddingTop: 4 }]}>
+        <View style={deptSheet.section}>
           <Text style={deptSheet.sectionLabel}>ESSENTIALS</Text>
           <View style={deptSheet.field}>
             <Text style={deptSheet.label}>Device Type</Text>
@@ -783,7 +783,7 @@ export default function ConfigDetailScreen() {
 
   // FAB entrance on mount
   useEffect(() => {
-    fabScale.value = withSpring(1, { damping: 22, stiffness: 200 })
+    fabScale.value = withTiming(1, { duration: 200 })
   }, [])
 
   const indicatorStyle = useAnimatedStyle(() => ({
