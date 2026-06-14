@@ -107,8 +107,19 @@ export function topologyReadiness(config: NetworkConfig): TopologyReadiness {
       blocking.push('Connect at least 2 nodes — no links exist between devices.')
     }
 
-    // 3. No isolated nodes (every node must have ≥1 peer)
-    const isolated = depts.filter((d) => d.peers.length === 0)
+    // 3. No isolated nodes (every node must have ≥1 peer in an undirected sense)
+    const degree = new Map<string, number>()
+    depts.forEach(d => degree.set(d.id, 0))
+    depts.forEach(d => {
+      d.peers.forEach(p => {
+        if (degree.has(p)) {
+          degree.set(d.id, degree.get(d.id)! + 1)
+          degree.set(p, degree.get(p)! + 1)
+        }
+      })
+    })
+
+    const isolated = depts.filter((d) => degree.get(d.id) === 0)
     if (isolated.length > 0 && hasAnyLink) {
       const names = isolated.map((d) => d.name).join(', ')
       blocking.push(

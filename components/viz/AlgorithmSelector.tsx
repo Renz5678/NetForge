@@ -41,7 +41,7 @@ type AlgorithmCard = {
 const ALGORITHMS: AlgorithmCard[] = [
   {
     type: 'dijkstra',
-    title: 'Find Best Route',
+    title: 'Find Best Route (Dijkstra)',
     subtitle: 'Select the lowest-cost path between two devices',
     description: 'NetForge will trace the optimal path between two points on your network, counting hops and evaluating link costs. This is the same logic OSPF routers use when selecting next-hops.',
     requiresSource: true,
@@ -50,7 +50,7 @@ const ALGORITHMS: AlgorithmCard[] = [
   },
   {
     type: 'aStar',
-    title: 'Guided Path Search',
+    title: 'Guided Path Search (A*)',
     subtitle: 'Faster route analysis with spatial awareness',
     description: 'Uses distance-to-target estimates to find a route more efficiently. Compare side-by-side with the standard route analysis to see which nodes were explored.',
     requiresSource: true,
@@ -59,7 +59,7 @@ const ALGORITHMS: AlgorithmCard[] = [
   },
   {
     type: 'cycleDetection',
-    title: 'Check for Routing Loops',
+    title: 'Check for Routing Loops (DFS)',
     subtitle: 'Detect circular paths that cause traffic storms',
     description: 'Scans your topology for routing loops — cyclic dependencies that would cause packets to loop indefinitely instead of reaching their destination. Essential before deploying a configuration.',
     requiresSource: false,
@@ -68,7 +68,7 @@ const ALGORITHMS: AlgorithmCard[] = [
   },
   {
     type: 'topologicalSort',
-    title: 'Deployment Order Analysis',
+    title: 'Deployment Order (Topological Sort)',
     subtitle: 'Determine safe device startup sequence',
     description: 'Analyzes your topology to determine the correct order for bringing devices online, ensuring upstream dependencies are ready before downstream devices activate.',
     requiresSource: false,
@@ -77,7 +77,7 @@ const ALGORITHMS: AlgorithmCard[] = [
   },
   {
     type: 'prims',
-    title: 'Optimal Cabling Plan',
+    title: 'Optimal Cabling Plan (Prim\'s MST)',
     subtitle: 'Find the minimum links needed for full connectivity',
     description: "Identifies redundant links in your topology and shows the minimum set of connections needed to keep all devices reachable. Useful for cost optimization in campus and data center designs.",
     requiresSource: false,
@@ -86,7 +86,7 @@ const ALGORITHMS: AlgorithmCard[] = [
   },
   {
     type: 'pathfindingComparison',
-    title: 'Route Algorithm Comparison',
+    title: 'Algorithm Comparison (Dijkstra vs A*)',
     subtitle: 'Compare Dijkstra vs A* on the same path',
     description: 'Runs both Dijkstra and A* between two devices and displays results side-by-side — showing path length, hops, and nodes explored by each. Reveals when spatial awareness gives A* an efficiency advantage.',
     requiresSource: true,

@@ -215,7 +215,9 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
     // Auto-show insight sheet 200ms after completion
     if (!hasShownInsight.current) {
       hasShownInsight.current = true
-      setTimeout(() => setShowInsight(true), 200)
+      if (algorithm !== 'pathfindingComparison') {
+        setTimeout(() => setShowInsight(true), 200)
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCompleted, isActive, currentStep])
