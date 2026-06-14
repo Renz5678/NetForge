@@ -50,6 +50,7 @@ import {
   SlidersHorizontal,
 } from 'phosphor-react-native'
 import { useConfigStore } from '@/stores/useConfigStore'
+import { useAuthStore } from '@/stores/useAuthStore'
 
 import { useValidation } from '@/hooks/useValidation'
 import { useVisualizationStore } from '@/stores/useVisualizationStore'
@@ -764,8 +765,10 @@ export default function ConfigDetailScreen() {
   const addDepartment     = useConfigStore((s) => s.addDepartment)
   const updateDepartment  = useConfigStore((s) => s.updateDepartment)
   const deleteDepartment  = useConfigStore((s) => s.deleteDepartment)
+  const duplicateConfig   = useConfigStore((s) => s.duplicateConfig)
   const departments = activeConfig?.departments ?? []
   const isSample = activeConfig?.id.startsWith('local_tpl_') ?? false
+  const user = useAuthStore((s) => s.user)
 
   const [activeTab, setActiveTab] = useState<'departments' | 'subnets' | 'graph'>('departments')
 
@@ -1034,11 +1037,36 @@ export default function ConfigDetailScreen() {
       {/* Sample topology banner */}
       {isSample && (
         <View style={styles.sampleBanner}>
-          <Info size={13} color={Colors.textMuted} />
-          <Text style={styles.sampleBannerText}>Sample topology — view only, changes won't be saved</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+            <Info size={16} color={Colors.textMuted} />
+            <Text style={styles.sampleBannerText}>Sample topology — view only</Text>
+          </View>
+          <Pressable 
+            style={styles.useTemplateBtn}
+            onPress={() => {
+              Alert.alert(
+                'Use this template',
+                'This will create a copy of this template in your configurations. Do you want to proceed?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { 
+                    text: 'Use Template', 
+                    style: 'default',
+                    onPress: async () => {
+                      if (user && activeConfig) {
+                        await duplicateConfig(activeConfig.id, user.id)
+                        router.replace('/configs')
+                      }
+                    }
+                  }
+                ]
+              )
+            }}
+          >
+            <Text style={styles.useTemplateText}>Use this template</Text>
+          </Pressable>
         </View>
       )}
-
       {/* Segmented control with animated sliding indicator */}
       <View
         style={styles.segmented}
@@ -1504,6 +1532,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textMuted,
     flex: 1,
+  },
+  useTemplateBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  useTemplateText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: Colors.white,
   },
   topBar: {
     flexDirection: 'column',
