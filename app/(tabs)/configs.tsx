@@ -321,22 +321,6 @@ export default function ConfigsScreen() {
       <TopHeader
         title="My Configurations"
         leftIcon={<ShareNetwork size={22} color={Colors.primary} weight="bold" />}
-        rightActions={
-          <Pressable
-            style={styles.headerPlus}
-            onPress={() => {
-              setNewName('')
-              setBaseIp(defaultBaseIp)
-              setVlanStart(defaultVlanStart)
-              setNameError('')
-              setIpError('')
-              setVlanError('')
-              setShowNewSheet(true)
-            }}
-          >
-            <Plus size={24} color={Colors.primary} />
-          </Pressable>
-        }
       />
 
       <SyncStatusBanner />

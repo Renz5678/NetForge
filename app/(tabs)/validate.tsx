@@ -11,13 +11,15 @@
  * "Go to Export" is a secondary button shown after a clean/passing result.
  */
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
   ScrollView,
+  Animated,
+  Easing,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
@@ -68,6 +70,119 @@ const SEVERITY_ORDER: FindingSeverity[] = ['red', 'yellow', 'blue', 'tip']
 
 
 import type { NetworkConfig } from '@/types'
+
+// ── Stagger helper ─────────────────────────────────────────────────────
+
+function ValidateAnimatedItem({ children, index }: { children: React.ReactNode; index: number }) {
+  const fadeAnim  = useRef(new Animated.Value(0)).current
+  const slideAnim = useRef(new Animated.Value(14)).current
+
+  useEffect(() => {
+    const delay = index * 55
+    Animated.parallel([
+      Animated.timing(fadeAnim,  { toValue: 1, duration: 300, delay, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 300, delay, useNativeDriver: true }),
+    ]).start()
+  }, [])
+
+  return (
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+      {children}
+    </Animated.View>
+  )
+}
+
+// ── Shimmer Validate Button ──────────────────────────────────────────────
+
+function ShimmerValidateButton({ ready, onPress }: { ready: boolean; onPress?: () => void }) {
+  const shimmerAnim = useRef(new Animated.Value(-1)).current
+
+  useEffect(() => {
+    if (!ready) return
+    const loop = Animated.loop(
+      Animated.timing(shimmerAnim, {
+        toValue: 1,
+        duration: 1800,
+        delay: 600,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    )
+    loop.start()
+    return () => loop.stop()
+  }, [ready])
+
+  const translateX = shimmerAnim.interpolate({
+    inputRange: [-1, 1],
+    outputRange: [-300, 300],
+  })
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        shimmerStyles.btn,
+        !ready && shimmerStyles.btnDisabled,
+        pressed && ready && { opacity: 0.88, transform: [{ scale: 0.98 }] },
+      ]}
+      onPress={onPress}
+      disabled={!ready}
+    >
+      <ShieldCheck size={20} color={Colors.white} weight="fill" />
+      <Text style={shimmerStyles.btnText}>Validate Network</Text>
+      {ready && (
+        <Animated.View
+          style={[
+            shimmerStyles.shimmer,
+            { transform: [{ translateX }] },
+          ]}
+          pointerEvents="none"
+        >
+          <LinearGradient
+            colors={['transparent', 'rgba(255,255,255,0.22)', 'transparent']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={shimmerStyles.shimmerGrad}
+          />
+        </Animated.View>
+      )}
+    </Pressable>
+  )
+}
+
+const shimmerStyles = StyleSheet.create({
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
+    paddingVertical: 17,
+    overflow: 'hidden',
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  btnDisabled: {
+    backgroundColor: Colors.border,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  btnText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 16,
+    color: Colors.white,
+  },
+  shimmer: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+  },
+  shimmerGrad: {
+    flex: 1,
+  },
+})
 
 // ─── Network Summary Card ─────────────────────────────────────────────────────
 
@@ -284,21 +399,25 @@ export default function ValidateScreen() {
             </View>
           ) : (
             <View style={styles.pickerList}>
-              {userConfigs.map((cfg) => (
-                <Pressable
-                  key={cfg.id}
-                  style={({ pressed }) => [styles.pickerCard, pressed && { opacity: 0.8 }]}
-                  onPress={() => setSelectedConfigId(cfg.id)}
-                >
-                  <View style={styles.pickerCardBody}>
-                    <Text style={styles.pickerCardName} numberOfLines={1}>{cfg.name}</Text>
-                    <Text style={styles.pickerCardMeta}>
-                      {cfg.departments.length} node{cfg.departments.length !== 1 ? 's' : ''}
-                      {cfg.isValid === true ? '  ·  ✓ Valid' : cfg.isValid === false ? '  ·  ⚠ Issues' : ''}
-                    </Text>
-                  </View>
-                  <CaretRight size={18} color={Colors.textMuted} />
-                </Pressable>
+              {userConfigs.map((cfg, cfgIndex) => (
+                <ValidateAnimatedItem key={cfg.id} index={cfgIndex}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.pickerCard,
+                      pressed && { opacity: 0.8, transform: [{ scale: 0.975 }] },
+                    ]}
+                    onPress={() => setSelectedConfigId(cfg.id)}
+                  >
+                    <View style={styles.pickerCardBody}>
+                      <Text style={styles.pickerCardName} numberOfLines={1}>{cfg.name}</Text>
+                      <Text style={styles.pickerCardMeta}>
+                        {cfg.departments.length} node{cfg.departments.length !== 1 ? 's' : ''}
+                        {cfg.isValid === true ? '  ·  ✓ Valid' : cfg.isValid === false ? '  ·  ⚠ Issues' : ''}
+                      </Text>
+                    </View>
+                    <CaretRight size={18} color={Colors.textMuted} />
+                  </Pressable>
+                </ValidateAnimatedItem>
               ))}
             </View>
           )}
@@ -491,18 +610,10 @@ export default function ValidateScreen() {
           {selectedConfig && (() => {
             const readiness = topologyReadiness(selectedConfig)
             return (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.runBtn,
-                  !readiness.ready && styles.runBtnDisabled,
-                  pressed && readiness.ready && { opacity: 0.88 },
-                ]}
+              <ShimmerValidateButton
+                ready={readiness.ready}
                 onPress={readiness.ready ? handleRun : undefined}
-                disabled={!readiness.ready}
-              >
-                <ShieldCheck size={20} color={Colors.white} weight="fill" />
-                <Text style={styles.runBtnText}>Validate Network</Text>
-              </Pressable>
+              />
             )
           })()}
 

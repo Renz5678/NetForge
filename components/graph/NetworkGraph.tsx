@@ -20,6 +20,7 @@ import {
   Text,
   Dimensions,
   Platform,
+  Animated as RNAnimated,
 } from 'react-native'
 import {
   Canvas,
@@ -64,6 +65,7 @@ import {
   X,
   Gauge,
   ChartBar,
+  TreeStructure,
 } from 'phosphor-react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { CoachMark } from '@/components/ui/CoachMark'
@@ -72,6 +74,112 @@ import type { NetworkNode, PathResult, ValidationResult } from '@/types'
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
 const CANVAS_HEIGHT = SCREEN_HEIGHT - 200
+
+// ── Empty canvas overlay ─────────────────────────────────────────────────────
+function EmptyCanvasOverlay() {
+  const fadeAnim  = React.useRef(new RNAnimated.Value(0)).current
+  const slideAnim = React.useRef(new RNAnimated.Value(16)).current
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      RNAnimated.parallel([
+        RNAnimated.timing(fadeAnim,  { toValue: 1, duration: 500, useNativeDriver: true }),
+        RNAnimated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
+      ]).start()
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [])
+
+  return (
+    <RNAnimated.View
+      style={[emptyStyles.overlay, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      pointerEvents="none"
+    >
+      <View style={emptyStyles.iconRing}>
+        <TreeStructure size={32} color="rgba(99,132,255,0.7)" weight="duotone" />
+      </View>
+      <Text style={emptyStyles.title}>No devices yet</Text>
+      <Text style={emptyStyles.subtitle}>
+        Tap{' '}
+        <Text style={emptyStyles.highlight}>+</Text>
+        {' '}in the tab bar to create your first network
+      </Text>
+      <View style={emptyStyles.hintRow}>
+        <View style={emptyStyles.hintDot} />
+        <Text style={emptyStyles.hintText}>Tap a node to inspect it</Text>
+      </View>
+      <View style={emptyStyles.hintRow}>
+        <View style={emptyStyles.hintDot} />
+        <Text style={emptyStyles.hintText}>Tap two nodes to find the shortest path</Text>
+      </View>
+      <View style={emptyStyles.hintRow}>
+        <View style={emptyStyles.hintDot} />
+        <Text style={emptyStyles.hintText}>Long-press a node to simulate failure</Text>
+      </View>
+    </RNAnimated.View>
+  )
+}
+
+const emptyStyles = StyleSheet.create({
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+    gap: 10,
+    zIndex: 5,
+  },
+  iconRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(99,132,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(99,132,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  title: {
+    fontFamily: 'Outfit_600SemiBold',
+    fontSize: 20,
+    color: 'rgba(226,232,240,0.90)',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    color: 'rgba(147,197,253,0.65)',
+    textAlign: 'center',
+    lineHeight: 21,
+    marginBottom: 6,
+  },
+  highlight: {
+    fontFamily: 'Inter_700Bold',
+    color: 'rgba(147,197,253,0.90)',
+  },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+  },
+  hintDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(99,132,255,0.50)',
+  },
+  hintText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: 'rgba(147,197,253,0.50)',
+  },
+})
 
 const systemFont = matchFont({
   fontFamily: Platform.OS === 'ios' ? 'Helvetica' : 'sans-serif',
@@ -762,6 +870,9 @@ export function NetworkGraph({
 
   return (
     <View style={styles.container}>
+      {/* Empty canvas onboarding overlay */}
+      {departments.length === 0 && <EmptyCanvasOverlay />}
+
       {/* Viz mode banner + speed dial */}
       {vizActive && !autoVizRef.current && (
         <View style={styles.vizBanner}>

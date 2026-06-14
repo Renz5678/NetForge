@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react'
+import React, { useRef, useEffect, useState } from 'react'
 import { View, Text, StyleSheet, Animated } from 'react-native'
 import { Colors } from '@/constants/colors'
 
@@ -17,8 +17,11 @@ function getScoreColor(score: number): string {
 export function ValidationScoreRing({ score, label, sublabel }: Props) {
   const scaleAnim = useRef(new Animated.Value(0.7)).current
   const fadeAnim  = useRef(new Animated.Value(0)).current
+  const countAnim = useRef(new Animated.Value(0)).current
+  const [displayScore, setDisplayScore] = useState(0)
 
   useEffect(() => {
+    // Entrance animation
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -32,6 +35,19 @@ export function ValidationScoreRing({ score, label, sublabel }: Props) {
         useNativeDriver: true,
       }),
     ]).start()
+
+    // Count-up animation
+    const id = countAnim.addListener(({ value }) => {
+      setDisplayScore(Math.round(value))
+    })
+    Animated.timing(countAnim, {
+      toValue: score,
+      duration: 900,
+      delay: 200,
+      useNativeDriver: false,
+    }).start()
+
+    return () => countAnim.removeListener(id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -51,7 +67,7 @@ export function ValidationScoreRing({ score, label, sublabel }: Props) {
           {/* Center content */}
           <View style={styles.center}>
             <Text style={[styles.scoreText, { color: scoreColor }]}>
-              {score}%
+              {displayScore}%
             </Text>
           </View>
         </View>

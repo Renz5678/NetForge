@@ -1,10 +1,11 @@
 // AlgorithmToast.tsx
 // Brief floating badge that appears after an auto-triggered algorithm completes.
 // Shows the algorithm name and result in network-engineer language (not CS textbook).
-// Auto-dismisses after 3 seconds. Tapping it opens the full step-by-step replay.
+// Auto-dismisses after 3.5 seconds. Tapping it opens the full step-by-step replay.
+// Swipe right to dismiss manually.
 
 import React, { useEffect, useRef } from 'react'
-import { View, Text, StyleSheet, Pressable, Animated } from 'react-native'
+import { View, Text, StyleSheet, Pressable, Animated, PanResponder } from 'react-native'
 import { Colors } from '@/constants/colors'
 
 export type ToastData = {
@@ -21,23 +22,55 @@ type Props = {
 }
 
 export function AlgorithmToast({ toast, onDismiss }: Props) {
-  const opacity = useRef(new Animated.Value(0)).current
-  const translateY = useRef(new Animated.Value(-8)).current
+  const opacity    = useRef(new Animated.Value(0)).current
+  const translateY = useRef(new Animated.Value(20)).current
+  const scaleAnim  = useRef(new Animated.Value(0.88)).current
+  const translateX = useRef(new Animated.Value(0)).current
+
+  const onDismissRef = useRef(onDismiss)
+  useEffect(() => { onDismissRef.current = onDismiss }, [onDismiss])
+
+  // Swipe-right-to-dismiss pan responder
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > Math.abs(gs.dy) && gs.dx > 0,
+      onPanResponderMove: (_, gs) => {
+        if (gs.dx > 0) translateX.setValue(gs.dx)
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dx > 80 || gs.vx > 0.6) {
+          Animated.parallel([
+            Animated.timing(translateX, { toValue: 400, duration: 200, useNativeDriver: true }),
+            Animated.timing(opacity,    { toValue: 0,   duration: 180, useNativeDriver: true }),
+          ]).start(() => onDismissRef.current())
+        } else {
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 260 }).start()
+        }
+      },
+    })
+  ).current
 
   useEffect(() => {
     if (!toast) {
-      // Fade out
+      // Fade + slide out
       Animated.parallel([
-        Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(translateY, { toValue: -8, duration: 200, useNativeDriver: true }),
+        Animated.timing(opacity,     { toValue: 0,  duration: 180, useNativeDriver: true }),
+        Animated.timing(translateY,  { toValue: 20, duration: 180, useNativeDriver: true }),
+        Animated.timing(scaleAnim,   { toValue: 0.88, duration: 180, useNativeDriver: true }),
       ]).start()
+      translateX.setValue(0)
       return
     }
 
-    // Fade in
+    // Reset X before each new toast
+    translateX.setValue(0)
+
+    // Spring pop-up entrance
     Animated.parallel([
-      Animated.spring(opacity, { toValue: 1, useNativeDriver: true, tension: 160, friction: 14 }),
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 160, friction: 14 }),
+      Animated.spring(opacity,    { toValue: 1, useNativeDriver: true, damping: 18, stiffness: 260, mass: 0.8 }),
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, damping: 18, stiffness: 260, mass: 0.8 }),
+      Animated.spring(scaleAnim,  { toValue: 1, useNativeDriver: true, damping: 16, stiffness: 280, mass: 0.7 }),
     ]).start()
 
     // Auto-dismiss after 3.5 seconds
@@ -57,9 +90,18 @@ export function AlgorithmToast({ toast, onDismiss }: Props) {
       style={[
         styles.container,
         toast.insight && styles.containerWide,
-        { backgroundColor: bg, borderColor: border, opacity, transform: [{ translateY }] },
+        {
+          backgroundColor: bg,
+          borderColor: border,
+          opacity,
+          transform: [
+            { translateY },
+            { translateX },
+            { scale: scaleAnim },
+          ],
+        },
       ]}
-      pointerEvents="box-none"
+      {...panResponder.panHandlers}
     >
       <View style={styles.topRow}>
         <View style={[styles.dot, { backgroundColor: dot }]} />
@@ -87,15 +129,15 @@ const styles = StyleSheet.create({
     top: 54,
     alignSelf: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 16,
     borderWidth: 1,
     zIndex: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 8,
     maxWidth: 320,
   },
   containerWide: {
