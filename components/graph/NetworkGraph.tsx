@@ -24,18 +24,13 @@ import {
 import {
   Canvas,
   Group,
-  useFont,
-  RoundedRect,
-  Text as SkiaText,
   matchFont,
   Circle,
-  Paint,
   Rect,
 } from '@shopify/react-native-skia'
 import { GestureDetector, Gesture } from 'react-native-gesture-handler'
-import Animated, {
+import {
   useSharedValue,
-  useAnimatedStyle,
   withSpring,
   useDerivedValue,
 } from 'react-native-reanimated'
@@ -44,7 +39,7 @@ import { useGraphLayout } from '@/hooks/useGraphLayout'
 import { findShortestPath } from '@/lib/algorithms/dijkstra'
 import { validateConnectivity } from '@/lib/algorithms/bfsValidator'
 import { detectCycles } from '@/lib/algorithms/cycleDetection'
-import { useVisualizationStore, SPEED_MS } from '@/stores/useVisualizationStore'
+import { useVisualizationStore } from '@/stores/useVisualizationStore'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { GraphNodeComponent, NODE_WIDTH, NODE_HEIGHT } from './GraphNode'
 import { GraphEdgeComponent } from './GraphEdge'
@@ -59,15 +54,13 @@ import {
   MagnifyingGlassMinus,
   CornersOut,
   ArrowCounterClockwise,
-  Play,
   Warning,
   X,
-  Gauge,
   ChartBar,
 } from 'phosphor-react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { CoachMark } from '@/components/ui/CoachMark'
-import { ExplainModeToggle } from '@/components/ui/ExplainModeToggle'
+
 import type { NetworkNode, PathResult, ValidationResult } from '@/types'
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
@@ -109,7 +102,7 @@ export function NetworkGraph({
 }: NetworkGraphProps) {
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])
   const [pathResult, setPathResult] = useState<PathResult | null>(null)
-  const [showLegend, setShowLegend] = useState(true)
+
   const [toast, setToast] = useState<ToastData | null>(null)
   const [showFailureSheet, setShowFailureSheet] = useState(false)
   const [tooltipNodeId, setTooltipNodeId] = useState<string | null>(null)
@@ -127,7 +120,7 @@ export function NetworkGraph({
 
   const [showCoachMark, setShowCoachMark] = useState(false)
   const [showAlgoHint, setShowAlgoHint] = useState(true)
-  const [sessionHasSelectedTwoNodes, setSessionHasSelectedTwoNodes] = useState(false)
+
 
   useEffect(() => {
     if (showAlgoHint) {
@@ -421,7 +414,6 @@ export function NetworkGraph({
         setTooltipNodeId(null)
         setTooltipPos(null)
         setShowAlgoHint(false)
-        setSessionHasSelectedTwoNodes(true)
 
         // ── Cycle gate: if a loop exists, Dijkstra cannot safely route ────────
         // DFS cycle detection is cheap (O(V+E)) and runs synchronously here.
@@ -605,13 +597,7 @@ export function NetworkGraph({
     onPathFound?.(null, [])
   }
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
-  }))
+
 
   // ── Viz state resolvers ───────────────────────────────────────────────────
   const getNodeVizState = (nodeId: string) => {
@@ -736,14 +722,13 @@ export function NetworkGraph({
   // ── Validation badge ──────────────────────────────────────────────────────
   const hasBadge   = departments.length > 0 && validationPassed !== undefined
   const badgeColor = validationPassed ? Colors.success : Colors.warning
-  const badgeBg    = validationPassed ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)'
-  const badgeBorder = validationPassed ? 'rgba(16,185,129,0.30)' : 'rgba(245,158,11,0.30)'
+
   const badgeLabel = validationPassed
     ? '✓ Valid'
     : `⚠ ${validationWarnings} warning${validationWarnings !== 1 ? 's' : ''}`
 
   // ── Parallel edge index ───────────────────────────────────────────────────
-  const { pairCount, edgeParallelInfo } = useMemo(() => {
+  const { edgeParallelInfo } = useMemo(() => {
     const pc = new Map<string, number>()
     for (const e of edges) {
       const key = [e.source, e.target].sort().join('|')
@@ -757,7 +742,7 @@ export function NetworkGraph({
       ri.set(key, idx + 1)
       return { idx, total }
     })
-    return { pairCount: pc, edgeParallelInfo: info }
+    return { edgeParallelInfo: info }
   }, [edges])
 
   return (
@@ -956,9 +941,7 @@ export function NetworkGraph({
           onAnalyze={() => {
             setTooltipNodeId(null)
             setTooltipPos(null)
-            setShowLegend(true)
             setShowAlgoHint(false)
-            setSessionHasSelectedTwoNodes(true)
             onVisualize?.()
           }}
           onSimFailure={() => {
@@ -977,7 +960,6 @@ export function NetworkGraph({
             style={styles.analyzeCompact}
             onPress={() => {
               setShowAlgoHint(false)
-              setSessionHasSelectedTwoNodes(true)
               onVisualize()
             }}
           >

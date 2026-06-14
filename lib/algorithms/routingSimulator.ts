@@ -2,7 +2,7 @@
 // Pure function — no side effects.
 // Implements Longest Prefix Match, OSPF Dynamic Area propagation, L2 VLAN switch forwarding, and Dijkstra path tracing.
 
-import type { NetworkNode, RouterNode, InterfacePort, StaticRoute, OspfConfig } from '@/types'
+import type { NetworkNode, RouterNode, InterfacePort } from '@/types'
 import { ipToUint32, uint32ToIp, cidrToMask, ipInSubnet } from '@/lib/ipUtils'
 import { evaluateAcl, findMatchingRule, type AclPacket } from '@/lib/algorithms/aclEngine'
 
@@ -78,7 +78,7 @@ export function compileRoutingTables(nodes: NetworkNode[]): Map<string, RoutingT
 
     // Fallback directly connected route for departments
     if (node.subnet) {
-      const [ip, prefixStr] = node.subnet.split('/')
+      const [_, prefixStr] = node.subnet.split('/')
       const prefix = parseInt(prefixStr ?? '24', 10)
       entries.push({
         destination: node.subnet,

@@ -9,10 +9,9 @@ import {
   Text,
   StyleSheet,
   Animated,
-  View,
   Alert,
 } from 'react-native'
-import { GraduationCap, EyeSlash } from 'phosphor-react-native'
+import { GraduationCap } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
 import { useConfigStore } from '@/stores/useConfigStore'
 

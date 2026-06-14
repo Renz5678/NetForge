@@ -7,8 +7,7 @@ import {
   Pressable,
   TextInput,
   StatusBar,
-  Animated,
-  Dimensions
+  Animated
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
@@ -100,7 +99,7 @@ function ConfigSkeleton() {
   )
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window')
+
 
 function SwipeableConfigCard({
   children,

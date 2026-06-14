@@ -34,7 +34,7 @@ import {
   Compass,
   Target,
 } from 'phosphor-react-native'
-import type { ComparisonResult } from '@/stores/useVisualizationStore'
+
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window')
 const PANEL_HEIGHT = SCREEN_HEIGHT * 0.45

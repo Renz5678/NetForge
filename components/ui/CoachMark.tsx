@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Dimensions,
 } from 'react-native'
 import Animated, {
   useSharedValue,

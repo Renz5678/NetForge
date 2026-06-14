@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -50,7 +50,7 @@ import {
   SlidersHorizontal,
 } from 'phosphor-react-native'
 import { useConfigStore } from '@/stores/useConfigStore'
-import { useAuthStore } from '@/stores/useAuthStore'
+
 import { useValidation } from '@/hooks/useValidation'
 import { useVisualizationStore } from '@/stores/useVisualizationStore'
 import { BottomSheet } from '@/components/ui/BottomSheet'
@@ -224,7 +224,7 @@ function PathResultSheet({
   )
 }
 
-import type { DeviceType, InterfacePort, StaticRoute, OspfConfig, AclRule } from '@/types'
+import type { DeviceType, InterfacePort, StaticRoute, AclRule } from '@/types'
 
 function initializeDefaultPorts(type: DeviceType, existingPorts?: InterfacePort[]): InterfacePort[] {
   if (existingPorts && existingPorts.length > 0) return existingPorts;
@@ -756,7 +756,6 @@ function DeptSheet({
 export default function ConfigDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
-  const user = useAuthStore((s) => s.user)
   // useConfigStore: always use granular selectors — never destructure the whole store.
   // See AGENTS.md §6 for rationale.
   const activeConfig      = useConfigStore((s) => s.activeConfig)
@@ -1106,7 +1105,7 @@ export default function ConfigDetailScreen() {
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
-            renderItem={({ item, index }) => (
+            renderItem={({ item }) => (
               <Animated.View
                 entering={FadeIn.duration(160)}
                 key={item.id}

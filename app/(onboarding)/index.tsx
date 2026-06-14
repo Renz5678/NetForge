@@ -26,9 +26,7 @@ import {
   ShieldCheck,
   GraduationCap,
   ArrowRight,
-  HardDrives,
   Globe,
-  TreeStructure,
 } from 'phosphor-react-native'
 import { RouterIcon } from '@/components/ui/DeviceIcons'
 
@@ -41,11 +39,6 @@ function TopologyBuilderIllustration({ step }: { step: number }) {
   const showSwitch = step >= 1
   const showLink = step >= 2
   const showIPs = step >= 3
-
-  const nodes = [
-    { x: 90, y: 80, label: 'Router', color: Colors.primary, type: 'circle' },
-    { x: 210, y: 80, label: 'Switch', color: Colors.medium, type: 'circle', show: showSwitch },
-  ]
 
   return (
     <View style={illus.wrapper}>

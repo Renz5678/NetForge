@@ -14,7 +14,7 @@ import React from 'react'
 import { View, Text, StyleSheet, Pressable } from 'react-native'
 import { CaretRight } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
-import type { Finding, FindingSeverity } from '@/lib/validatePass'
+import type { Finding } from '@/lib/validatePass'
 import { severityColor, severityLabel } from '@/lib/validateColors'
 
 type Props = {

@@ -1,6 +1,6 @@
 // Shows a Copy button that animates to a checkmark for 1.5s after copying
 import React, { useState, useRef } from 'react'
-import { Pressable, Text, View, StyleSheet, Animated } from 'react-native'
+import { Pressable, Text, StyleSheet, Animated } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import { Copy, Check } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'

@@ -52,7 +52,7 @@ export function buildCycleDetectionSteps(
   // Convert color map to NodeVizState snapshot
   function snapshotStates(
     highlightCycle?: Set<string>,
-    backEdge?: { from: string; to: string }
+
   ): Record<string, NodeVizState> {
     const states: Record<string, NodeVizState> = {}
     for (const dept of departments) {

@@ -9,7 +9,7 @@
  * FAB creates a new project and navigates directly to canvas.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   View,
   Text,
@@ -18,10 +18,6 @@ import {
   ScrollView,
   FlatList,
   Animated,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
@@ -30,7 +26,6 @@ import {
   TreeStructure,
   CaretDown,
   ShieldCheck,
-  Warning,
   ArrowRight,
   Buildings,
   ChartPieSlice,
@@ -276,7 +271,6 @@ export default function CanvasScreen() {
   const setCreateModalOpen = useConfigStore((s) => s.setCreateModalOpen)
   const loading        = useConfigStore((s) => s.loading)
   const loadConfigs    = useConfigStore((s) => s.loadConfigs)
-  const createConfig   = useConfigStore((s) => s.createConfig)
   const setActiveConfig = useConfigStore((s) => s.setActiveConfig)
   const [switcherOpen, setSwitcherOpen] = useState(false)
 
@@ -788,100 +782,4 @@ const styles = StyleSheet.create({
   },
 })
 
-// ── Name-prompt modal styles ──────────────────────────────────────────────────
 
-const namePrompt = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,26,65,0.45)',
-  },
-  card: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 36,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.10,
-        shadowRadius: 18,
-      },
-      android: { elevation: 20 },
-    }),
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.border,
-    alignSelf: 'center',
-    marginBottom: 22,
-  },
-  heading: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 22,
-    color: Colors.textPrimary,
-    marginBottom: 6,
-  },
-  sub: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: Colors.textMuted,
-    marginBottom: 22,
-  },
-  input: {
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 16,
-    color: Colors.textPrimary,
-    backgroundColor: Colors.white,
-    marginBottom: 20,
-  },
-  actions: {
-    gap: 10,
-  },
-  confirmBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  confirmBtnDisabled: {
-    backgroundColor: Colors.border,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  confirmText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
-    color: Colors.white,
-  },
-  confirmTextDisabled: {
-    color: Colors.textMuted,
-  },
-  cancelBtn: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  cancelText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 15,
-    color: Colors.textMuted,
-  },
-})

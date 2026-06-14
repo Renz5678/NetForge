@@ -23,8 +23,8 @@ import { detectCycles } from '@/lib/algorithms/cycleDetection'
 import { evaluateAcl, findMatchingRule } from '@/lib/algorithms/aclEngine'
 import type { AclPacket } from '@/lib/algorithms/aclEngine'
 import { findMinimumSpanningTree } from '@/lib/algorithms/prims'
-import { ipToUint32, uint32ToIp, cidrToMask } from '@/lib/ipUtils'
-import type { NetworkConfig, NetworkNode } from '@/types'
+import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
+import type { NetworkConfig } from '@/types'
 
 // ─── Result Types ─────────────────────────────────────────────────────────────
 
@@ -297,7 +297,7 @@ export function checkResilience(config: NetworkConfig): Finding[] {
   const findings: Finding[] = []
   const result = findArticulationPoints(departments)
   const idToName = new Map(departments.map((d) => [d.id, d.name]))
-  const idToDept = new Map(departments.map((d) => [d.id, d]))
+
 
   // Emitting Deployment Order
   const topoOrder = topologicalSort(departments)
@@ -524,7 +524,7 @@ export function checkCorrectness(config: NetworkConfig): Finding[] {
 
 // ─── Phase 5: Optimization ────────────────────────────────────────────────────
 
-export function checkOptimization(config: NetworkConfig, resilienceFindings: Finding[]): Finding[] {
+export function checkOptimization(config: NetworkConfig, _resilienceFindings?: Finding[]): Finding[] {
   const { departments } = config
   if (departments.length <= 1) return []
 
@@ -547,16 +547,7 @@ export function checkOptimization(config: NetworkConfig, resilienceFindings: Fin
   const idToName = new Map(departments.map((d) => [d.id, d.name]))
   const seenEdges = new Set<string>()
 
-  const criticalIds = new Set(
-    resilienceFindings
-      .filter((f) => f.phase === 'resilience')
-      .flatMap((f) => f.affected.slice(0, 1))
-      .map((name) => {
-        const dept = departments.find((d) => d.name === name)
-        return dept?.id ?? ''
-      })
-      .filter(Boolean)
-  )
+
 
   for (const dept of departments) {
     for (const peerId of dept.peers) {

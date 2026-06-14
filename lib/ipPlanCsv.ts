@@ -10,7 +10,7 @@
  * Pure function — no side effects.
  */
 
-import { ipToUint32, uint32ToIp, cidrToMask } from '@/lib/ipUtils'
+import { ipToUint32, uint32ToIp } from '@/lib/ipUtils'
 import type { NetworkConfig, NetworkNode } from '@/types'
 
 function getNetworkAddress(dept: NetworkNode): string {

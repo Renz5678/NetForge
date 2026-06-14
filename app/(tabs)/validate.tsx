@@ -24,12 +24,12 @@ import { useRouter } from 'expo-router'
 import {
   ShieldCheck,
   TreeStructure,
-  Warning,
+
   CheckCircle,
   ArrowRight,
   Info,
   CaretRight,
-  ArrowLeft,
+
 } from 'phosphor-react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useConfigStore } from '@/stores/useConfigStore'
@@ -159,8 +159,7 @@ function isSampleConfig(id: string): boolean {
 export default function ValidateScreen() {
   const router = useRouter()
   const configs = useConfigStore((s) => s.configs)
-  const setActiveConfig = useConfigStore((s) => s.setActiveConfig)
-  const activeConfig = useConfigStore((s) => s.activeConfig)
+
   const appMode = usePreferencesStore((s) => s.appMode)
   const isStudent = appMode === 'student'
 

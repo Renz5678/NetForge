@@ -21,12 +21,8 @@ import {
   Dimensions,
 } from 'react-native'
 import {
-  ChartBar,
   Warning,
   X,
-  WifiHigh,
-  ShieldSlash,
-  Desktop,
   Graph,
 } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'

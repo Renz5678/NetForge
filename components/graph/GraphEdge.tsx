@@ -45,12 +45,7 @@ const LINK_STROKE: Record<string, number> = {
 }
 
 // ── Link type → dash pattern label ────────────────────────────────────────────
-const LINK_LABEL: Record<string, string> = {
-  wan:    'WAN',
-  routed: 'L3',
-  trunk:  'Trunk',
-  access: 'Access',
-}
+
 
 const portFont = matchFont({
   fontFamily: 'monospace',

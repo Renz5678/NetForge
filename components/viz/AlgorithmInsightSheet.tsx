@@ -242,11 +242,10 @@ function DijkstraContent({
 }
 
 function PrimsContent({
-  step, departments, totalSteps,
+  step, departments,
 }: {
   step: VisualizationStep
   departments: NetworkNode[]
-  totalSteps: number
 }) {
   const [open, setOpen] = useState(false)
   const edgeCount  = step.mstEdges?.length ?? 0
@@ -474,7 +473,7 @@ export function AlgorithmInsightSheet({
       case 'aStar':
         return <DijkstraContent step={currentStep} departments={departments} sourceId={sourceId} targetId={targetId} totalSteps={totalSteps} />
       case 'prims':
-        return <PrimsContent step={currentStep} departments={departments} totalSteps={totalSteps} />
+        return <PrimsContent step={currentStep} departments={departments} />
       case 'cycleDetection':
         return <CycleContent step={currentStep} departments={departments} totalSteps={totalSteps} />
       case 'topologicalSort':

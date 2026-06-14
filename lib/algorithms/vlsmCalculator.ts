@@ -298,7 +298,7 @@ export function calculateVLSM(
   allSteps.push(...allocSteps)
 
   const totalAllocated = results.reduce((sum, r) => sum + r.requiredHosts, 0)
-  const totalBlock = results.reduce((sum, r) => sum + Math.pow(2, 32 - r.prefix), 0)
+
   const totalWasted = results.reduce((sum, r) => sum + r.wastedHosts, 0)
   const utilizationPct = usableHosts > 0 ? Math.round((totalAllocated / usableHosts) * 100) : 0
 

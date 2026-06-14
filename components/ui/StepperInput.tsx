@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native'
+import { View, TextInput, Pressable, StyleSheet } from 'react-native'
 import { Colors } from '@/constants/colors'
 
 import { Minus, Plus } from 'phosphor-react-native'

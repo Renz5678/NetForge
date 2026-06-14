@@ -75,7 +75,7 @@ export function buildPrimsSteps(
   const orderedNodes: string[] = []
   let totalCost = 0
 
-  function snapshotStates(frontier: Set<string>, highlightNode?: string): Record<string, NodeVizState> {
+  function snapshotStates(frontier: Set<string>): Record<string, NodeVizState> {
     const states: Record<string, NodeVizState> = {}
     for (const dept of departments) {
       if (inMST.has(dept.id)) states[dept.id] = 'mstIncluded'
@@ -160,7 +160,7 @@ export function buildPrimsSteps(
       stepIndex: steps.length,
       explanation: baseExp + frontierExp,
       hint: `We select the cheapest link on the frontier to connect a new node, then add its neighbors to expand the frontier.`,
-      nodeStates: snapshotStates(frontier, entry.nodeId),
+      nodeStates: snapshotStates(frontier),
       mstEdges: [...mstEdges],
       mstCost: totalCost,
       currentEdge: { source: entry.fromId ?? '', target: entry.nodeId, weight: entry.cost },

@@ -1,6 +1,6 @@
 import React from 'react'
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native'
-import { CloudArrowUp, CloudSlash } from 'phosphor-react-native'
+import { CloudSlash } from 'phosphor-react-native'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { Colors } from '@/constants/colors'
 

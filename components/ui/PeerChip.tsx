@@ -5,7 +5,6 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   withTiming,
-  runOnJS,
 } from 'react-native-reanimated'
 import { Colors } from '@/constants/colors'
 import { Check } from 'phosphor-react-native'

@@ -16,7 +16,7 @@
  * Student Mode: shows "Study this network" row below Export All.
  */
 
-import React, { useState, useCallback, useRef } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,

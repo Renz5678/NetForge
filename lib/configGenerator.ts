@@ -44,7 +44,7 @@ function wildcardFromCidr(cidr: string): string {
 
 // ─── Per-device generators ───────────────────────────────────────────────────
 
-function generateRouterConfig(node: RouterNode, allNodes: NetworkNode[]): string {
+function generateRouterConfig(node: RouterNode): string {
   const lines: string[] = []
   lines.push(banner(node.name))
   lines.push(`hostname ${node.name.replace(/\s+/g, '_')}`)
@@ -93,7 +93,7 @@ function generateRouterConfig(node: RouterNode, allNodes: NetworkNode[]): string
   return lines.join('\n')
 }
 
-function generateSwitchConfig(node: SwitchNode, allNodes: NetworkNode[]): string {
+function generateSwitchConfig(node: SwitchNode): string {
   const lines: string[] = []
   lines.push(banner(node.name))
   lines.push(`hostname ${node.name.replace(/\s+/g, '_')}`)
@@ -144,7 +144,7 @@ function generateSwitchConfig(node: SwitchNode, allNodes: NetworkNode[]): string
   return lines.join('\n')
 }
 
-function generateFirewallConfig(node: FirewallNode, allNodes: NetworkNode[]): string {
+function generateFirewallConfig(node: FirewallNode): string {
   const lines: string[] = []
   lines.push(banner(node.name))
   lines.push(`hostname ${node.name.replace(/\s+/g, '_')}`)
@@ -195,15 +195,14 @@ function generateFirewallConfig(node: FirewallNode, allNodes: NetworkNode[]): st
   return lines.join('\n')
 }
 
-function generateDepartmentConfig(node: DepartmentNode, allNodes: NetworkNode[]): string {
+function generateDepartmentConfig(node: DepartmentNode): string {
   const lines: string[] = []
   lines.push(banner(node.name))
   lines.push(`hostname ${node.name.replace(/\s+/g, '_')}`)
   lines.push('!')
 
   if (node.subnet) {
-    const [ip, prefix] = node.subnet.split('/')
-    const mask = prefixToMask(parseInt(prefix, 10))
+    node.subnet.split('/')
     // Assume .1 of subnet is the gateway
     const gwIp = gatewayIp(node.subnet)
     lines.push(`! --- End-host segment: ${node.name} ---`)
@@ -219,7 +218,7 @@ function generateDepartmentConfig(node: DepartmentNode, allNodes: NetworkNode[])
   return lines.join('\n')
 }
 
-function generateWanConfig(node: WanNode, allNodes: NetworkNode[]): string {
+function generateWanConfig(node: WanNode): string {
   const lines: string[] = []
   lines.push(banner(node.name))
   lines.push(`hostname ${node.name.replace(/\s+/g, '_')}`)
@@ -246,15 +245,14 @@ function generateWanConfig(node: WanNode, allNodes: NetworkNode[]): string {
 /**
  * Generate a Cisco IOS configuration block for a single device node.
  */
-export function generateCiscoConfig(node: NetworkNode, allNodes: NetworkNode[]): string {
+export function generateCiscoConfig(node: NetworkNode): string {
   switch (node.type) {
-    case 'router':   return generateRouterConfig(node, allNodes)
-    case 'switch':   return generateSwitchConfig(node, allNodes)
-    case 'firewall': return generateFirewallConfig(node, allNodes)
-    case 'wan':      return generateWanConfig(node, allNodes)
-    case 'department': return generateDepartmentConfig(node, allNodes)
+    case 'router':   return generateRouterConfig(node)
+    case 'switch':   return generateSwitchConfig(node)
+    case 'firewall': return generateFirewallConfig(node)
+    case 'wan':      return generateWanConfig(node)
+    case 'department': return generateDepartmentConfig(node)
     default: {
-      const _exhaustive: never = node
       return ''
     }
   }
@@ -286,7 +284,7 @@ export function generateFullTopologyConfig(config: NetworkConfig): string {
   ].join('\n')
 
   const deviceConfigs = sorted
-    .map((node) => generateCiscoConfig(node, config.departments))
+    .map((node) => generateCiscoConfig(node))
     .join('\n\n')
 
   return header + deviceConfigs + '\n\n! end\n'
