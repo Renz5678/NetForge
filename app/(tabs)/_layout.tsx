@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { Tabs } from 'expo-router'
-import { StyleSheet, View, Modal, KeyboardAvoidingView, Platform, Text, TextInput, Pressable } from 'react-native'
+import { StyleSheet, View, Modal, KeyboardAvoidingView, Platform, Text, TextInput, Pressable, Animated } from 'react-native'
 import { TreeStructure, ShieldCheck, Export, ChartPieSlice, Plus } from 'phosphor-react-native'
 import { Colors } from '@/constants/colors'
 import { useConfigStore } from '@/stores/useConfigStore'
@@ -19,6 +19,47 @@ function TabIconWithBadge({
     <View style={styles.badgeWrap}>
       {icon}
       {showBadge && <View style={styles.dot} />}
+    </View>
+  )
+}
+
+/** Animated tab icon wrapper — slides a pill in/out using spring when focus changes. */
+function AnimatedTabIcon({
+  icon,
+  focused,
+}: {
+  icon: React.ReactNode
+  focused: boolean
+}) {
+  const scaleAnim  = useRef(new Animated.Value(focused ? 1 : 0.82)).current
+  const opacityAnim = useRef(new Animated.Value(focused ? 1 : 0)).current
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: focused ? 1 : 0.82,
+        useNativeDriver: true,
+        damping: 18,
+        stiffness: 280,
+        mass: 0.7,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: focused ? 1 : 0,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+    ]).start()
+  }, [focused])
+
+  return (
+    <View style={styles.iconWrap}>
+      <Animated.View
+        style={[
+          styles.pill,
+          { opacity: opacityAnim, transform: [{ scaleX: scaleAnim }] },
+        ]}
+      />
+      {icon}
     </View>
   )
 }
@@ -79,10 +120,9 @@ export default function TabsLayout() {
           options={{
             title: 'Canvas',
             tabBarIcon: ({ color, focused }) => (
-              <View style={styles.iconWrap}>
-                {focused && <View style={styles.indicator} />}
+              <AnimatedTabIcon focused={focused} icon={
                 <TreeStructure size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
-              </View>
+              } />
             ),
           }}
         />
@@ -93,13 +133,12 @@ export default function TabsLayout() {
           options={{
             title: 'Validate',
             tabBarIcon: ({ color, focused }) => (
-              <View style={styles.iconWrap}>
-                {focused && <View style={styles.indicator} />}
+              <AnimatedTabIcon focused={focused} icon={
                 <TabIconWithBadge
                   showBadge={!hasActiveConfig}
                   icon={<ShieldCheck size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />}
                 />
-              </View>
+              } />
             ),
           }}
         />
@@ -132,10 +171,9 @@ export default function TabsLayout() {
           options={{
             title: 'Subnet',
             tabBarIcon: ({ color, focused }) => (
-              <View style={styles.iconWrap}>
-                {focused && <View style={styles.indicator} />}
+              <AnimatedTabIcon focused={focused} icon={
                 <ChartPieSlice size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
-              </View>
+              } />
             ),
           }}
         />
@@ -146,13 +184,12 @@ export default function TabsLayout() {
           options={{
             title: 'Export',
             tabBarIcon: ({ color, focused }) => (
-              <View style={styles.iconWrap}>
-                {focused && <View style={styles.indicator} />}
+              <AnimatedTabIcon focused={focused} icon={
                 <TabIconWithBadge
                   showBadge={!hasActiveConfig}
                   icon={<Export size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />}
                 />
-              </View>
+              } />
             ),
           }}
         />
@@ -247,16 +284,19 @@ const styles = StyleSheet.create({
   },
   iconWrap: {
     alignItems: 'center',
+    justifyContent: 'center',
     position: 'relative',
+    minWidth: 44,
+    minHeight: 32,
   },
-  indicator: {
+  pill: {
     position: 'absolute',
-    top: -8,
-    left: -6,
-    right: -6,
-    height: 2,
+    top: -6,
+    left: -10,
+    right: -10,
+    height: 3,
     backgroundColor: Colors.primary,
-    borderRadius: 1,
+    borderRadius: 2,
   },
   badgeWrap: {
     position: 'relative',

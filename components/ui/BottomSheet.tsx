@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors } from '@/constants/colors'
+import { useHaptics } from '@/hooks/useHaptics'
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window')
 
@@ -24,6 +25,7 @@ type BottomSheetProps = {
 
 export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }: BottomSheetProps) {
   const insets = useSafeAreaInsets()
+  const haptics = useHaptics()
   const translateY   = useRef(new Animated.Value(SCREEN_HEIGHT)).current
   const opacity      = useRef(new Animated.Value(0)).current
   const handleScale  = useRef(new Animated.Value(1)).current
@@ -85,6 +87,7 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
       },
       onPanResponderRelease: (_, gestureState) => {
         if (gestureState.dy > 80 || gestureState.vy > 0.5) {
+          haptics.light()
           Animated.parallel([
             Animated.timing(translateY, {
               toValue: SCREEN_HEIGHT,

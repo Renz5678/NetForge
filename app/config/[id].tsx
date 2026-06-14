@@ -1166,19 +1166,10 @@ export default function ConfigDetailScreen() {
                 <Globe size={48} color={Colors.primary} weight="duotone" style={{ marginBottom: 12 }} />
                 <Text style={styles.emptyTitle}>No departments yet</Text>
                 <Text style={styles.emptySubtitle}>
-                  Add your first department to start building your network topology.
+                  Tap the{' '}
+                  <Text style={{ fontFamily: 'Inter_700Bold', color: Colors.primary }}>+</Text>
+                  {' '}button to add your first node and start building your topology.
                 </Text>
-                <View style={{ marginTop: 12, alignSelf: 'stretch', paddingHorizontal: 24 }}>
-                  <Button
-                    label="Add Department"
-                    variant="primary"
-                    fullWidth
-                    onPress={() => {
-                      setEditingDept(null)
-                      setShowAddSheet(true)
-                    }}
-                  />
-                </View>
               </View>
             }
           />
@@ -1254,18 +1245,17 @@ export default function ConfigDetailScreen() {
                     <ListNumbers size={48} color={Colors.primary} weight="duotone" style={{ marginBottom: 12 }} />
                     <Text style={styles.emptyTitle}>No subnets allocated</Text>
                     <Text style={styles.emptySubtitle}>
-                      Add departments to automatically compute subnets.
+                      Add departments first — subnet details are computed automatically.
                     </Text>
-                    <View style={{ marginTop: 12, width: 180 }}>
-                      <Button
-                        label="Add Department"
-                        variant="primary"
-                        onPress={() => {
-                          setEditingDept(null)
-                          setShowAddSheet(true)
-                        }}
-                      />
-                    </View>
+                    <Pressable
+                      style={{ marginTop: 14, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                      onPress={() => setActiveTab('departments')}
+                    >
+                      <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 14, color: Colors.primary }}>
+                        Go to Departments
+                      </Text>
+                      <ArrowLeft size={14} color={Colors.primary} style={{ transform: [{ scaleX: -1 }] }} />
+                    </Pressable>
                   </View>
                 )}
               </View>

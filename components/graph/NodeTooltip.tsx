@@ -12,13 +12,14 @@
 //   - Simulate Failure (long-press equivalent)
 //   - Close
 
-import React from 'react'
+import React, { useRef, useEffect } from 'react'
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   Dimensions,
+  Animated,
 } from 'react-native'
 import {
   Warning,
@@ -76,6 +77,27 @@ export function NodeTooltip({
   const hasIp      = !!dept.subnet && dept.subnet !== '—'
   const vlanLabel  = dept.vlanId ? `VLAN ${dept.vlanId}` : 'No VLAN'
 
+  // Spring entrance animation
+  const scaleAnim   = useRef(new Animated.Value(0.82)).current
+  const opacityAnim = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        damping: 16,
+        stiffness: 300,
+        mass: 0.6,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 140,
+        useNativeDriver: true,
+      }),
+    ]).start()
+  }, [])
+
   // Position tooltip above the node with a small gap
   // Clamp so it doesn't overflow left/right screen edges
   const TOOLTIP_W = 230
@@ -85,8 +107,12 @@ export function NodeTooltip({
   const top = screenY - TOOLTIP_OFFSET_Y - 130  // 130 ≈ tooltip card height
 
   return (
-    <View
-      style={[styles.container, { left: clampedLeft, top }]}
+    <Animated.View
+      style={[
+        styles.container,
+        { left: clampedLeft, top },
+        { opacity: opacityAnim, transform: [{ scale: scaleAnim }] },
+      ]}
       pointerEvents="box-none"
     >
       {/* Caret / pointer at bottom */}
@@ -143,7 +169,7 @@ export function NodeTooltip({
           <Text style={styles.actionTextDanger}>Sim Failure</Text>
         </Pressable>
       </View>
-    </View>
+    </Animated.View>
   )
 }
 

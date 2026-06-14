@@ -33,6 +33,23 @@ export const Colors = {
   surface: '#FFFFFF',
   surfaceAlt: '#F1F3FF',
 
+  // ── Auth / Onboarding Gradient ──────────────────────────────────────────────
+  // Deep navy → cobalt used as full-bleed background on auth & onboarding screens
+  authDeep:   '#081428',   // darkest — status bar area
+  authMid:    '#0F2456',   // mid gradient
+  authCobalt: '#1D4ED8',   // brand cobalt
+  authLight:  '#4F86EF',   // lighter cobalt — bottom of hero gradient
+
+  // ── Glass Morphism ──────────────────────────────────────────────────────────
+  // Semi-transparent white for form cards floating on gradients
+  glass:       'rgba(255,255,255,0.95)',
+  glassBorder: 'rgba(255,255,255,0.55)',
+  glassOnDark: 'rgba(255,255,255,0.09)',  // for panels sitting on the dark hero
+
+  // ── Tab Bar ─────────────────────────────────────────────────────────────────
+  // Pill background shown behind the active tab icon
+  tabActive: '#EEF2FF',    // very light indigo — readable, non-distracting
+
   // Graph node states
   nodeValid: '#2563EB',
   nodeCycle: '#EF4444',

@@ -34,6 +34,7 @@ import {
   Globe,
   HardDrives,
   Broadcast,
+  FolderOpen,
 } from 'phosphor-react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -56,6 +57,27 @@ const TEMPLATE_ICONS: Record<string, React.ElementType> = {
   Broadcast,
 }
 
+// ─── Stagger helper ─────────────────────────────────────────────────────
+
+function AnimatedItem({ children, index, style }: { children: React.ReactNode; index: number; style?: object }) {
+  const fadeAnim  = React.useRef(new Animated.Value(0)).current
+  const slideAnim = React.useRef(new Animated.Value(18)).current
+
+  React.useEffect(() => {
+    const delay = index * 60
+    Animated.parallel([
+      Animated.timing(fadeAnim,  { toValue: 1, duration: 320, delay, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 320, delay, useNativeDriver: true }),
+    ]).start()
+  }, [])
+
+  return (
+    <Animated.View style={[style, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+      {children}
+    </Animated.View>
+  )
+}
+
 // ─── Mini Topology Thumbnail ─────────────────────────────────────────────────
 
 function MiniTopologyThumbnail({ config }: { config: NetworkConfig }) {
@@ -73,12 +95,69 @@ function MiniTopologyThumbnail({ config }: { config: NetworkConfig }) {
     }
   }
 
+  // Build simple positions in a row+wrap grid for the mini preview
+  const COLS = 4
+  const CELL = 20
+  const positions = visible.map((_, i) => ({
+    x: (i % COLS) * CELL + 4,
+    y: Math.floor(i / COLS) * CELL + 4,
+  }))
+
+  // Draw lines between connected peers (only those visible in the first 8)
+  const visibleIds = new Set(visible.map(d => d.id))
+  const lines: { x1: number; y1: number; x2: number; y2: number }[] = []
+  visible.forEach((d, i) => {
+    d.peers.forEach(peerId => {
+      const peerIdx = visible.findIndex(v => v.id === peerId)
+      if (peerIdx > i) { // avoid duplicates
+        lines.push({
+          x1: positions[i].x + 4,
+          y1: positions[i].y + 4,
+          x2: positions[peerIdx].x + 4,
+          y2: positions[peerIdx].y + 4,
+        })
+      }
+    })
+  })
+
+  const thumbW = COLS * CELL + 8
+  const thumbH = (Math.ceil(visible.length / COLS)) * CELL + 8
+
   return (
-    <View style={thumb.container}>
-      {visible.map((d) => (
+    <View style={[thumb.container, { width: thumbW, height: Math.max(thumbH, 36) }]}>
+      {/* Connection lines */}
+      {lines.map((l, i) => {
+        const dx = l.x2 - l.x1
+        const dy = l.y2 - l.y1
+        const length = Math.sqrt(dx * dx + dy * dy)
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI)
+        return (
+          <View
+            key={`line-${i}`}
+            style={[
+              thumb.line,
+              {
+                width: length,
+                left: l.x1,
+                top: l.y1 - 0.5,
+                transform: [{ rotate: `${angle}deg` }],
+              },
+            ]}
+          />
+        )
+      })}
+      {/* Dots */}
+      {visible.map((d, i) => (
         <View
           key={d.id}
-          style={[thumb.dot, { backgroundColor: getDotColor(d.type) }]}
+          style={[
+            thumb.dot,
+            {
+              backgroundColor: getDotColor(d.type),
+              left: positions[i].x,
+              top: positions[i].y,
+            },
+          ]}
         />
       ))}
       {remaining > 0 && (
@@ -93,23 +172,28 @@ function MiniTopologyThumbnail({ config }: { config: NetworkConfig }) {
 
 const thumb = StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 5,
-    padding: 8,
-    minHeight: 48,
-    alignContent: 'flex-start',
+    position: 'relative',
+    marginVertical: 4,
+  },
+  line: {
+    position: 'absolute',
+    height: 1,
+    backgroundColor: Colors.ice,
+    transformOrigin: '0 0',
   },
   dot: {
+    position: 'absolute',
     width: 8,
     height: 8,
     borderRadius: 4,
   },
   more: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
     fontFamily: 'Inter_500Medium',
     fontSize: 9,
     color: Colors.textMuted,
-    alignSelf: 'center',
   },
   empty: {
     fontFamily: 'Inter_400Regular',
@@ -134,19 +218,48 @@ function ActiveProjectHero({
   )
   const vlanCount = config.departments.filter((d) => d.vlanId !== undefined).length
 
+  // Pulsing dot for invalid state
+  const pulseAnim = React.useRef(new Animated.Value(1)).current
+  React.useEffect(() => {
+    if (!config.isValid) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.8, duration: 700, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1,   duration: 700, useNativeDriver: true }),
+        ])
+      ).start()
+    }
+    return () => pulseAnim.stopAnimation()
+  }, [config.isValid])
+
   return (
     <Pressable
-      style={({ pressed }) => [styles.heroCard, pressed && { opacity: 0.93 }]}
+      style={({ pressed }) => [styles.heroCard, pressed && { opacity: 0.93, transform: [{ scale: 0.985 }] }]}
       onPress={onPress}
     >
       {/* Status strip */}
       <View style={styles.heroStatus}>
-        <View
-          style={[
-            styles.validityDot,
-            { backgroundColor: config.isValid ? Colors.success : Colors.error },
-          ]}
-        />
+        <View style={{ width: 12, height: 12, alignItems: 'center', justifyContent: 'center' }}>
+          {!config.isValid && (
+            <Animated.View
+              style={[
+                styles.validityDot,
+                {
+                  backgroundColor: Colors.error,
+                  position: 'absolute',
+                  opacity: 0.35,
+                  transform: [{ scale: pulseAnim }],
+                },
+              ]}
+            />
+          )}
+          <View
+            style={[
+              styles.validityDot,
+              { backgroundColor: config.isValid ? Colors.success : Colors.error },
+            ]}
+          />
+        </View>
         <Text style={styles.heroStatusText}>
           {config.isValid ? 'Valid topology' : 'Needs attention'}
         </Text>
@@ -189,21 +302,16 @@ function ActiveProjectHero({
 
 // ─── Empty Project State ─────────────────────────────────────────────────────
 
-function EmptyProjectState({ onCreate }: { onCreate: () => void }) {
+function EmptyProjectState() {
   return (
     <View style={styles.emptyCard}>
       <TreeStructure size={44} color={Colors.primary} weight="duotone" />
       <Text style={styles.emptyTitle}>No active project</Text>
       <Text style={styles.emptySubtitle}>
-        Create a network topology or start from a scenario template below.
+        Tap the{' '}
+        <Text style={{ fontFamily: 'Inter_700Bold', color: Colors.primary }}>+</Text>
+        {' '}in the tab bar to create a topology, or pick a template below.
       </Text>
-      <Pressable
-        style={({ pressed }) => [styles.emptyButton, pressed && { opacity: 0.85 }]}
-        onPress={onCreate}
-      >
-        <Plus size={16} color={Colors.white} weight="bold" />
-        <Text style={styles.emptyButtonText}>New Project</Text>
-      </Pressable>
     </View>
   )
 }
@@ -236,7 +344,11 @@ function QuickAction({
   )
 }
 
-// ─── Loading Skeleton ─────────────────────────────────────────────────────────
+// ─── Loading Skeleton ───────────────────────────────────────────────────
+
+function SkeletonBlock({ style }: { style?: object }) {
+  return <View style={[{ backgroundColor: Colors.border, borderRadius: 6 }, style]} />
+}
 
 function Skeleton() {
   const pulse = React.useRef(new Animated.Value(0.4)).current
@@ -250,9 +362,25 @@ function Skeleton() {
   }, [pulse])
 
   return (
-    <Animated.View style={{ opacity: pulse }}>
-      <View style={[styles.heroCard, { height: 220, justifyContent: 'center', alignItems: 'center' }]}>
-        <View style={{ height: 24, width: '60%', backgroundColor: Colors.border, borderRadius: 6 }} />
+    <Animated.View style={{ opacity: pulse, gap: 12 }}>
+      {/* Hero card skeleton */}
+      <View style={[styles.heroCard, { minHeight: 220, gap: 12 }]}>
+        <SkeletonBlock style={{ height: 16, width: '40%' }} />
+        <SkeletonBlock style={{ height: 24, width: '70%' }} />
+        <SkeletonBlock style={{ height: 48, borderRadius: 10 }} />
+        <SkeletonBlock style={{ height: 52, borderRadius: 12 }} />
+      </View>
+      {/* Quick actions skeleton */}
+      <View style={[styles.quickActionsRow, { gap: 10 }]}>
+        {[1, 2, 3].map(i => (
+          <SkeletonBlock key={i} style={{ flex: 1, height: 80, borderRadius: 14 }} />
+        ))}
+      </View>
+      {/* Templates skeleton */}
+      <View style={[styles.templateList, { gap: 0 }]}>
+        {[1, 2, 3].map(i => (
+          <SkeletonBlock key={i} style={{ height: 52, borderRadius: 0, marginBottom: 1 }} />
+        ))}
       </View>
     </Animated.View>
   )
@@ -339,7 +467,7 @@ export default function CanvasScreen() {
               onPress={() => handleOpenCanvas(activeConfig)}
             />
           ) : (
-            <EmptyProjectState onCreate={handleCreate} />
+            <EmptyProjectState />
           )}
 
           {/* ── Quick Actions ──────────────────────── */}
@@ -348,15 +476,15 @@ export default function CanvasScreen() {
           </View>
           <View style={styles.quickActionsRow}>
             <QuickAction
-              isPrimary
-              icon={<Plus size={20} color={Colors.white} weight="bold" />}
-              label="New Project"
-              onPress={handleCreate}
-            />
-            <QuickAction
               icon={<ShieldCheck size={20} color={Colors.primary} weight="duotone" />}
               label="Validate"
               onPress={() => router.push('/(tabs)/validate')}
+            />
+            <QuickAction
+              isPrimary
+              icon={<FolderOpen size={20} color={Colors.white} weight="bold" />}
+              label="Projects"
+              onPress={() => setSwitcherOpen(true)}
             />
             <QuickAction
               icon={<ChartPieSlice size={20} color={Colors.primary} weight="duotone" />}
@@ -380,23 +508,28 @@ export default function CanvasScreen() {
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.recentScroll}
-                renderItem={({ item }) => (
-                  <Pressable
-                    style={({ pressed }) => [styles.recentCard, pressed && { opacity: 0.85 }]}
-                    onPress={() => handleOpenCanvas(item)}
-                  >
-                    <View style={styles.recentCardHeader}>
-                      <Text style={styles.recentCardName} numberOfLines={1}>{item.name}</Text>
-                      <View
-                        style={[
-                          styles.recentValidityDot,
-                          { backgroundColor: item.isValid ? Colors.success : Colors.error },
-                        ]}
-                      />
-                    </View>
-                    <MiniTopologyThumbnail config={item} />
-                    <Text style={styles.recentCardMeta}>{formatRelativeTime(item.updatedAt)}</Text>
-                  </Pressable>
+                renderItem={({ item, index }) => (
+                  <AnimatedItem index={index}>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.recentCard,
+                        pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+                      ]}
+                      onPress={() => handleOpenCanvas(item)}
+                    >
+                      <View style={styles.recentCardHeader}>
+                        <Text style={styles.recentCardName} numberOfLines={1}>{item.name}</Text>
+                        <View
+                          style={[
+                            styles.recentValidityDot,
+                            { backgroundColor: item.isValid ? Colors.success : Colors.error },
+                          ]}
+                        />
+                      </View>
+                      <MiniTopologyThumbnail config={item} />
+                      <Text style={styles.recentCardMeta}>{formatRelativeTime(item.updatedAt)}</Text>
+                    </Pressable>
+                  </AnimatedItem>
                 )}
               />
             </>
@@ -410,37 +543,38 @@ export default function CanvasScreen() {
             </View>
           </View>
           <View style={styles.templateList}>
-            {NETWORK_TEMPLATES.map((template) => {
+            {NETWORK_TEMPLATES.map((template, tplIndex) => {
               const Icon = TEMPLATE_ICONS[template.iconName] || Atom
               return (
-                <Pressable
-                  key={template.id}
-                  style={({ pressed }) => [styles.templateRow, pressed && { opacity: 0.82 }]}
-                  onPress={() => {
-                    if (!user?.id) return
-                    haptics.light()
-                    const config = getTemplateConfig(template.id, user.id)
-                    if (!config) return
-                    // Inject the template config into the store in-memory if not already present
-                    const store = useConfigStore.getState()
-                    const existing = store.configs.find((c) => c.id === config.id)
-                    if (!existing) {
-                      useConfigStore.setState({ configs: [config, ...store.configs] })
-                    }
-                    store.setActiveConfig(config.id)
-                    haptics.medium()
-                    router.push(`/config/${config.id}`)
-                  }}
-                >
-                  <View style={styles.templateIcon}>
-                    <Icon size={18} color={Colors.primary} weight="duotone" />
-                  </View>
-                  <View style={styles.templateBody}>
-                    <Text style={styles.templateName} numberOfLines={1}>{template.name}</Text>
-                    <Text style={styles.templateDesc} numberOfLines={1}>{template.description}</Text>
-                  </View>
-                  <ArrowRight size={14} color={Colors.pale} />
-                </Pressable>
+                <AnimatedItem key={template.id} index={tplIndex}>
+                  <Pressable
+                    style={({ pressed }) => [styles.templateRow, pressed && { opacity: 0.82, transform: [{ scale: 0.988 }] }]}
+                    onPress={() => {
+                      if (!user?.id) return
+                      haptics.light()
+                      const config = getTemplateConfig(template.id, user.id)
+                      if (!config) return
+                      // Inject the template config into the store in-memory if not already present
+                      const store = useConfigStore.getState()
+                      const existing = store.configs.find((c) => c.id === config.id)
+                      if (!existing) {
+                        useConfigStore.setState({ configs: [config, ...store.configs] })
+                      }
+                      store.setActiveConfig(config.id)
+                      haptics.medium()
+                      router.push(`/config/${config.id}`)
+                    }}
+                  >
+                    <View style={styles.templateIcon}>
+                      <Icon size={18} color={Colors.primary} weight="duotone" />
+                    </View>
+                    <View style={styles.templateBody}>
+                      <Text style={styles.templateName} numberOfLines={1}>{template.name}</Text>
+                      <Text style={styles.templateDesc} numberOfLines={1}>{template.description}</Text>
+                    </View>
+                    <ArrowRight size={14} color={Colors.pale} />
+                  </Pressable>
+                </AnimatedItem>
               )
             })}
           </View>
