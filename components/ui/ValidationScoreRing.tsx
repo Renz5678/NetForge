@@ -30,8 +30,8 @@ export function ValidationScoreRing({ score, label, sublabel }: Props) {
       }),
       Animated.spring(scaleAnim, {
         toValue: 1,
-        tension: 100,
-        friction: 7,
+        tension: 60,
+        friction: 14,
         useNativeDriver: true,
       }),
     ]).start()

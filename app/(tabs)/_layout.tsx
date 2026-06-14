@@ -39,9 +39,9 @@ function AnimatedTabIcon({
       Animated.spring(scaleAnim, {
         toValue: focused ? 1 : 0.82,
         useNativeDriver: true,
-        damping: 18,
-        stiffness: 280,
-        mass: 0.7,
+        damping: 20,
+        stiffness: 150,
+        mass: 1,
       }),
       Animated.timing(opacityAnim, {
         toValue: focused ? 1 : 0,

@@ -85,8 +85,8 @@ export function ValidationCard({
       }),
       Animated.spring(scaleAnim, {
         toValue: 1,
-        tension: 120,
-        friction: 8,
+        tension: 60,
+        friction: 14,
         delay,
         useNativeDriver: true,
       }),

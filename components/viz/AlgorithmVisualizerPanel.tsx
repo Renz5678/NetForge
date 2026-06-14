@@ -186,8 +186,8 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
       Animated.spring(translateY, {
         toValue: 0,
         useNativeDriver: true,
-        tension: 100,
-        friction: 12,
+        tension: 60,
+        friction: 16,
       }).start()
     } else {
       Animated.timing(translateY, {

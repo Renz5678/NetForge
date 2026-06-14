@@ -38,11 +38,11 @@ export function useHaptics(): HapticsHook {
   }, [])
 
   const medium = useCallback(() => {
-    Haptics?.impactAsync(Haptics.ImpactFeedbackStyle?.Medium ?? ('medium' as any)).catch(() => {})
+    Haptics?.impactAsync(Haptics.ImpactFeedbackStyle?.Light ?? ('light' as any)).catch(() => {})
   }, [])
 
   const heavy = useCallback(() => {
-    Haptics?.impactAsync(Haptics.ImpactFeedbackStyle?.Heavy ?? ('heavy' as any)).catch(() => {})
+    Haptics?.impactAsync(Haptics.ImpactFeedbackStyle?.Medium ?? ('medium' as any)).catch(() => {})
   }, [])
 
   const success = useCallback(() => {

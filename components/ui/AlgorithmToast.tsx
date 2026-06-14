@@ -45,7 +45,7 @@ export function AlgorithmToast({ toast, onDismiss }: Props) {
             Animated.timing(opacity,    { toValue: 0,   duration: 180, useNativeDriver: true }),
           ]).start(() => onDismissRef.current())
         } else {
-          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 260 }).start()
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, damping: 25, stiffness: 150 }).start()
         }
       },
     })
@@ -68,9 +68,9 @@ export function AlgorithmToast({ toast, onDismiss }: Props) {
 
     // Spring pop-up entrance
     Animated.parallel([
-      Animated.spring(opacity,    { toValue: 1, useNativeDriver: true, damping: 18, stiffness: 260, mass: 0.8 }),
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, damping: 18, stiffness: 260, mass: 0.8 }),
-      Animated.spring(scaleAnim,  { toValue: 1, useNativeDriver: true, damping: 16, stiffness: 280, mass: 0.7 }),
+      Animated.spring(opacity,    { toValue: 1, useNativeDriver: true, damping: 25, stiffness: 150, mass: 1 }),
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, damping: 25, stiffness: 150, mass: 1 }),
+      Animated.spring(scaleAnim,  { toValue: 1, useNativeDriver: true, damping: 22, stiffness: 150, mass: 1 }),
     ]).start()
 
     // Auto-dismiss after 3.5 seconds

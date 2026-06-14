@@ -29,8 +29,8 @@ export function AppSplashScreen() {
       }),
       Animated.spring(scaleAnim, {
         toValue: 1,
-        friction: 7,
-        tension: 90,
+        friction: 14,
+        tension: 60,
         useNativeDriver: true,
       }),
     ]).start()

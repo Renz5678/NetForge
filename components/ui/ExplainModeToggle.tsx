@@ -59,8 +59,8 @@ export function ExplainModeToggle({ style }: ExplainModeToggleProps) {
       Animated.spring(scaleAnim, {
         toValue: 1,
         useNativeDriver: true,
-        tension: 180,
-        friction: 8,
+        tension: 80,
+        friction: 14,
       }),
     ]).start()
     setExplainMode(!explainMode)

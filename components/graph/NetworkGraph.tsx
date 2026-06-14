@@ -411,16 +411,16 @@ export function NetworkGraph({
   React.useEffect(() => {
     if (vizActive) {
       if (isExpanded) {
-        translateY.value = withSpring(-140)
-        scale.value      = withSpring(0.78)
+        translateY.value = withSpring(-140, { damping: 20, stiffness: 90 })
+        scale.value      = withSpring(0.78, { damping: 20, stiffness: 90 })
       } else {
-        translateY.value = withSpring(-40)
-        scale.value      = withSpring(0.9)
+        translateY.value = withSpring(-40, { damping: 20, stiffness: 90 })
+        scale.value      = withSpring(0.9, { damping: 20, stiffness: 90 })
       }
     } else {
-      translateY.value = withSpring(0)
-      scale.value      = withSpring(1)
-      translateX.value = withSpring(0)
+      translateY.value = withSpring(0, { damping: 20, stiffness: 90 })
+      scale.value      = withSpring(1, { damping: 20, stiffness: 90 })
+      translateX.value = withSpring(0, { damping: 20, stiffness: 90 })
     }
   }, [vizActive, isExpanded, translateY, translateX, scale])
 

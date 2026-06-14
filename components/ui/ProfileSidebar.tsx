@@ -104,8 +104,8 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
         Animated.spring(translateX, {
           toValue: 0,
           useNativeDriver: true,
-          tension: 100,
-          friction: 12,
+          tension: 60,
+          friction: 16,
         }),
         Animated.timing(opacity, {
           toValue: 1,
@@ -145,7 +145,7 @@ export function ProfileSidebar({ visible, onClose }: ProfileSidebarProps) {
             Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
           ]).start(() => onClose())
         } else {
-          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, tension: 100, friction: 12 }).start()
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true, tension: 60, friction: 16 }).start()
         }
       },
     })

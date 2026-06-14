@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, type ReactNode } from 'react'
+import React, { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   Modal,
   View,
@@ -9,6 +9,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   PanResponder,
+  Keyboard,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Colors } from '@/constants/colors'
@@ -31,6 +32,14 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
   const handleScale  = useRef(new Animated.Value(1)).current
   const handleOpacity = useRef(new Animated.Value(0.4)).current
 
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false)
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardVisible(true))
+    const hideSub = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardVisible(false))
+    return () => { showSub.remove(); hideSub.remove() }
+  }, [])
+
   const onCloseRef = useRef(onClose)
   useEffect(() => { onCloseRef.current = onClose }, [onClose])
 
@@ -38,13 +47,13 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
   useEffect(() => {
     if (visible) {
       Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          useNativeDriver: true,
-          damping: 42,
-          stiffness: 380,
-          mass: 0.8,
-        }),
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            damping: 40,
+            stiffness: 200,
+            mass: 1,
+          }),
         Animated.timing(opacity, {
           toValue: 1,
           duration: 160,
@@ -106,9 +115,9 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
           Animated.spring(translateY, {
             toValue: 0,
             useNativeDriver: true,
-            damping: 42,
-            stiffness: 380,
-            mass: 0.8,
+            damping: 40,
+            stiffness: 200,
+            mass: 1,
           }).start()
         }
       },
@@ -139,7 +148,7 @@ export function BottomSheet({ visible, onClose, children, snapHeight = 'auto' }:
             styles.sheet,
             { transform: [{ translateY }], flexShrink: 1 },
             sheetHeight !== undefined ? { height: sheetHeight } : null,
-            { paddingBottom: insets.bottom + 16, maxHeight: SCREEN_HEIGHT * 0.90 },
+            { paddingBottom: isKeyboardVisible ? 16 : insets.bottom + 16, maxHeight: SCREEN_HEIGHT * 0.90 },
           ]}
         >
           {/* Animated handle bar */}

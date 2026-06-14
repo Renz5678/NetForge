@@ -28,7 +28,7 @@ export function CoachMark({ visible, text, onDismiss }: CoachMarkProps) {
 
   useEffect(() => {
     if (visible) {
-      scale.value = withSpring(1, { damping: 15 })
+      scale.value = withSpring(1, { damping: 20, stiffness: 90 })
       arrowY.value = withRepeat(
         withSequence(
           withTiming(6, { duration: 600 }),

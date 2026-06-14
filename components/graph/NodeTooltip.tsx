@@ -86,9 +86,9 @@ export function NodeTooltip({
       Animated.spring(scaleAnim, {
         toValue: 1,
         useNativeDriver: true,
-        damping: 16,
-        stiffness: 300,
-        mass: 0.6,
+        damping: 22,
+        stiffness: 200,
+        mass: 1,
       }),
       Animated.timing(opacityAnim, {
         toValue: 1,
