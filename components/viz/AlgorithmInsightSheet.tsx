@@ -250,9 +250,11 @@ function PrimsContent({
   const [open, setOpen] = useState(false)
   const edgeCount  = step.mstEdges?.length ?? 0
   const cost       = step.mstCost ?? 0
-  const totalLinks = Math.floor(
-    departments.reduce((sum, d) => sum + d.peers.length, 0) / 2
-  )
+  const edgeSet = new Set<string>()
+  departments.forEach(d => {
+    d.peers.forEach(p => edgeSet.add([d.id, p].sort().join('-')))
+  })
+  const totalLinks = edgeSet.size
   const redundant  = Math.max(0, totalLinks - edgeCount)
 
   return (
