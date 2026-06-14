@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react'
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withTiming,
   FadeIn,
 } from 'react-native-reanimated'
@@ -21,7 +20,6 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
-  Dimensions,
 } from 'react-native'
 
 // Enable LayoutAnimation on Android

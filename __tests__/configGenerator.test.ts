@@ -65,7 +65,7 @@ const makeDept = (): NetworkNode => ({
 
 describe('configGenerator — generateCiscoConfig (Router)', () => {
   const router = makeRouter()
-  const config = generateCiscoConfig(router, [router])
+  const config = generateCiscoConfig(router)
 
   it('contains hostname line', () => {
     expect(config).toContain('hostname Core_Router')
@@ -87,7 +87,7 @@ describe('configGenerator — generateCiscoConfig (Router)', () => {
 
 describe('configGenerator — generateCiscoConfig (Switch)', () => {
   const sw = makeSwitch()
-  const config = generateCiscoConfig(sw, [sw])
+  const config = generateCiscoConfig(sw)
 
   it('contains hostname line', () => {
     expect(config).toContain('hostname Access_Switch')
@@ -112,7 +112,7 @@ describe('configGenerator — generateCiscoConfig (Switch)', () => {
 
 describe('configGenerator — generateCiscoConfig (Firewall)', () => {
   const fw = makeFirewall()
-  const config = generateCiscoConfig(fw, [fw])
+  const config = generateCiscoConfig(fw)
 
   it('contains named ACL block', () => {
     expect(config).toContain('ip access-list extended NETFORGE_FW_EDGE_FIREWALL')

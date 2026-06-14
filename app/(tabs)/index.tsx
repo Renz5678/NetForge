@@ -22,7 +22,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import {
-  Plus,
   TreeStructure,
   CaretDown,
   ShieldCheck,
@@ -104,7 +103,6 @@ function MiniTopologyThumbnail({ config }: { config: NetworkConfig }) {
   }))
 
   // Draw lines between connected peers (only those visible in the first 8)
-  const visibleIds = new Set(visible.map(d => d.id))
   const lines: { x1: number; y1: number; x2: number; y2: number }[] = []
   visible.forEach((d, i) => {
     d.peers.forEach(peerId => {
@@ -396,7 +394,6 @@ export default function CanvasScreen() {
   // See AGENTS.md §6 for rationale.
   const configs        = useConfigStore((s) => s.configs)
   const activeConfig   = useConfigStore((s) => s.activeConfig)
-  const setCreateModalOpen = useConfigStore((s) => s.setCreateModalOpen)
   const loading        = useConfigStore((s) => s.loading)
   const loadConfigs    = useConfigStore((s) => s.loadConfigs)
   const setActiveConfig = useConfigStore((s) => s.setActiveConfig)
@@ -415,11 +412,6 @@ export default function CanvasScreen() {
     () => userConfigs.filter((c) => c.id !== activeConfig?.id).slice(0, 4),
     [userConfigs, activeConfig]
   )
-
-  // Open the name prompt globally
-  const handleCreate = () => {
-    setCreateModalOpen(true)
-  }
 
   const handleOpenCanvas = (config: typeof activeConfig) => {
     if (!config) return

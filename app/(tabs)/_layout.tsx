@@ -119,7 +119,7 @@ export default function TabsLayout() {
           name="index"
           options={{
             title: 'Canvas',
-            tabBarIcon: ({ color, focused }) => (
+            tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
               <AnimatedTabIcon focused={focused} icon={
                 <TreeStructure size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
               } />
@@ -132,7 +132,7 @@ export default function TabsLayout() {
           name="validate"
           options={{
             title: 'Validate',
-            tabBarIcon: ({ color, focused }) => (
+            tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
               <AnimatedTabIcon focused={focused} icon={
                 <TabIconWithBadge
                   showBadge={!hasActiveConfig}
@@ -148,7 +148,7 @@ export default function TabsLayout() {
           name="create_action"
           options={{
             title: '',
-            tabBarButton: (props) => {
+            tabBarButton: (props: any) => {
               const { ref, children, style, ...rest } = props as any
               return (
                 <Pressable
@@ -170,7 +170,7 @@ export default function TabsLayout() {
           name="subnet"
           options={{
             title: 'Subnet',
-            tabBarIcon: ({ color, focused }) => (
+            tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
               <AnimatedTabIcon focused={focused} icon={
                 <ChartPieSlice size={22} color={color as string} weight={focused ? 'fill' : 'regular'} />
               } />
@@ -183,7 +183,7 @@ export default function TabsLayout() {
           name="export"
           options={{
             title: 'Export',
-            tabBarIcon: ({ color, focused }) => (
+            tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
               <AnimatedTabIcon focused={focused} icon={
                 <TabIconWithBadge
                   showBadge={!hasActiveConfig}

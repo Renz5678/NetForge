@@ -9,7 +9,6 @@ import { View, Text, Pressable, StyleSheet } from 'react-native'
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  withSpring,
   withTiming,
   withSequence,
   interpolate,

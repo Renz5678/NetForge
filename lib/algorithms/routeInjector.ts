@@ -1,4 +1,4 @@
-import { NetworkNode, RouterNode, FirewallNode } from '@/types'
+import { NetworkNode } from '@/types'
 
 /**
  * Automatically injects static routes into routers/firewalls so that
