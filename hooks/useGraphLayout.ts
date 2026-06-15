@@ -1,4 +1,4 @@
-﻿/**
+/**
  * useGraphLayout.ts — Subtree-aware hierarchical layout engine (v3)
  *
  * Strategy
@@ -176,13 +176,12 @@ function layoutComponent(
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export function useGraphLayout(
+export function computeGraphLayout(
   departments: NetworkNode[],
   width: number,
   height: number
 ): { nodes: GraphNode[]; edges: GraphEdge[] } {
-  return useMemo(() => {
-    if (departments.length === 0) return { nodes: [], edges: [] }
+  if (departments.length === 0) return { nodes: [], edges: [] }
 
     const { hasCycle, cycle } = detectCycles(departments)
     const { isolated }        = validateConnectivity(departments)
@@ -293,5 +292,12 @@ export function useGraphLayout(
     }
 
     return { nodes, edges }
-  }, [departments, width, height])
+}
+
+export function useGraphLayout(
+  departments: NetworkNode[],
+  width: number,
+  height: number
+): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  return useMemo(() => computeGraphLayout(departments, width, height), [departments, width, height])
 }
