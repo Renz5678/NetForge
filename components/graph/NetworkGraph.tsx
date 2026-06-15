@@ -410,7 +410,7 @@ export function NetworkGraph({
   // Camera auto-adjust during viz
   React.useEffect(() => {
     if (vizActive) {
-      const targetScale = isExpanded ? 0.78 : 0.9
+      const targetScale = isExpanded ? 0.6 : 0.75
       const panelOffsetY = isExpanded ? -140 : -40
 
       let activeNodeId: string | null = null
