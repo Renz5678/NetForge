@@ -410,19 +410,40 @@ export function NetworkGraph({
   // Camera auto-adjust during viz
   React.useEffect(() => {
     if (vizActive) {
-      if (isExpanded) {
-        translateY.value = withSpring(-140, { damping: 20, stiffness: 90 })
-        scale.value      = withSpring(0.78, { damping: 20, stiffness: 90 })
-      } else {
-        translateY.value = withSpring(-40, { damping: 20, stiffness: 90 })
-        scale.value      = withSpring(0.9, { damping: 20, stiffness: 90 })
+      const targetScale = isExpanded ? 0.78 : 0.9
+      const panelOffsetY = isExpanded ? -140 : -40
+
+      let activeNodeId: string | null = null
+      if (currentStep) {
+        if (currentStep.currentNode) {
+          activeNodeId = currentStep.currentNode
+        } else if (currentStep.dfsStack && currentStep.dfsStack.length > 0) {
+          activeNodeId = currentStep.dfsStack[currentStep.dfsStack.length - 1]
+        }
       }
+
+      if (activeNodeId) {
+        const nodeData = nodes.find(n => n.id === activeNodeId)
+        if (nodeData) {
+          const targetX = (SCREEN_WIDTH / 2) - (nodeData.x * targetScale)
+          const targetY = (CANVAS_HEIGHT / 2) - (nodeData.y * targetScale) + panelOffsetY
+
+          translateX.value = withSpring(targetX, { damping: 30, stiffness: 15 })
+          translateY.value = withSpring(targetY, { damping: 30, stiffness: 15 })
+          scale.value      = withSpring(targetScale, { damping: 30, stiffness: 15 })
+          return
+        }
+      }
+
+      // Fallback if no active node found
+      translateY.value = withSpring(panelOffsetY, { damping: 30, stiffness: 15 })
+      scale.value      = withSpring(targetScale, { damping: 30, stiffness: 15 })
     } else {
-      translateY.value = withSpring(0, { damping: 20, stiffness: 90 })
-      scale.value      = withSpring(1, { damping: 20, stiffness: 90 })
-      translateX.value = withSpring(0, { damping: 20, stiffness: 90 })
+      translateY.value = withSpring(0, { damping: 30, stiffness: 15 })
+      scale.value      = withSpring(1, { damping: 30, stiffness: 15 })
+      translateX.value = withSpring(0, { damping: 30, stiffness: 15 })
     }
-  }, [vizActive, isExpanded, translateY, translateX, scale])
+  }, [vizActive, isExpanded, currentStep, nodes, translateY, translateX, scale])
 
   // ── Peer count map ────────────────────────────────────────────────────────
   const peerCountMap = useMemo(() => {
