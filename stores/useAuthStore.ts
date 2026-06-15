@@ -47,10 +47,44 @@ export const useAuthStore = create<AuthStore>((set) => ({
         password,
         options: { data: { full_name: fullName } },
       })
-      if (error) return error.message
+      if (error) {
+        console.warn('Supabase signUp failed, checking offline fallback:', error.message)
+        if (__DEV__) {
+          if (
+            email.includes('netforge.local') ||
+            email === 'guest@netforge.com' ||
+            error.message.includes('Fetch') ||
+            error.message.includes('Invalid API key') ||
+            error.message.toLowerCase().includes('network')
+          ) {
+            const guestId = await getOrCreateGuestId()
+            const mockUser = {
+              id: guestId,
+              email: email,
+              user_metadata: { full_name: fullName || 'Offline Administrator' },
+            } as any
+            const mockSession = { access_token: 'offline_token', user: mockUser } as any
+            set({ user: mockUser, session: mockSession, loading: false })
+            return null
+          }
+        }
+        return error.message
+      }
       set({ user: data.user, session: data.session })
       return null
     } catch (err) {
+      if (__DEV__) {
+        console.warn('signUp exception, falling back to offline:', err)
+        const guestId = await getOrCreateGuestId()
+        const mockUser = {
+          id: guestId,
+          email: email,
+          user_metadata: { full_name: fullName || 'Offline Administrator' },
+        } as any
+        const mockSession = { access_token: 'offline_token', user: mockUser } as any
+        set({ user: mockUser, session: mockSession, loading: false })
+        return null
+      }
       return err instanceof Error ? err.message : 'An unexpected error occurred'
     }
   },
@@ -69,7 +103,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
             email === 'guest@netforge.com' ||
             error.message.includes('Fetch') ||
             error.message.includes('Invalid API key') ||
-            error.message.includes('network')
+            error.message.toLowerCase().includes('network')
           ) {
             const guestId = await getOrCreateGuestId()
             const mockUser = {
