@@ -200,6 +200,17 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
 
   // Haptic feedback when algorithm completes
   const isCompleted = totalStepsVal > 0 && currentStepIndex === totalStepsVal - 1
+
+  const [showResultCard, setShowResultCard] = useState(false)
+  useEffect(() => {
+    if (isCompleted && algorithm === 'pathfindingComparison') {
+      const timer = setTimeout(() => setShowResultCard(true), 1500) // 1.5s delay to let user see the final path
+      return () => clearTimeout(timer)
+    } else {
+      setShowResultCard(false)
+    }
+  }, [isCompleted, algorithm])
+
   useEffect(() => {
     if (!isActive || !isCompleted || !currentStep) return
     if (hasHapticsOnComplete.current) return
@@ -255,8 +266,8 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
     />
   )
 
-  // ── Pathfinding Comparison — static result card (no step animation) ──────────
-  if (algorithm === 'pathfindingComparison' && comparisonResult) {
+  // ── Pathfinding Comparison — static result card (shown after animation completes) ──────────
+  if (algorithm === 'pathfindingComparison' && comparisonResult && showResultCard) {
     const srcName = departments.find((d) => d.id === comparisonResult.sourceId)?.name ?? comparisonResult.sourceId
     const dstName = departments.find((d) => d.id === comparisonResult.targetId)?.name ?? comparisonResult.targetId
 
@@ -377,6 +388,19 @@ export function AlgorithmVisualizerPanel({ departments }: AlgorithmVisualizerPan
               <Text style={styles.comparisonNoPath}>No path</Text>
             )}
           </View>
+        </View>
+
+        {/* Conceptual Difference Explanation */}
+        <View style={{ marginTop: 16, padding: 12, backgroundColor: 'rgba(99,132,255,0.06)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(99,132,255,0.15)' }}>
+          <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 13, color: Colors.primary, marginBottom: 6 }}>
+            What's the difference?
+          </Text>
+          <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: Colors.textMuted, lineHeight: 18 }}>
+            <Text style={{ color: Colors.primary, fontFamily: 'Inter_600SemiBold' }}>Dijkstra</Text> explores blindly in all directions like a ripple in a pond. It guarantees the shortest path but checks many unnecessary routes.
+            {'\n\n'}
+            <Text style={{ color: Colors.vizPath, fontFamily: 'Inter_600SemiBold' }}>A* Search</Text> uses a spatial heuristic (it knows the physical direction of the target) to prioritize exploring paths moving closer to the destination.
+            {tied && "\n\nIn this specific topology, there were no false paths to avoid, so both algorithms performed identically!"}
+          </Text>
         </View>
         </Animated.View>
         {insightSheetEl}
