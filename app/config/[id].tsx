@@ -17,6 +17,7 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  LayoutAnimation,
   Platform,
   UIManager,
   Dimensions,
