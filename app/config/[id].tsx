@@ -17,9 +17,9 @@ import {
   TextInput,
   ScrollView,
   Alert,
-  LayoutAnimation,
   Platform,
   UIManager,
+  Dimensions,
 } from 'react-native'
 
 // Enable LayoutAnimation on Android
@@ -74,6 +74,10 @@ import { findShortestPathAStar } from '@/lib/algorithms/aStar'
 import type { NetworkNode, PathResult, AlgorithmType } from '@/types'
 import type { ComparisonResult } from '@/stores/useVisualizationStore'
 import { DepartmentSchema } from '@/lib/validators'
+import { computeGraphLayout } from '@/hooks/useGraphLayout'
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window')
+const CANVAS_HEIGHT = SCREEN_HEIGHT - 200
 
 
 function getSubnetDetails(subnetStr: string | undefined) {
@@ -812,8 +816,16 @@ export default function ConfigDetailScreen() {
   // Algorithm visualization
   const [showVizSelector, setShowVizSelector] = useState(false)
   const { startVisualization } = useVisualizationStore()
-  // Node positions for A* (empty map \u2014 A* degenerates gracefully without positions)
-  const nodePositions = new Map<string, { x: number; y: number }>()
+
+  // Node positions for A* (compute using the exact same pure layout engine as the canvas)
+  const nodePositions = React.useMemo(() => {
+    const layout = computeGraphLayout(departments, SCREEN_WIDTH, CANVAS_HEIGHT)
+    const map = new Map<string, { x: number; y: number }>()
+    for (const n of layout.nodes) {
+      map.set(n.id, { x: n.x, y: n.y })
+    }
+    return map
+  }, [departments])
 
   useEffect(() => {
     if (id) setActiveConfig(id)
