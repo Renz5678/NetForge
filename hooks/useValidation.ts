@@ -6,7 +6,6 @@ import { useMemo } from 'react'
 import { detectCycles } from '@/lib/algorithms/cycleDetection'
 import { checkSubnetOverlap } from '@/lib/algorithms/subnetAllocator'
 import { validateConnectivity } from '@/lib/algorithms/bfsValidator'
-import { simulateRoute } from '@/lib/algorithms/routingSimulator'
 import type { NetworkNode, ValidationResult } from '@/types'
 
 export function useValidation(departments: NetworkNode[]): ValidationResult {
@@ -59,46 +58,19 @@ export function useValidation(departments: NetworkNode[]): ValidationResult {
       }
     }
 
-    // 3. Connectivity & Routing check (BFS + L3 Route Simulation)
+    // 3. Connectivity check — BFS reachability only.
+    // Routing simulation is intentionally NOT included here because it fails
+    // for valid topologies that don't have switch-port VLAN configs or router
+    // static routes (i.e. most user-built topologies). BFS is the ground truth
+    // for whether nodes are topologically reachable.
     const { allReachable, isolated } = validateConnectivity(departments)
-    
-    // Perform pairwise route simulation between all departments
-    const hasRouters = departments.some((d) => d.type === 'router')
-    const routingFailures: string[] = []
-
-    if (hasRouters && departments.length > 1) {
-      const depts = departments.filter((d) => d.type === 'department' || !d.type)
-      for (const src of depts) {
-        for (const dest of depts) {
-          if (src.id === dest.id) continue
-          if (dest.subnet) {
-            const [baseIp] = dest.subnet.split('/')
-            const ipParts = baseIp.split('.').map((p) => parseInt(p, 10))
-            // Clamp to ≤254 so we never produce an invalid octet (e.g. 256)
-            ipParts[3] = Math.min(ipParts[3] + 1, 254)
-            const testIp = ipParts.join('.')
-
-            const trace = simulateRoute(departments, src.id, testIp)
-            if (!trace.success) {
-              routingFailures.push(`${src.name} ➔ ${dest.name} (${trace.message})`)
-            }
-          }
-        }
-      }
-    }
-
-    const connectivityPassed = allReachable && routingFailures.length === 0
-    let connectivityMessage = 'All departments reachable via BFS.'
-    if (!allReachable) {
-      connectivityMessage = `${isolated.length} isolated node${isolated.length !== 1 ? 's' : ''} detected.`
-    } else if (routingFailures.length > 0) {
-      connectivityMessage = `Routing trace failures: ${routingFailures[0]}${routingFailures.length > 1 ? ` (+${routingFailures.length - 1} more)` : ''}`
-    }
 
     const connectivityCheck = {
-      passed: connectivityPassed,
-      message: connectivityMessage,
-      affected: allReachable ? (routingFailures.length > 0 ? routingFailures : undefined) : isolated,
+      passed: allReachable,
+      message: allReachable
+        ? 'All nodes reachable via BFS.'
+        : `${isolated.length} isolated node${isolated.length !== 1 ? 's' : ''} detected.`,
+      affected: allReachable ? undefined : isolated,
     }
 
     // 4. VLAN uniqueness check

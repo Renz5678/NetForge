@@ -414,9 +414,19 @@ export const useConfigStore = create<ConfigStore>((set, get) => ({
       return result
     }
 
-    const { hasCycle } = detectCycles(departments)
+    const { hasCycle, cycle } = detectCycles(departments)
 
-    if (hasCycle) {
+    // A cycle through a router, firewall, or WAN node is L3 redundancy — safe
+    // with dynamic routing protocols (OSPF/BGP). Only L2-only cycles (switches
+    // and departments exclusively) are genuine broadcast-storm loops.
+    // This mirrors the same exemption logic in useValidation.ts.
+    const isL3Redundancy = hasCycle && cycle.some((nodeName) => {
+      const node = departments.find((d) => d.name === nodeName || d.id === nodeName)
+      return node?.type === 'router' || node?.type === 'firewall' || node?.type === 'wan'
+    })
+    const isHarmfulCycle = hasCycle && !isL3Redundancy
+
+    if (isHarmfulCycle) {
       const cleared = departments.map((d) => ({
         ...d,
         subnet: undefined,
