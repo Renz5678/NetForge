@@ -62,17 +62,27 @@ export function validateConnectivity(departments: NetworkNode[]): BfsResult {
     return { allReachable: true, isolated: [] }
   }
 
-  // Find the largest component — all nodes NOT in the largest are "isolated"
-  // When all components have the same size (fully disconnected graph), all are isolated
-  const largestSize = Math.max(...components.map((c) => c.length))
-  const componentsSameSize = components.every((c) => c.length === largestSize)
-
-  if (componentsSameSize && components.length > 1) {
-    // All nodes are equally disconnected — all are isolated
-    const isolated = departments.map((d) => idToName.get(d.id) ?? d.id)
-    return { allReachable: false, isolated }
+  // Special case: zero edges in the whole graph.
+  // Every component is a lone node — there is no "main network" to belong to,
+  // so every node is isolated.
+  const hasAnyEdge = departments.some((d) => (adj.get(d.id)?.size ?? 0) > 0)
+  if (!hasAnyEdge) {
+    return {
+      allReachable: false,
+      isolated: departments.map((d) => idToName.get(d.id) ?? d.id),
+    }
   }
 
+  // Find the largest component (by node count).
+  // All nodes NOT in the largest component are considered isolated — they cannot
+  // reach the main network segment.
+  //
+  //   • Equal-sized sub-networks ([A–B][C–D]): the first component found wins
+  //     "largest"; nodes in the other component are isolated from it. This is
+  //     correct — neither group can reach the other.
+  //   • Normal split ([A–B–C][D]): D is isolated, A/B/C are fine.
+  //   • Fully disconnected with edges in sub-groups: handled by the above.
+  const largestSize = Math.max(...components.map((c) => c.length))
   const largestComponent = components.find((c) => c.length === largestSize)!
   const largestSet = new Set(largestComponent)
 

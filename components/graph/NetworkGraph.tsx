@@ -358,8 +358,12 @@ export function NetworkGraph({
         return
       }
 
-      // 2. Isolated / unreachable nodes
-      if (validationResult && !validationResult.connectivityCheck.passed) {
+      // 2. Isolated / unreachable nodes — only when BFS actually found isolated nodes
+      if (
+        validationResult &&
+        !validationResult.connectivityCheck.passed &&
+        (validationResult.connectivityCheck.affected?.length ?? 0) > 0
+      ) {
         import('@/lib/algorithms/isolationVisualizer').then(
           ({ buildIsolationSteps }) => {
             const result = buildIsolationSteps(departments)
@@ -370,8 +374,11 @@ export function NetworkGraph({
             setIsExpanded(true)
             setShowSteps(true)
             setSpeed('normal')
+            const isolatedCount = result.isolatedNodeIds.length
             setToast({
-              label: `Isolated node${result.isolatedNodeIds.length !== 1 ? 's' : ''} detected — watch the BFS sweep`,
+              label: isolatedCount > 0
+                ? `${isolatedCount} isolated node${isolatedCount !== 1 ? 's' : ''} detected — watch the BFS sweep`
+                : 'Connectivity issue detected — watch the BFS sweep',
               success: false,
               insight: validationResult.connectivityCheck.message,
               replayLabel: 'Replay ›',
